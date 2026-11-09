@@ -16,7 +16,7 @@ const firebaseConfig = {
 // Vul het admin-e-mailadres in dat je ook als Firebase Authentication-gebruiker aanmaakt.
 // Zet hier NOOIT een wachtwoord in. E-mailcontrole in de browser is geen beveiligingsgrens;
 // zie README en database.rules.json voor de echte beveiliging.
-export const ADMIN_EMAILS = ["beheer@voorbeeld.nl"];
+export const ADMIN_EMAILS = ["58156557@leerling.hetbouwens.nl"];
 
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
