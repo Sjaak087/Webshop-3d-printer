@@ -1,0 +1,26 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "products": {
+      ".read": true,
+      "$productId": {
+        ".write": "auth != null && auth.token.email != null && auth.token.email == 'beheer@voorbeeld.nl'"
+      }
+    },
+    "orders": {
+      ".read": "auth != null && auth.token.email != null && auth.token.email == 'beheer@voorbeeld.nl'",
+      "$orderId": {
+        ".read": "auth != null && (data.child('userId').val() == auth.uid || (auth.token.email != null && auth.token.email == 'beheer@voorbeeld.nl'))",
+        ".write": "auth != null && ((!data.exists() && newData.child('userId').val() == auth.uid) || (auth.token.email != null && auth.token.email == 'beheer@voorbeeld.nl'))"
+      }
+    },
+    "chats": {
+      ".read": "auth != null && auth.token.email != null && auth.token.email == 'beheer@voorbeeld.nl'",
+      "$chatId": {
+        ".read": "auth != null && (data.child('userId').val() == auth.uid || (auth.token.email != null && auth.token.email == 'beheer@voorbeeld.nl'))",
+        ".write": "auth != null && ((!data.exists() && newData.child('userId').val() == auth.uid) || (data.child('userId').val() == auth.uid) || (auth.token.email != null && auth.token.email == 'beheer@voorbeeld.nl'))"
+      }
+    }
+  }
+}
