@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApp, getApps } from "firebase/app";
 import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { getDatabase } from "firebase/database";
 
@@ -18,7 +18,7 @@ const firebaseConfig = {
 // zie README en database.rules.json voor de echte beveiliging.
 export const ADMIN_EMAILS = ["beheer@voorbeeld.nl"];
 
-const app = initializeApp(firebaseConfig);
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getDatabase(app);
-setPersistence(auth, browserLocalPersistence).catch(console.error);
+export const authPersistenceReady = setPersistence(auth, browserLocalPersistence);

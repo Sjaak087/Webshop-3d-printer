@@ -1,61 +1,682 @@
-import { onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { ref, onValue, push, set, update, get, serverTimestamp } from "firebase/database";
-import { auth, db, ADMIN_EMAILS } from "./firebase";
+import {
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification
+} from "firebase/auth";
+import {
+  ref,
+  onValue,
+  push,
+  set,
+  update,
+  query,
+  orderByChild,
+  equalTo
+} from "firebase/database";
+import { auth, db, ADMIN_EMAILS, authPersistenceReady } from "./firebase";
 import "./style.css";
 
-const app=document.querySelector("#app");
-let user=null, products={}, cart=JSON.parse(localStorage.getItem("cart")||"[]"), orders={}, chats={}, page="home", selected=null, activeChat=null;
-const money=n=>new Intl.NumberFormat("nl-NL",{style:"currency",currency:"EUR"}).format(Number(n)||0);
-const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-const isAdmin=()=>!!user && ADMIN_EMAILS.map(x=>x.toLowerCase()).includes((user.email||"").toLowerCase());
-const path=(p)=>ref(db,p);
-function toast(s){const n=document.querySelector("#toast");if(n){n.textContent=s;n.classList.add("show");setTimeout(()=>n.classList.remove("show"),2600)}}
-function go(p){page=p;render()}
-function header(){return `<header><div class="nav"><a class="brand" href="#" data-page="home"><span class="logo">B</span> BlauwShop</a><div class="search">Alles vinden? <span>⌕</span></div><nav><button data-page="home">Shop</button><button data-page="mychats">Mijn chats</button>${isAdmin()?'<button data-page="admin">Sitebeheer</button>':''}<button data-page="cart">🛒 Winkelwagen (${cart.reduce((a,b)=>a+b.qty,0)})</button>${user?`<span class="hello">Hoi, ${esc(user.email.split("@")[0])}</span><button id="logout">Uitloggen</button>`:'<button data-page="login">Inloggen</button>'}</nav></div></header>`}
-function render(){app.innerHTML=header()+`<main id="main"></main><div id="toast"></div>`;const m=document.querySelector("#main");
-if(page==="home")m.innerHTML=home();
-if(page==="product")m.innerHTML=productPage();
-if(page==="cart")m.innerHTML=cartPage();
-if(page==="login")m.innerHTML=authPage(false);
-if(page==="register")m.innerHTML=authPage(true);
-if(page==="mychats")m.innerHTML=myChats();
-if(page==="chat")m.innerHTML=chatPage();
-if(page==="admin")m.innerHTML=isAdmin()?adminPage():`<section class="panel"><h2>Geen toegang</h2><p>Log in met het ingestelde beheerdersaccount.</p></section>`;
-bind();}
-function home(){const list=Object.entries(products).filter(([,p])=>p.active!==false);return `<section class="hero"><div><span class="eyebrow">WELKOM BIJ BLAUWSHOP</span><h1>Alles wat je zoekt.<br><em>Gewoon gevonden.</em></h1><p>Ontdek onze producten en bestel eenvoudig online.</p><button class="primary" onclick="document.querySelector('#producten').scrollIntoView({behavior:'smooth'})">Bekijk producten</button></div><div class="hero-art">✦<div>SHOP<br>SLIM.</div></div></section><section id="producten"><div class="section-head"><div><small>ONZE COLLECTIE</small><h2>Populaire producten</h2></div><span>${list.length} producten</span></div><div class="grid">${list.length?list.map(([id,p])=>card(id,p)).join(""):'<div class="empty">Er staan nog geen producten in de shop.</div>'}</div></section>`}
-function card(id,p){return `<article class="product-card" data-product="${id}"><div class="photo">${p.image?`<img src="${esc(p.image)}" alt="${esc(p.title)}">`:'<span>✦</span>'}</div><div class="card-info"><h3>${esc(p.title)}</h3><strong>${money(p.price)}</strong><span class="sub">Bekijk product →</span></div></article>`}
-function productPage(){const p=products[selected];if(!p)return `<section class="panel">Product niet gevonden. <button data-page="home">Terug naar de shop</button></section>`;return `<div class="crumb"><a data-page="home">Home</a> / ${esc(p.title)}</div><section class="detail"><div class="detail-photo">${p.image?`<img src="${esc(p.image)}">`:'✦'}</div><div><small>PRODUCTDETAILS</small><h1>${esc(p.title)}</h1><div class="price">${money(p.price)}</div><p>${esc(p.description||"Geen beschrijving beschikbaar.")}</p><button class="primary" id="add">＋ In winkelwagen</button><p class="muted">Veilig bestellen • Persoonlijke updates via chat</p></div></section>`}
-function cartPage(){return `<section class="panel"><h1>Je winkelwagen</h1>${cart.length?cart.map((x,i)=>{const p=products[x.id]||{};return `<div class="cart-row"><div>${esc(p.title||"Product verwijderd")}<small>${money(p.price)} per stuk</small></div><div><button data-minus="${i}">−</button> ${x.qty} <button data-plus="${i}">＋</button></div><b>${money((Number(p.price)||0)*x.qty)}</b><button data-remove="${i}">✕</button></div>`}).join("")+`<div class="total">Totaal <b>${money(cart.reduce((s,x)=>s+(Number(products[x.id]?.price)||0)*x.qty,0))}</b></div><button class="primary" id="checkout">Bestellen</button>`:'<p>Je winkelwagen is nog leeg.</p><button class="primary" data-page="home">Verder winkelen</button>'}</section>`}
-function authPage(reg){return `<section class="auth panel"><small>${reg?'NIEUW ACCOUNT':'WELKOM TERUG'}</small><h1>${reg?'Account aanmaken':'Inloggen'}</h1><form id="authform"><label>E-mailadres<input name="email" type="email" required autocomplete="email"></label><label>Wachtwoord<input name="password" type="password" minlength="6" required autocomplete="${reg?'new-password':'current-password'}"></label><button class="primary">${reg?'Account aanmaken':'Inloggen'}</button></form><p>${reg?'Heb je al een account?':'Nog geen account?'} <a data-page="${reg?'login':'register'}">${reg?'Inloggen':'Account maken'}</a></p></section>`}
-function myChats(){if(!user)return `<section class="panel"><h2>Log in om je chats te bekijken</h2><button class="primary" data-page="login">Inloggen</button></section>`;const mine=Object.entries(chats).filter(([,c])=>c.userId===user.uid);return `<section class="panel"><h1>Mijn chats</h1>${mine.length?mine.map(([id,c])=>`<button class="chat-link" data-chat="${id}"><b>Bestelling ${esc(c.orderId||"")}</b><span>${esc(c.lastMessage||"Open gesprek")} →</span></button>`).join(""):'<p>Je hebt nog geen chats. Na een bestelling start hier een gesprek.</p>'}</section>`}
-function chatPage(){const c=chats[activeChat];if(!c)return `<section class="panel">Chat niet gevonden.</section>`;const msgs=c.messages||{};return `<section class="panel chat-panel"><div class="section-head"><div><small>KLANTENSERVICE</small><h1>Chat – bestelling ${esc(c.orderId||"")}</h1></div><button data-track="${esc(c.orderId||"")}">Track & trace</button></div><div class="messages">${Object.values(msgs).sort((a,b)=>(a.time||0)-(b.time||0)).map(x=>`<div class="bubble ${x.uid===user?.uid?'mine':''}"><b>${x.uid===user?.uid?'Jij':esc(x.name||'Webshop')}</b><p>${esc(x.text)}</p></div>`).join("")}</div><form id="sendmsg" class="send"><input name="message" placeholder="Typ je bericht…" required><button class="primary">Verstuur</button></form></section>`}
-function adminPage(){return `<section class="panel"><div class="section-head"><div><small>BEHEEROMGEVING</small><h1>Sitebeheer</h1></div><span class="admin-pill">ADMIN</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="chats">Chats</button></div><div id="admincontent">${adminProducts()}</div></section>`}
-function adminProducts(){return `<h2>Product toevoegen / aanpassen</h2><form id="productform" class="product-form"><input name="title" placeholder="Producttitel" required><input name="price" type="number" min="0" step=".01" placeholder="Prijs (€)" required><input name="image" placeholder="Afbeelding URL (https://…)" type="url"><textarea name="description" placeholder="Beschrijving"></textarea><button class="primary">Product opslaan</button></form><h2>Bestaande producten</h2>${Object.entries(products).map(([id,p])=>`<div class="admin-row"><span><b>${esc(p.title)}</b> · ${money(p.price)}</span><button data-edit="${id}">Bewerken</button><button data-delete="${id}">Verwijderen</button></div>`).join("")||'<p>Nog geen producten.</p>'}`}
-function adminOrders(){return `<h2>Bestellingen en status</h2>${Object.entries(orders).map(([id,o])=>`<div class="order"><div><b>Bestelling ${id.slice(-6)}</b><small>${esc(o.email)} · ${money(o.total)}</small></div><select data-status="${id}">${["Ontvangen","Verwerkt","Gemaakt","Klaar voor bezorging"].map(s=>`<option ${o.status===s?'selected':''}>${s}</option>`).join("")}</select><button data-openorder="${id}">Open chat</button></div>`).join("")||'<p>Nog geen bestellingen.</p>'}`}
-function adminChats(){return `<h2>Alle chats</h2>${Object.entries(chats).map(([id,c])=>`<button class="chat-link" data-chat="${id}"><b>${esc(c.email||"Klant")} · ${esc(c.orderId||"")}</b><span>${esc(c.lastMessage||"Open gesprek")} →</span></button>`).join("")||'<p>Nog geen chats.</p>'}`}
-function trackPage(id){const o=orders[id];document.querySelector("#main").innerHTML=`<section class="panel"><small>BESTELLING VOLGEN</small><h1>Track & trace</h1>${o?`<h2>${esc(o.status||"Ontvangen")}</h2><div class="steps">${["Ontvangen","Verwerkt","Gemaakt","Klaar voor bezorging"].map((s,i)=>`<div class="${["Ontvangen","Verwerkt","Gemaakt","Klaar voor bezorging"].indexOf(o.status)>=i?'done':''}"><i>${i+1}</i>${s}</div>`).join("")}</div>`:'Bestelling niet gevonden.'}<button data-page="mychats">Terug naar chats</button></section>`}
-function bind(){document.querySelectorAll("[data-page]").forEach(b=>b.addEventListener("click",e=>{e.preventDefault();go(b.dataset.page)}));
-document.querySelector("#logout")?.addEventListener("click",()=>signOut(auth));
-document.querySelectorAll("[data-product]").forEach(x=>x.onclick=()=>{selected=x.dataset.product;go("product")});
-document.querySelector("#add")?.addEventListener("click",()=>{const x=cart.find(x=>x.id===selected);if(x)x.qty++;else cart.push({id:selected,qty:1});saveCart();toast("Toegevoegd aan winkelwagen");render()});
-document.querySelectorAll("[data-plus]").forEach(x=>x.onclick=()=>changeQty(+x.dataset.plus,1));document.querySelectorAll("[data-minus]").forEach(x=>x.onclick=()=>changeQty(+x.dataset.minus,-1));document.querySelectorAll("[data-remove]").forEach(x=>x.onclick=()=>{cart.splice(+x.dataset.remove,1);saveCart();render()});
-document.querySelector("#authform")?.addEventListener("submit",async e=>{e.preventDefault();const f=new FormData(e.target),email=f.get("email"),password=f.get("password");try{if(page==="register")await createUserWithEmailAndPassword(auth,email,password);else await signInWithEmailAndPassword(auth,email,password);go("home")}catch(err){toast(friendly(err))}});
-document.querySelector("#checkout")?.addEventListener("click",checkout);
-document.querySelector("#productform")?.addEventListener("submit",saveProduct);
-document.querySelectorAll("[data-delete]").forEach(x=>x.onclick=async()=>{if(confirm("Product verwijderen?"))await set(path("products/"+x.dataset.delete),null)});
-document.querySelectorAll("[data-edit]").forEach(x=>x.onclick=()=>{const p=products[x.dataset.edit];const f=document.querySelector("#productform");for(const k of ["title","price","image","description"])f.elements[k].value=p[k]??"";f.dataset.edit=x.dataset.edit;f.scrollIntoView({behavior:"smooth"})});
-document.querySelectorAll("[data-tab]").forEach(x=>x.onclick=()=>{document.querySelector("#admincontent").innerHTML=x.dataset.tab==="products"?adminProducts():x.dataset.tab==="orders"?adminOrders():adminChats();bindAdmin()});
-bindAdmin();
-document.querySelectorAll("[data-chat]").forEach(x=>x.onclick=()=>{activeChat=x.dataset.chat;go("chat")});
-document.querySelectorAll("[data-track]").forEach(x=>x.onclick=()=>trackPage(x.dataset.track));
-document.querySelectorAll("[data-openorder]").forEach(x=>{const id=x.dataset.openorder;x.onclick=()=>{activeChat=Object.keys(chats).find(k=>chats[k].orderId===id);if(activeChat)go("chat");else toast("Bij deze bestelling is nog geen chat.")}});
-document.querySelector("#sendmsg")?.addEventListener("submit",sendMessage);
+const app = document.querySelector("#app");
+const CART_KEY = "blauwshop-cart-v1";
+const ORDER_STATUSES = ["Ontvangen", "Verwerkt", "Gemaakt", "Klaar voor bezorging"];
+
+let user = null;
+let products = {};
+let orders = {};
+let chats = {};
+let cart = readCart();
+let page = "home";
+let selectedProductId = null;
+let activeChatId = null;
+let trackOrderId = null;
+let adminTab = "products";
+let redirectAfterLogin = null;
+let stopProducts = null;
+let stopOrders = null;
+let stopChats = null;
+
+const money = value => new Intl.NumberFormat("nl-NL", {
+  style: "currency",
+  currency: "EUR"
+}).format(Number(value) || 0);
+
+const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({
+  "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+}[char]));
+
+const dbRef = path => ref(db, path);
+const normalizedEmail = value => String(value || "").trim().toLowerCase();
+const isAdmin = () => Boolean(
+  user?.emailVerified &&
+  ADMIN_EMAILS.some(email => normalizedEmail(email) === normalizedEmail(user.email))
+);
+
+function readCart() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(CART_KEY) || "[]");
+    if (!Array.isArray(stored)) return [];
+    return stored
+      .filter(item => item && typeof item.id === "string" && Number.isInteger(Number(item.qty)) && Number(item.qty) > 0)
+      .map(item => ({ id: item.id, qty: Number(item.qty) }));
+  } catch {
+    return [];
+  }
 }
-function bindAdmin(){document.querySelectorAll("[data-tab]").forEach(x=>x.onclick=()=>{document.querySelector("#admincontent").innerHTML=x.dataset.tab==="products"?adminProducts():x.dataset.tab==="orders"?adminOrders():adminChats();bindAdmin()});document.querySelectorAll("[data-delete]").forEach(x=>x.onclick=async()=>{if(confirm("Product verwijderen?"))await set(path("products/"+x.dataset.delete),null)});document.querySelectorAll("[data-edit]").forEach(x=>x.onclick=()=>{const p=products[x.dataset.edit],f=document.querySelector("#productform");for(const k of ["title","price","image","description"])f.elements[k].value=p[k]??"";f.dataset.edit=x.dataset.edit});document.querySelectorAll("[data-status]").forEach(x=>x.onchange=()=>update(path("orders/"+x.dataset.status),{status:x.value}));document.querySelectorAll("[data-chat]").forEach(x=>x.onclick=()=>{activeChat=x.dataset.chat;go("chat")});document.querySelectorAll("[data-openorder]").forEach(x=>x.onclick=()=>{activeChat=Object.keys(chats).find(k=>chats[k].orderId===x.dataset.openorder);if(activeChat)go("chat")});}
-function changeQty(i,d){cart[i].qty+=d;if(cart[i].qty<1)cart.splice(i,1);saveCart();render()}
-function saveCart(){localStorage.setItem("cart",JSON.stringify(cart))}
-function friendly(e){return e.code?.includes("email-already")?"Dit e-mailadres bestaat al.":e.code?.includes("weak-password")?"Kies een wachtwoord van minimaal 6 tekens.":e.code?.includes("invalid-credential")?"E-mailadres of wachtwoord klopt niet.":e.message}
-async function checkout(){if(!user){toast("Log eerst in om te bestellen.");go("login");return}if(!cart.length)return;const items=cart.map(x=>({productId:x.id,title:products[x.id]?.title||"Product",price:Number(products[x.id]?.price)||0,qty:x.qty}));const total=items.reduce((s,x)=>s+x.price*x.qty,0);try{const chatRef=push(path("chats"));const orderRef=push(path("orders"));const orderId=orderRef.key;await set(chatRef,{userId:user.uid,email:user.email,orderId,lastMessage:"Bestelling geplaatst",messages:{}});await set(orderRef,{userId:user.uid,email:user.email,items,total,status:"Ontvangen",createdAt:Date.now(),chatId:chatRef.key});cart=[];saveCart();activeChat=chatRef.key;go("chat");toast("Bestelling geplaatst!")}catch(e){toast("Bestellen lukte niet: "+e.message)}}
-async function saveProduct(e){e.preventDefault();if(!isAdmin())return;const f=new FormData(e.target),data={title:f.get("title").trim(),price:Number(f.get("price")),image:f.get("image").trim(),description:f.get("description").trim(),active:true};const id=e.target.dataset.edit;if(id)await update(path("products/"+id),data);else await set(push(path("products")),data);e.target.reset();delete e.target.dataset.edit;toast("Product opgeslagen");}
-async function sendMessage(e){e.preventDefault();const textMsg=new FormData(e.target).get("message").trim();if(!textMsg)return;const c=chats[activeChat];if(!c||(!isAdmin()&&c.userId!==user?.uid))return;await set(push(path(`chats/${activeChat}/messages`)),{uid:user.uid,name:user.email,text:textMsg,time:Date.now()});await update(path("chats/"+activeChat),{lastMessage:textMsg});e.target.reset();render()}
-onAuthStateChanged(auth,u=>{user=u; if(u){onValue(path("products"),s=>{products=s.val()||{};if(page!=="chat")render()});onValue(path("orders"),s=>{orders=s.val()||{};if(page==="admin")render()});onValue(path("chats"),s=>{chats=s.val()||{};if(page==="chat"||page==="mychats"||page==="admin")render()})}else{products={};orders={};chats={};onValue(path("products"),s=>{products=s.val()||{};render()},{onlyOnce:true});if(page!=="home")go("home");else render()}});
+
+function saveCart() {
+  localStorage.setItem(CART_KEY, JSON.stringify(cart));
+}
+
+function toast(message) {
+  const element = document.querySelector("#toast");
+  if (!element) return;
+  element.textContent = message;
+  element.classList.add("show");
+  window.clearTimeout(toast.timeoutId);
+  toast.timeoutId = window.setTimeout(() => element.classList.remove("show"), 3200);
+}
+
+function go(nextPage) {
+  page = nextPage;
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function header() {
+  const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
+  return `
+    <header>
+      <div class="nav">
+        <a class="brand" href="#" data-page="home"><span class="logo">B</span> BlauwShop</a>
+        <div class="search">Alles vinden? <span>⌕</span></div>
+        <nav>
+          <button data-page="home">Shop</button>
+          <button data-page="mychats">Mijn chats</button>
+          ${isAdmin() ? '<button data-page="admin">Sitebeheer</button>' : ""}
+          <button data-page="cart">🛒 Winkelwagen (${cartCount})</button>
+          ${user
+            ? `<span class="hello">Hoi, ${esc(user.email?.split("@")[0] || "")}</span><button id="logout">Uitloggen</button>`
+            : '<button data-page="login">Inloggen</button>'}
+        </nav>
+      </div>
+    </header>`;
+}
+
+function render() {
+  app.innerHTML = `${header()}<main id="main"></main><div id="toast" role="status" aria-live="polite"></div>`;
+  const main = document.querySelector("#main");
+
+  switch (page) {
+    case "home": main.innerHTML = homePage(); break;
+    case "product": main.innerHTML = productPage(); break;
+    case "cart": main.innerHTML = cartPage(); break;
+    case "login": main.innerHTML = authPage(false); break;
+    case "register": main.innerHTML = authPage(true); break;
+    case "mychats": main.innerHTML = myChatsPage(); break;
+    case "chat": main.innerHTML = chatPage(); break;
+    case "track": main.innerHTML = trackPage(); break;
+    case "admin": main.innerHTML = isAdmin() ? adminPage() : noAdminAccess(); break;
+    default: main.innerHTML = homePage();
+  }
+
+  bindEvents();
+}
+
+function homePage() {
+  const visibleProducts = Object.entries(products).filter(([, product]) => product?.active !== false);
+  return `
+    <section class="hero">
+      <div>
+        <span class="eyebrow">WELKOM BIJ BLAUWSHOP</span>
+        <h1>Alles wat je zoekt.<br><em>Gewoon gevonden.</em></h1>
+        <p>Ontdek onze producten en bestel eenvoudig online.</p>
+        <button class="primary" data-scroll-products>Bekijk producten</button>
+      </div>
+      <div class="hero-art">✦<div>SHOP<br>SLIM.</div></div>
+    </section>
+    <section id="producten">
+      <div class="section-head">
+        <div><small>ONZE COLLECTIE</small><h2>Populaire producten</h2></div>
+        <span>${visibleProducts.length} producten</span>
+      </div>
+      <div class="grid">
+        ${visibleProducts.length
+          ? visibleProducts.map(([id, product]) => productCard(id, product)).join("")
+          : '<div class="empty">Er staan nog geen producten in de shop.</div>'}
+      </div>
+    </section>`;
+}
+
+function productCard(id, product) {
+  return `
+    <article class="product-card" data-product="${esc(id)}" tabindex="0" role="button" aria-label="Bekijk ${esc(product.title)}">
+      <div class="photo">
+        ${product.image
+          ? `<img src="${esc(product.image)}" alt="${esc(product.title)}" loading="lazy">`
+          : "<span>✦</span>"}
+      </div>
+      <div class="card-info">
+        <h3>${esc(product.title)}</h3>
+        <strong>${money(product.price)}</strong>
+        <span class="sub">Bekijk product →</span>
+      </div>
+    </article>`;
+}
+
+function productPage() {
+  const product = products[selectedProductId];
+  if (!product || product.active === false) {
+    return '<section class="panel"><h2>Product niet gevonden</h2><button class="primary" data-page="home">Terug naar de shop</button></section>';
+  }
+  return `
+    <div class="crumb"><a href="#" data-page="home">Home</a> / ${esc(product.title)}</div>
+    <section class="detail">
+      <div class="detail-photo">
+        ${product.image ? `<img src="${esc(product.image)}" alt="${esc(product.title)}">` : "✦"}
+      </div>
+      <div>
+        <small>PRODUCTDETAILS</small>
+        <h1>${esc(product.title)}</h1>
+        <div class="price">${money(product.price)}</div>
+        <p>${esc(product.description || "Geen beschrijving beschikbaar.")}</p>
+        <button class="primary" id="add-to-cart">＋ In winkelwagen</button>
+        <p class="muted">Bestel eenvoudig • Persoonlijke updates via chat</p>
+      </div>
+    </section>`;
+}
+
+function cartPage() {
+  const validItems = cart.filter(item => products[item.id]);
+  const total = validItems.reduce((sum, item) => sum + (Number(products[item.id].price) || 0) * item.qty, 0);
+  return `
+    <section class="panel">
+      <h1>Je winkelwagen</h1>
+      ${cart.length
+        ? `${cart.map((item, index) => {
+            const product = products[item.id] || {};
+            return `
+              <div class="cart-row">
+                <div>${esc(product.title || "Product niet meer beschikbaar")}<small>${money(product.price)} per stuk</small></div>
+                <div><button data-minus="${index}" aria-label="Aantal verlagen">−</button> ${item.qty} <button data-plus="${index}" aria-label="Aantal verhogen">＋</button></div>
+                <b>${money((Number(product.price) || 0) * item.qty)}</b>
+                <button data-remove="${index}" aria-label="Verwijderen">✕</button>
+              </div>`;
+          }).join("")}
+          <div class="total">Totaal <b>${money(total)}</b></div>
+          <button class="primary" id="checkout" ${validItems.length ? "" : "disabled"}>Bestellen</button>`
+        : '<p>Je winkelwagen is nog leeg.</p><button class="primary" data-page="home">Verder winkelen</button>'}
+    </section>`;
+}
+
+function authPage(register) {
+  return `
+    <section class="auth panel">
+      <small>${register ? "NIEUW ACCOUNT" : "WELKOM TERUG"}</small>
+      <h1>${register ? "Account aanmaken" : "Inloggen"}</h1>
+      <form id="auth-form">
+        <label>E-mailadres<input name="email" type="email" required autocomplete="email"></label>
+        <label>Wachtwoord<input name="password" type="password" minlength="6" required autocomplete="${register ? "new-password" : "current-password"}"></label>
+        <button class="primary" type="submit">${register ? "Account aanmaken" : "Inloggen"}</button>
+      </form>
+      <p>${register ? "Heb je al een account?" : "Nog geen account?"}
+        <a href="#" data-page="${register ? "login" : "register"}">${register ? "Inloggen" : "Account maken"}</a>
+      </p>
+    </section>`;
+}
+
+function myChatsPage() {
+  if (!user) {
+    return '<section class="panel"><h2>Log in om je chats te bekijken</h2><button class="primary" data-page="login">Inloggen</button></section>';
+  }
+  const ownChats = Object.entries(chats).filter(([, chat]) => chat.userId === user.uid);
+  return `
+    <section class="panel">
+      <h1>Mijn chats</h1>
+      ${ownChats.length
+        ? ownChats.map(([id, chat]) => `
+            <button class="chat-link" data-chat="${esc(id)}">
+              <b>Bestelling ${esc(chat.orderId || "")}</b>
+              <span>${esc(chat.lastMessage || "Open gesprek")} →</span>
+            </button>`).join("")
+        : "<p>Je hebt nog geen chats. Na een bestelling start hier een gesprek.</p>"}
+    </section>`;
+}
+
+function chatPage() {
+  const chat = chats[activeChatId];
+  if (!chat || (!isAdmin() && chat.userId !== user?.uid)) {
+    return '<section class="panel"><h2>Chat niet gevonden</h2><button data-page="mychats">Terug naar mijn chats</button></section>';
+  }
+  const messages = Object.values(chat.messages || {}).sort((a, b) => (a.time || 0) - (b.time || 0));
+  return `
+    <section class="panel chat-panel">
+      <div class="section-head">
+        <div><small>KLANTENSERVICE</small><h1>Chat – bestelling ${esc(chat.orderId || "")}</h1></div>
+        <button data-track="${esc(chat.orderId || "")}">Track & trace</button>
+      </div>
+      <div class="messages" id="messages">
+        ${messages.map(message => `
+          <div class="bubble ${message.uid === user?.uid ? "mine" : ""}">
+            <b>${message.uid === user?.uid ? "Jij" : esc(message.name || "Webshop")}</b>
+            <p>${esc(message.text)}</p>
+          </div>`).join("")}
+      </div>
+      <form id="send-message" class="send">
+        <input name="message" placeholder="Typ je bericht…" maxlength="2000" required>
+        <button class="primary" type="submit">Verstuur</button>
+      </form>
+    </section>`;
+}
+
+function adminPage() {
+  const content = adminTab === "orders" ? adminOrders() : adminTab === "chats" ? adminChats() : adminProducts();
+  return `
+    <section class="panel">
+      <div class="section-head">
+        <div><small>BEHEEROMGEVING</small><h1>Sitebeheer</h1></div>
+        <span class="admin-pill">ADMIN</span>
+      </div>
+      <div class="tabs">
+        <button data-tab="products" class="${adminTab === "products" ? "active" : ""}">Producten</button>
+        <button data-tab="orders" class="${adminTab === "orders" ? "active" : ""}">Track & trace</button>
+        <button data-tab="chats" class="${adminTab === "chats" ? "active" : ""}">Chats</button>
+      </div>
+      <div id="admin-content">${content}</div>
+    </section>`;
+}
+
+function adminProducts() {
+  return `
+    <h2>Product toevoegen / aanpassen</h2>
+    <form id="product-form" class="product-form">
+      <input name="title" placeholder="Producttitel" maxlength="120" required>
+      <input name="price" type="number" min="0" step="0.01" placeholder="Prijs (€)" required>
+      <input name="image" type="url" placeholder="Afbeelding URL (https://…)" maxlength="1500">
+      <textarea name="description" placeholder="Beschrijving" maxlength="5000"></textarea>
+      <button class="primary" type="submit">Product opslaan</button>
+      <button type="button" id="cancel-edit" class="secondary" hidden>Annuleren</button>
+    </form>
+    <h2>Bestaande producten</h2>
+    ${Object.entries(products).map(([id, product]) => `
+      <div class="admin-row">
+        <span><b>${esc(product.title)}</b> · ${money(product.price)}</span>
+        <button data-edit="${esc(id)}">Bewerken</button>
+        <button data-delete="${esc(id)}">Verwijderen</button>
+      </div>`).join("") || "<p>Nog geen producten.</p>"}`;
+}
+
+function adminOrders() {
+  return `
+    <h2>Bestellingen en status</h2>
+    ${Object.entries(orders).map(([id, order]) => `
+      <div class="order">
+        <div><b>Bestelling ${esc(id.slice(-6))}</b><small>${esc(order.email)} · ${money(order.total)}</small></div>
+        <select data-status="${esc(id)}" aria-label="Status wijzigen">
+          ${ORDER_STATUSES.map(status => `<option value="${status}" ${order.status === status ? "selected" : ""}>${status}</option>`).join("")}
+        </select>
+        <button data-open-order="${esc(id)}">Open chat</button>
+      </div>`).join("") || "<p>Nog geen bestellingen.</p>"}`;
+}
+
+function adminChats() {
+  return `
+    <h2>Alle chats</h2>
+    ${Object.entries(chats).map(([id, chat]) => `
+      <button class="chat-link" data-chat="${esc(id)}">
+        <b>${esc(chat.email || "Klant")} · ${esc(chat.orderId || "")}</b>
+        <span>${esc(chat.lastMessage || "Open gesprek")} →</span>
+      </button>`).join("") || "<p>Nog geen chats.</p>"}`;
+}
+
+function trackPage() {
+  const order = orders[trackOrderId];
+  if (!order || (!isAdmin() && order.userId !== user?.uid)) {
+    return '<section class="panel"><h2>Bestelling niet gevonden</h2><button data-page="mychats">Terug naar mijn chats</button></section>';
+  }
+  const currentStep = ORDER_STATUSES.indexOf(order.status || "Ontvangen");
+  return `
+    <section class="panel">
+      <small>BESTELLING VOLGEN</small>
+      <h1>Track & trace</h1>
+      <p>Bestelling ${esc(trackOrderId.slice(-6))}</p>
+      <h2>${esc(order.status || "Ontvangen")}</h2>
+      <div class="steps">
+        ${ORDER_STATUSES.map((status, index) => `
+          <div class="${currentStep >= index ? "done" : ""}"><i>${index + 1}</i>${status}</div>`).join("")}
+      </div>
+      <button data-page="mychats">Terug naar mijn chats</button>
+    </section>`;
+}
+
+function noAdminAccess() {
+  return '<section class="panel"><h2>Geen toegang</h2><p>Log in met het geverifieerde beheerdersaccount.</p></section>';
+}
+
+function bindEvents() {
+  document.querySelectorAll("[data-page]").forEach(button => {
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      go(button.dataset.page);
+    });
+  });
+
+  document.querySelector("#logout")?.addEventListener("click", async () => {
+    try { await signOut(auth); go("home"); }
+    catch (error) { toast(friendlyError(error)); }
+  });
+
+  document.querySelector("[data-scroll-products]")?.addEventListener("click", () => {
+    document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" });
+  });
+
+  document.querySelectorAll("[data-product]").forEach(card => {
+    const openProduct = () => { selectedProductId = card.dataset.product; go("product"); };
+    card.addEventListener("click", openProduct);
+    card.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openProduct(); }
+    });
+  });
+
+  document.querySelector("#add-to-cart")?.addEventListener("click", () => {
+    const existing = cart.find(item => item.id === selectedProductId);
+    if (existing) existing.qty += 1;
+    else cart.push({ id: selectedProductId, qty: 1 });
+    saveCart();
+    toast("Toegevoegd aan je winkelwagen");
+    render();
+  });
+
+  document.querySelectorAll("[data-plus]").forEach(button => button.addEventListener("click", () => changeQuantity(Number(button.dataset.plus), 1)));
+  document.querySelectorAll("[data-minus]").forEach(button => button.addEventListener("click", () => changeQuantity(Number(button.dataset.minus), -1)));
+  document.querySelectorAll("[data-remove]").forEach(button => button.addEventListener("click", () => {
+    cart.splice(Number(button.dataset.remove), 1);
+    saveCart();
+    render();
+  }));
+
+  document.querySelector("#auth-form")?.addEventListener("submit", handleAuthSubmit);
+  document.querySelector("#checkout")?.addEventListener("click", checkout);
+  document.querySelector("#product-form")?.addEventListener("submit", saveProduct);
+  document.querySelector("#cancel-edit")?.addEventListener("click", () => render());
+  document.querySelector("#send-message")?.addEventListener("submit", sendMessage);
+
+  document.querySelectorAll("[data-tab]").forEach(button => button.addEventListener("click", () => {
+    adminTab = button.dataset.tab;
+    render();
+  }));
+
+  document.querySelectorAll("[data-delete]").forEach(button => button.addEventListener("click", () => deleteProduct(button.dataset.delete)));
+  document.querySelectorAll("[data-edit]").forEach(button => button.addEventListener("click", () => editProduct(button.dataset.edit)));
+  document.querySelectorAll("[data-status]").forEach(select => select.addEventListener("change", () => updateOrderStatus(select.dataset.status, select.value)));
+  document.querySelectorAll("[data-open-order]").forEach(button => button.addEventListener("click", () => openOrderChat(button.dataset.openOrder)));
+  document.querySelectorAll("[data-chat]").forEach(button => button.addEventListener("click", () => {
+    activeChatId = button.dataset.chat;
+    go("chat");
+  }));
+  document.querySelectorAll("[data-track]").forEach(button => button.addEventListener("click", () => {
+    trackOrderId = button.dataset.track;
+    go("track");
+  }));
+}
+
+function changeQuantity(index, amount) {
+  if (!cart[index]) return;
+  cart[index].qty += amount;
+  if (cart[index].qty <= 0) cart.splice(index, 1);
+  saveCart();
+  render();
+}
+
+async function handleAuthSubmit(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const email = String(form.get("email") || "").trim();
+  const password = String(form.get("password") || "");
+  const register = page === "register";
+  try {
+    await authPersistenceReady;
+    if (register) {
+      const credential = await createUserWithEmailAndPassword(auth, email, password);
+      if (ADMIN_EMAILS.some(item => normalizedEmail(item) === normalizedEmail(email))) {
+        try {
+          await sendEmailVerification(credential.user);
+          toast("Beheerdersaccount aangemaakt. Verifieer eerst je e-mailadres via de ontvangen mail.");
+        } catch {
+          toast("Account gemaakt. Verifieer je e-mailadres via Firebase Authentication.");
+        }
+      }
+    } else {
+      await signInWithEmailAndPassword(auth, email, password);
+    }
+    const destination = redirectAfterLogin || "home";
+    redirectAfterLogin = null;
+    go(destination);
+  } catch (error) {
+    toast(friendlyError(error));
+  }
+}
+
+function friendlyError(error) {
+  const code = error?.code || "";
+  if (code.includes("email-already-in-use")) return "Dit e-mailadres bestaat al.";
+  if (code.includes("weak-password")) return "Kies een wachtwoord van minimaal 6 tekens.";
+  if (code.includes("invalid-credential") || code.includes("wrong-password") || code.includes("user-not-found")) return "E-mailadres of wachtwoord klopt niet.";
+  if (code.includes("too-many-requests")) return "Te veel pogingen. Probeer het later opnieuw.";
+  if (code.includes("permission-denied")) return "Geen toegang tot Firebase. Controleer de Realtime Database Rules.";
+  return error?.message || "Er ging iets mis. Probeer het opnieuw.";
+}
+
+async function checkout() {
+  if (!user) {
+    redirectAfterLogin = "cart";
+    go("login");
+    return;
+  }
+  const items = cart
+    .filter(item => products[item.id] && products[item.id].active !== false)
+    .map(item => ({
+      productId: item.id,
+      title: products[item.id].title || "Product",
+      price: Number(products[item.id].price) || 0,
+      qty: item.qty
+    }));
+  if (!items.length) {
+    toast("Je winkelwagen bevat geen beschikbare producten.");
+    return;
+  }
+  const total = items.reduce((sum, item) => sum + item.price * item.qty, 0);
+  const orderRef = push(dbRef("orders"));
+  const chatRef = push(dbRef("chats"));
+  const orderId = orderRef.key;
+  const chatId = chatRef.key;
+
+  try {
+    await set(chatRef, {
+      userId: user.uid,
+      email: user.email || "",
+      orderId,
+      lastMessage: "Bestelling geplaatst",
+      messages: {}
+    });
+    await set(orderRef, {
+      userId: user.uid,
+      email: user.email || "",
+      items,
+      total,
+      status: "Ontvangen",
+      createdAt: Date.now(),
+      chatId
+    });
+    cart = [];
+    saveCart();
+    activeChatId = chatId;
+    go("chat");
+    toast("Bestelling geplaatst! Je kunt nu chatten met de webshop.");
+  } catch (error) {
+    try { await set(chatRef, null); } catch { /* eventuele opruimfout negeren */ }
+    toast(`Bestellen is niet gelukt: ${friendlyError(error)}`);
+  }
+}
+
+async function saveProduct(event) {
+  event.preventDefault();
+  if (!isAdmin()) { toast("Je hebt geen beheerrechten."); return; }
+  const formElement = event.currentTarget;
+  const form = new FormData(formElement);
+  const title = String(form.get("title") || "").trim();
+  const price = Number(form.get("price"));
+  const image = String(form.get("image") || "").trim();
+  const description = String(form.get("description") || "").trim();
+
+  if (!title || !Number.isFinite(price) || price < 0) {
+    toast("Vul een producttitel en een geldige prijs in.");
+    return;
+  }
+  if (image) {
+    try {
+      const parsed = new URL(image);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new Error("invalid protocol");
+    } catch {
+      toast("Gebruik een geldige http- of https-afbeeldingslink.");
+      return;
+    }
+  }
+
+  const data = { title, price, image, description, active: true };
+  const editId = formElement.dataset.editId;
+  try {
+    if (editId) await update(dbRef(`products/${editId}`), data);
+    else await set(push(dbRef("products")), data);
+    formElement.reset();
+    delete formElement.dataset.editId;
+    const cancelButton = document.querySelector("#cancel-edit");
+    if (cancelButton) cancelButton.hidden = true;
+    const submitButton = formElement.querySelector('button[type="submit"]');
+    if (submitButton) submitButton.textContent = "Product opslaan";
+    toast("Product opgeslagen.");
+  } catch (error) {
+    toast(`Opslaan mislukt: ${friendlyError(error)}`);
+  }
+}
+
+function editProduct(id) {
+  const product = products[id];
+  const form = document.querySelector("#product-form");
+  if (!product || !form) return;
+  for (const field of ["title", "price", "image", "description"]) {
+    form.elements[field].value = product[field] ?? "";
+  }
+  form.dataset.editId = id;
+  const submit = form.querySelector('button[type="submit"]');
+  if (submit) submit.textContent = "Wijzigingen opslaan";
+  const cancel = document.querySelector("#cancel-edit");
+  if (cancel) cancel.hidden = false;
+  form.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function deleteProduct(id) {
+  if (!isAdmin() || !confirm("Weet je zeker dat je dit product wilt verwijderen?")) return;
+  try {
+    await set(dbRef(`products/${id}`), null);
+    cart = cart.filter(item => item.id !== id);
+    saveCart();
+    toast("Product verwijderd.");
+  } catch (error) {
+    toast(`Verwijderen mislukt: ${friendlyError(error)}`);
+  }
+}
+
+async function updateOrderStatus(orderId, status) {
+  if (!isAdmin() || !ORDER_STATUSES.includes(status)) return;
+  try {
+    await update(dbRef(`orders/${orderId}`), { status });
+    toast("Bestelstatus bijgewerkt.");
+  } catch (error) {
+    toast(`Status wijzigen mislukt: ${friendlyError(error)}`);
+  }
+}
+
+function openOrderChat(orderId) {
+  const order = orders[orderId];
+  if (!order?.chatId) {
+    toast("Bij deze bestelling is geen chat gekoppeld.");
+    return;
+  }
+  activeChatId = order.chatId;
+  go("chat");
+}
+
+async function sendMessage(event) {
+  event.preventDefault();
+  const input = event.currentTarget.elements.message;
+  const messageText = String(input.value || "").trim();
+  const chat = chats[activeChatId];
+  if (!messageText || !chat || !user || (!isAdmin() && chat.userId !== user.uid)) return;
+
+  try {
+    await set(push(dbRef(`chats/${activeChatId}/messages`)), {
+      uid: user.uid,
+      name: user.email || (isAdmin() ? "Beheer" : "Klant"),
+      text: messageText,
+      time: Date.now()
+    });
+    await set(dbRef(`chats/${activeChatId}/lastMessage`), messageText);
+    input.value = "";
+  } catch (error) {
+    toast(`Bericht versturen mislukt: ${friendlyError(error)}`);
+  }
+}
+
+function clearRealtimeListeners() {
+  stopProducts?.();
+  stopOrders?.();
+  stopChats?.();
+  stopProducts = null;
+  stopOrders = null;
+  stopChats = null;
+}
+
+onAuthStateChanged(auth, currentUser => {
+  clearRealtimeListeners();
+  user = currentUser;
+
+  // Producten zijn openbaar; haal ze op met één blijvende listener.
+  stopProducts = onValue(dbRef("products"), snapshot => {
+    products = snapshot.val() || {};
+    render();
+  }, error => toast(`Producten laden mislukt: ${friendlyError(error)}`));
+
+  if (!user) {
+    orders = {};
+    chats = {};
+    if (page !== "home") page = "home";
+    render();
+    return;
+  }
+
+  if (isAdmin()) {
+    // Beheerder mag alle bestellingen en chats zien.
+    stopOrders = onValue(dbRef("orders"), snapshot => {
+      orders = snapshot.val() || {};
+      if (["admin", "track"].includes(page)) render();
+    }, error => toast(`Bestellingen laden mislukt: ${friendlyError(error)}`));
+    stopChats = onValue(dbRef("chats"), snapshot => {
+      chats = snapshot.val() || {};
+      if (["admin", "chat", "mychats"].includes(page)) render();
+    }, error => toast(`Chats laden mislukt: ${friendlyError(error)}`));
+  } else {
+    // Klanten mogen alleen hun eigen records ophalen; de query sluit aan op de database-regels.
+    stopOrders = onValue(query(dbRef("orders"), orderByChild("userId"), equalTo(user.uid)), snapshot => {
+      orders = snapshot.val() || {};
+      if (page === "track") render();
+    }, error => toast(`Je bestellingen laden mislukt: ${friendlyError(error)}`));
+    stopChats = onValue(query(dbRef("chats"), orderByChild("userId"), equalTo(user.uid)), snapshot => {
+      chats = snapshot.val() || {};
+      if (["chat", "mychats"].includes(page)) render();
+    }, error => toast(`Je chats laden mislukt: ${friendlyError(error)}`));
+  }
+
+  render();
+});
