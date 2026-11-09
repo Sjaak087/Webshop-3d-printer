@@ -1,5 +1,6 @@
-import { API_BASE_URL } from "./config";
-import "./style.css";
+// Dit bestand is een gewone browser-script (geen ES-module / Vite-imports).
+// config.js wordt in index.html eerst geladen.
+const API_BASE_URL = String(window.BLAUWSHOP_CONFIG?.API_BASE_URL || "").replace(/\/+$/, "");
 
 const app = document.querySelector("#app");
 const CART_KEY = "blauwshop-cart-v1";
@@ -31,6 +32,9 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, char => ({
 const isAdmin = () => user?.role === "admin";
 
 async function api(path, options = {}) {
+  if (!API_BASE_URL) {
+    throw new Error("De backend-URL ontbreekt. Stel API_BASE_URL in src/config.js in.");
+  }
   const headers = { ...(options.body ? { "Content-Type": "application/json" } : {}), ...(options.headers || {}) };
   if (token) headers.Authorization = `Bearer ${token}`;
   let response;
@@ -608,6 +612,10 @@ async function sendMessage(event) {
 }
 
 async function initialize() {
+  // Toon de basispagina direct. Een trage of nog niet ingestelde backend
+  // mag het laden van main.js en de navigatie niet laten crashen.
+  render();
+
   if (token) {
     try {
       const result = await api("/api/me");
@@ -618,9 +626,11 @@ async function initialize() {
       localStorage.removeItem(TOKEN_KEY);
     }
   }
+
   try {
     await refreshData({ rerender: false });
   } catch (error) {
+    // De winkel blijft zichtbaar, ook als de API nog niet online staat.
     toast(friendlyError(error));
   }
   render();
