@@ -1,36 +1,6 @@
 {
   "rules": {
     ".read": false,
-    ".write": false,
-    "products": {
-      ".read": true,
-      "$productId": {
-        ".write": "auth != null && auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl'"
-      }
-    },
-    "orders": {
-      ".read": "auth != null && (auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl' || query.orderByChild == 'userId' && query.equalTo == auth.uid)",
-      ".indexOn": ["userId"],
-      "$orderId": {
-        ".read": "auth != null && (data.child('userId').val() == auth.uid || auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl')",
-        ".write": "auth != null && (auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl' || !data.exists() && newData.child('userId').val() == auth.uid)"
-      }
-    },
-    "chats": {
-      ".read": "auth != null && (auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl' || query.orderByChild == 'userId' && query.equalTo == auth.uid)",
-      ".indexOn": ["userId"],
-      "$chatId": {
-        ".read": "auth != null && (data.child('userId').val() == auth.uid || auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl')",
-        ".write": "auth != null && (auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl' || !data.exists() && newData.child('userId').val() == auth.uid)",
-        "lastMessage": {
-          ".write": "auth != null && (root.child('chats').child($chatId).child('userId').val() == auth.uid || auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl')"
-        },
-        "messages": {
-          "$messageId": {
-            ".write": "auth != null && newData.child('uid').val() == auth.uid && (root.child('chats').child($chatId).child('userId').val() == auth.uid || auth.token.email_verified == true && auth.token.email == 'beheer@voorbeeld.nl')"
-          }
-        }
-      }
-    }
+    ".write": false
   }
 }
