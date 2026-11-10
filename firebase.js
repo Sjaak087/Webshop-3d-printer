@@ -1,8 +1,11 @@
-import { initializeApp, getApp, getApps } from "firebase/app";
-import { getAuth, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { getDatabase } from "firebase/database";
+// Firebase-configuratie voor NovaShop.
+// De Firebase web-API-key is bedoeld om in de browser te staan.
+// Beveilig je gegevens met Firebase Authentication en de meegeleverde database-/storage-regels.
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyCBLpFJIC0yppKjQAwazMqv9QC0X4MBNaI",
   authDomain: "webshop-3cf70.firebaseapp.com",
   databaseURL: "https://webshop-3cf70-default-rtdb.europe-west1.firebasedatabase.app",
@@ -13,12 +16,6 @@ const firebaseConfig = {
   measurementId: "G-7YTVRGHRKL"
 };
 
-// Vul het admin-e-mailadres in dat je ook als Firebase Authentication-gebruiker aanmaakt.
-// Zet hier NOOIT een wachtwoord in. E-mailcontrole in de browser is geen beveiligingsgrens;
-// zie README en database.rules.json voor de echte beveiliging.
-export const ADMIN_EMAILS = ["58156557@leerling.hetbouwens.nl"];
-
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
-export const authPersistenceReady = setPersistence(auth, browserLocalPersistence);
+export const storage = getStorage(app);
