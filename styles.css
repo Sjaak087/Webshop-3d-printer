@@ -5,3 +5,34 @@
 @media(max-width:620px){.topbar{height:auto;min-height:68px;flex-wrap:wrap;padding:12px 15px;gap:9px}.brand{font-size:20px}.search-wrap{order:3;flex-basis:100%;max-width:none}.topbar nav{margin-left:auto}.nav-btn{font-size:12px}.hero{margin-top:18px;min-height:280px;padding:30px 25px}.hero-art{width:35%;transform:scale(.75);margin-right:-20px}.hero h1{font-size:37px}.hero p:not(.eyebrow){font-size:13px}.product-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.product-image{height:145px}.product-card{padding:8px}.product-info h3{font-size:13px}.service-strip{display:grid;grid-template-columns:1fr;padding:18px}.dialog{padding:25px 19px}.product-detail{grid-template-columns:1fr}.detail-image{height:190px}.order-admin{flex-wrap:wrap}.order-admin>div{flex-basis:100%}.order-admin select{flex:1}.admin-toolbar{align-items:flex-start}.admin-toolbar h3{max-width:45%}footer{padding:20px;flex-wrap:wrap}footer>span{margin-left:auto}}
 
 .admin-entry{color:var(--blue);border:1px solid #d7e5fb;background:#f3f7ff;border-radius:9px;padding:9px 12px;font-weight:800}.admin-entry:hover{background:#e8f1ff}
+
+/* NovaShop update: cart quantity controls and clearer support chat */
+.cart-line{align-items:center;gap:14px}
+.cart-line-info{display:flex;flex-direction:column;gap:5px;min-width:0}
+.cart-line-actions{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0}
+.quantity-control{display:inline-flex;align-items:center;gap:10px;margin-top:4px}
+.quantity-control button{width:28px;height:28px;border:1px solid #d7e1ef;border-radius:8px;background:#fff;color:var(--blue);font-weight:800;cursor:pointer}
+.quantity-control span{min-width:16px;text-align:center;font-weight:700;font-variant-numeric:tabular-nums}
+.chat-shell{display:flex;flex-direction:column;gap:10px}
+.chat-heading{align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line)}
+.chat-title-wrap h2{margin:0 0 3px}
+.chat-subtitle{font-size:11px;color:var(--muted)}
+.chat-notice{font-size:11px;color:#526781;background:#f2f6fc;border-radius:9px;padding:9px 12px}
+.messages{height:min(48vh,430px);min-height:240px;margin:4px 0;padding:16px;background:#f4f7fb;border:1px solid #e8edf5}
+.message{max-width:min(82%,520px);padding:11px 14px;border-radius:14px}
+.message.mine{border-bottom-right-radius:5px}
+.message.theirs{border-bottom-left-radius:5px}
+.message.system{border-radius:12px}
+.message p{font-size:13px;line-height:1.55}
+.message small{font-size:10px}
+.chat-link{display:inline-block;color:#1459c7;text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere}
+.tikkie-link{display:inline-flex;margin:5px 0;padding:7px 11px;border-radius:8px;background:#e7f2ff;color:#124d9f;font-weight:800;text-decoration:none;border:1px solid #c8defb}
+.send-message{position:sticky;bottom:0;background:white;padding-top:5px}
+.send-message button{white-space:nowrap}
+@media(max-width:620px){
+ .cart-line{align-items:flex-start}
+ .chat-heading{align-items:flex-start}
+ .chat-heading .secondary{font-size:11px;padding:8px}
+ .messages{height:48vh;min-height:220px}
+ .message{max-width:90%}
+}

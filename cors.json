@@ -1,21 +1,26 @@
-[
-  {
-    "origin": [
-      "https://sjaak087.github.io"
-    ],
-    "method": [
-      "GET",
-      "HEAD",
-      "POST",
-      "PUT",
-      "DELETE"
-    ],
-    "responseHeader": [
-      "Content-Type",
-      "Authorization",
-      "x-goog-resumable",
-      "x-goog-meta-*"
-    ],
-    "maxAgeSeconds": 3600
-  }
-]
+{
+  "cors": [
+    {
+      "origin": [
+        "https://sjaak087.github.io"
+      ],
+      "method": [
+        "GET",
+        "HEAD",
+        "POST",
+        "PUT",
+        "DELETE"
+      ],
+      "responseHeader": [
+        "Content-Type",
+        "Authorization",
+        "x-goog-resumable",
+        "x-goog-upload-protocol",
+        "x-goog-upload-command",
+        "x-goog-upload-offset",
+        "x-goog-meta-*"
+      ],
+      "maxAgeSeconds": 3600
+    }
+  ]
+}\n

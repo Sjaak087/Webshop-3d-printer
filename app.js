@@ -43,8 +43,9 @@ function renderCartCount(){$("#cartCount").textContent=state.cart.reduce((n,x)=>
 $("#cartBtn").onclick=showCart;
 function showCart(){
  const total=state.cart.reduce((n,x)=>n+x.price*x.qty,0);
- openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length?`<div class="cart-lines">${state.cart.map(x=>`<div class="cart-line"><div><b>${safe(x.title)}</b><small>${money(x.price)} · aantal ${x.qty}</small></div><div><b>${money(x.price*x.qty)}</b><button class="remove-item" data-remove="${x.id}">Verwijder</button></div></div>`).join("")}</div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><button class="primary full" id="checkout">Verder naar bestellen</button>`:`<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
- content.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{state.cart=state.cart.filter(x=>x.id!==b.dataset.remove);showCart();renderCartCount()});
+ openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length?`<div class="cart-lines">${state.cart.map(x=>`<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b><small>${money(x.price)} per stuk</small><div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${x.id}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${x.id}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price*x.qty)}</b><button class="remove-item" data-remove="${x.id}">Verwijder</button></div></div>`).join("")}</div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><button class="primary full" id="checkout">Verder naar bestellen</button>`:`<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+ content.querySelectorAll("[data-remove]").forEach(b=>b.onclick=()=>{state.cart=state.cart.filter(x=>x.id!==b.dataset.remove);renderCartCount();showCart()});
+ content.querySelectorAll("[data-qty]").forEach(b=>b.onclick=()=>{const item=state.cart.find(x=>x.id===b.dataset.qty);if(!item)return;item.qty+=Number(b.dataset.delta);if(item.qty<=0)state.cart=state.cart.filter(x=>x.id!==item.id);renderCartCount();showCart()});
  $("#continue")?.addEventListener("click",closeDialog);
  $("#checkout")?.addEventListener("click",()=>{if(!state.user){authForm("login","Log in om je bestelling af te ronden.");return}placeOrder()});
 }
@@ -90,17 +91,45 @@ function showMyOrders(){if(!state.user){authForm();return}onValue(ref(db,"orders
 function showOrderTracking(id){get(ref(db,"orders/"+id)).then(s=>{const o=s.val();if(!o)return;openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Bestelling #${id.slice(-6)}</h2><div class="tracking">${["ontvangen","verwerkt","gemaakt","klaar voor bezorging"].map((x,i)=>`<div class="track-step ${["ontvangen","verwerkt","gemaakt","klaar voor bezorging"].indexOf(o.status)>=i?"done":""}"><span>${i+1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`);$("#trackChat").onclick=()=>o.chatId&&openChat(o.chatId)})}
 function showMyChats(){if(!state.user){authForm();return}onValue(ref(db,"chats"),snap=>{const chats=Object.entries(snap.val()||{}).map(([id,c])=>({id,...c})).filter(c=>c.userId===state.user.uid).sort((a,b)=>b.createdAt-a.createdAt);openDialog(`<p class="eyebrow">SERVICE</p><h2>Mijn chats</h2>${chats.length?chats.map(c=>`<button class="chat-list-item" data-chat="${c.id}"><b>Bestelling #${(c.orderId||"").slice(-6)}</b><small>${safe(c.lastMessage||"Chat openen")}</small></button>`).join(""):"<p class='muted'>Je hebt nog geen chats. Na een bestelling verschijnt hier je gesprek.</p>"}`);content.querySelectorAll("[data-chat]").forEach(b=>b.onclick=()=>openChat(b.dataset.chat))},{onlyOnce:true})}
 $("#myChatsBtn").onclick=showMyChats;
+function formatChatText(value){
+ const escaped=safe(value);
+ const linked=escaped.replace(/https?:\/\/[^\s<]+/gi,raw=>{
+  let urlText=raw,tail="";
+  while(/[),.!?;:]$/.test(urlText)){tail=urlText.slice(-1)+tail;urlText=urlText.slice(0,-1)}
+  try{
+   const parsed=new URL(urlText);
+   if(!["http:","https:"].includes(parsed.protocol))return raw;
+   const host=parsed.hostname.toLowerCase();
+   const isTikkie=host==="tikkie.me"||host.endsWith(".tikkie.me")||host==="tikkie.nl"||host.endsWith(".tikkie.nl");
+   const label=isTikkie?"<span class=\"tikkie-link-label\">Open Tikkie ↗</span>":safe(host)+" ↗";
+   return `<a class="chat-link ${isTikkie?"tikkie-link":""}" href="${safe(parsed.href)}" target="_blank" rel="noopener noreferrer">${label}</a>${tail}`;
+  }catch{return raw}
+ });
+ return linked.replace(/\n/g,"<br>");
+}
 function openChat(id){
  if(!state.user)return authForm();
  state.activeChat=id;
  onValue(ref(db,"chats/"+id),snap=>{
   const c=snap.val();if(!c){toast("Chat niet gevonden");return}
   if(!state.admin&&c.userId!==state.user.uid)return;
+  if(!$("#chatShell")){
+   openDialog(`<div id="chatShell" class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">NOVA KLANTENSERVICE</p><h2>Bestelling #${(c.orderId||"").slice(-6)}</h2><small class="chat-subtitle">${safe(c.email||state.user.email||"Gesprek met NovaShop")}</small></div><button class="secondary" id="chatTrack">Bestelling volgen</button></div><div class="chat-notice">Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen.</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
+   $("#sendMessage").onsubmit=async e=>{
+    e.preventDefault();const input=$("#messageText"),text=input.value.trim();if(!text)return;
+    const m=push(ref(db,`chats/${id}/messages`));
+    try{await set(m,{sender:state.admin?"admin":"user",uid:state.user.uid,text,createdAt:Date.now()});await update(ref(db,"chats/"+id),{lastMessage:text,lastMessageAt:Date.now()});input.value="";input.focus()}
+    catch(err){toast("Bericht verzenden mislukt: "+err.message)}
+   };
+   $("#chatTrack").onclick=()=>get(ref(db,"chats/"+id)).then(s=>{const current=s.val();if(current?.orderId)showOrderTracking(current.orderId)});
+  }
   const messages=Object.entries(c.messages||{}).map(([mid,m])=>({id:mid,...m})).sort((a,b)=>a.createdAt-b.createdAt);
-  openDialog(`<div class="chat-heading"><div><p class="eyebrow">KLANTENSERVICE</p><h2>Chat bestelling #${(c.orderId||"").slice(-6)}</h2></div><button class="secondary" id="chatTrack">Track & trace</button></div><div id="messages" class="messages">${messages.map(m=>`<div class="message ${m.sender==="admin"?"theirs":m.sender==="system"?"system":"mine"}"><p>${safe(m.text)}</p><small>${m.sender==="admin"?"NovaShop":m.sender==="system"?"Systeem":"Jij"} · ${new Date(m.createdAt).toLocaleString("nl-NL")}</small></div>`).join("")}</div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000"><button class="primary">Verstuur</button></form>`);
-  $("#messages").scrollTop=$("#messages").scrollHeight;
-  $("#sendMessage").onsubmit=async e=>{e.preventDefault();const text=$("#messageText").value.trim();if(!text)return;const m=push(ref(db,`chats/${id}/messages`));await set(m,{sender:state.admin?"admin":"user",uid:state.user.uid,text,createdAt:Date.now()});await update(ref(db,"chats/"+id),{lastMessage:text,lastMessageAt:Date.now()});$("#messageText").value=""};
-  $("#chatTrack").onclick=()=>get(ref(db,"chats/"+id)).then(s=>{const c=s.val();if(c?.orderId)showOrderTracking(c.orderId)});
+  const box=$("#messages");
+  if(box){
+   const nearBottom=box.scrollHeight-box.scrollTop-box.clientHeight<70;
+   box.innerHTML=messages.map(m=>`<div class="message ${m.sender==="admin"?"theirs":m.sender==="system"?"system":"mine"}"><p>${formatChatText(m.text)}</p><small>${m.sender==="admin"?"NovaShop":m.sender==="system"?"Systeem":"Jij"} · ${m.createdAt?new Date(m.createdAt).toLocaleString("nl-NL"):""}</small></div>`).join("");
+   if(nearBottom)box.scrollTop=box.scrollHeight;
+  }
  });
 }
 function adminPanel(){
@@ -126,7 +155,7 @@ function renderAdminTab(){
 async function productEditor(id=null){
  const snap=id?await get(ref(db,"products/"+id)):null,p=snap?.val()||{};
  openDialog(`<p class="eyebrow">CATALOGUS</p><h2>${id?"Product bewerken":"Nieuw product"}</h2><form id="productForm" class="stack"><label>Titel<input id="pTitle" required maxlength="100" value="${safe(p.title||"")}"></label><label>Prijs in euro<input id="pPrice" type="number" min="0" step="0.01" required value="${p.price??""}"></label><label>Beschrijving<textarea id="pDescription" rows="4">${safe(p.description||"")}</textarea></label><label>Productafbeelding<input id="pImage" type="file" accept="image/png,image/jpeg,image/webp"></label>${p.image?`<img class="preview" src="${safe(p.image)}">`:""}<button class="primary full">Product opslaan</button></form>`);
- $("#productForm").onsubmit=async e=>{e.preventDefault();const title=$("#pTitle").value.trim(),price=Number($("#pPrice").value),description=$("#pDescription").value.trim(),file=$("#pImage").files[0];if(!Number.isFinite(price)||price<0)return toast("Vul een geldige prijs in");try{let image=p.image||"",imagePath=p.imagePath||"";if(file){if(file.size>5*1024*1024)return toast("Afbeelding mag maximaal 5 MB zijn");if(!["image/jpeg","image/png","image/webp"].includes(file.type))return toast("Gebruik JPG, PNG of WEBP");imagePath=`products/${id||"new-"+Date.now()}/${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;const r=storageRef(storage,imagePath);await uploadBytes(r,file);image=await getDownloadURL(r)}const product={title,price,description,image,imagePath,active:true,updatedAt:Date.now()};if(id)await update(ref(db,"products/"+id),product);else await set(push(ref(db,"products")), {...product,createdAt:Date.now()});closeDialog();toast("Product opgeslagen")}catch(err){toast("Opslaan mislukt: "+err.message)}};
+ $("#productForm").onsubmit=async e=>{e.preventDefault();const title=$("#pTitle").value.trim(),price=Number($("#pPrice").value),description=$("#pDescription").value.trim(),file=$("#pImage").files[0];if(!Number.isFinite(price)||price<0)return toast("Vul een geldige prijs in");try{let image=p.image||"",imagePath=p.imagePath||"";if(file){if(file.size>5*1024*1024)return toast("Afbeelding mag maximaal 5 MB zijn");if(!["image/jpeg","image/png","image/webp"].includes(file.type))return toast("Gebruik JPG, PNG of WEBP");imagePath=`products/${id||"new-"+Date.now()}/${file.name.replace(/[^a-zA-Z0-9._-]/g,"_")}`;const r=storageRef(storage,imagePath);await uploadBytes(r,file);image=await getDownloadURL(r)}const product={title,price,description,image,imagePath,active:true,updatedAt:Date.now()};if(id)await update(ref(db,"products/"+id),product);else await set(push(ref(db,"products")), {...product,createdAt:Date.now()});closeDialog();toast("Product opgeslagen")}catch(err){console.error("NovaShop product upload/save:",err);const detail=err?.code?`${err.code}: `:"";toast(`Opslaan mislukt. ${detail}${err.message||"Controleer Firebase Storage CORS en Storage Rules."}`)}};
 }
 $("#adminEntry").onclick=()=>{if(state.admin)adminPanel();else openAdminLogin()};
 function openAdminLogin(){
