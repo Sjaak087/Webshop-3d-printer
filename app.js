@@ -5,6 +5,7 @@ import { ref, onValue, get, push, set, update, remove, query, orderByChild, equa
 const $ = s => document.querySelector(s);
 const SHIPPING = 3.95;   // verzendkosten per bestelling
 const STATUSES = ["ontvangen", "verwerkt", "gemaakt", "klaar voor bezorging"];
+const CAMERA_STATUSES = ["verwerkt", "gemaakt"];   // bij welke statussen de livecamera in track & trace getoond wordt
 const state = { user: null, admin: false, products: [], cart: [], tab: "products" };
 const overlay = $("#overlay"), content = $("#dialogContent");
 let unsubs = [];                       // listeners van het open dialoogvenster
@@ -146,10 +147,23 @@ function showMyOrders() {
     content.querySelectorAll("[data-track]").forEach(b => b.onclick = () => showOrderTracking(b.dataset.track));
   });
 }
+function renderCamera(show, getShown, setShown) {
+  // De stream wordt alleen opnieuw geladen als de zichtbaarheid verandert (niet bij elke statusupdate).
+  const box = $("#camBox"); const url = CFG.cameraUrl;
+  if (!box || !url || getShown() === show) return;
+  setShown(show);
+  box.innerHTML = show ? `<div class="cam-card"><div class="cam-head"><b>Live meekijken</b><span class="cam-live">● LIVE</span></div><div class="cam-frame"><img id="camImg" alt="Livebeeld van de 3D-printer" src="${safe(url)}"><div class="cam-offline hidden" id="camOff">De camera is op dit moment niet beschikbaar.<br><button class="secondary" id="camRetry">Opnieuw proberen</button></div></div></div>` : "";
+  if (!show) return;
+  const img = $("#camImg"), off = $("#camOff");
+  img.onerror = () => { off.classList.remove("hidden"); img.classList.add("hidden"); };
+  $("#camRetry").onclick = () => { off.classList.add("hidden"); img.classList.remove("hidden"); img.src = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(); };
+}
 function showOrderTracking(id) {
-  openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Bestelling #${short(id)}</h2><div id="trackBox"></div>`);
+  openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Bestelling #${short(id)}</h2><div id="trackBox"></div><div id="camBox"></div>`);
+  let camShown = null;
   listen(ref(db, "orders/" + id), snap => {
     const o = snap.val(); if (!o) return; const idx = STATUSES.indexOf(o.status);
+    renderCamera(CAMERA_STATUSES.includes(o.status), () => camShown, v => camShown = v);
     $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
     $("#trackChat").onclick = () => o.chatId && openChat(o.chatId);
   });

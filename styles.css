@@ -43,3 +43,5 @@
 .nav-btn:focus-visible,button:focus-visible,input:focus-visible{outline:3px solid #0756c9;outline-offset:2px}
 .cart-sum{display:grid;gap:6px;padding:12px 0 0;border-top:1px solid var(--line);font-size:14px;color:#52647b}.cart-sum>div{display:flex;justify-content:space-between}
 .chat-link{pointer-events:auto;cursor:pointer}
+
+.cam-card{border:1px solid var(--line);border-radius:14px;overflow:hidden;margin:6px 0 16px;background:#fff}.cam-head{display:flex;justify-content:space-between;align-items:center;padding:12px 14px;font-size:14px}.cam-live{color:#d33;font-size:11px;font-weight:800;letter-spacing:1px}.cam-frame{background:#0b1c32;min-height:180px;display:grid;place-items:center}.cam-frame img{width:100%;display:block}.cam-offline{color:#cbd6e6;text-align:center;padding:30px 14px;font-size:13px;line-height:1.8}

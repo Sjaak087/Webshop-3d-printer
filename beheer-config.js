@@ -4,5 +4,8 @@ export const BEHEER_CONFIG = {
   adminEmail: "58156557@leerling.hetbouwens.nl",
   salt: "MwfuBEam5SYXXg9Ol9nYOg==",
   hash: "qTmXZIPhFyEqzo0Pjf+bkuVHjd6xMsg7Of5zaHJHs5c=",
-  iterations: 150000
+  iterations: 150000,
+  // Live camerabeeld van de 3D-printer (zie README, stap "Livecamera"). Leeg laten = camera-blok verborgen.
+  // Voorbeeld: "https://camera.jouwdomein.nl/api/stream.mjpeg?src=a1mini"
+  cameraUrl: ""
 };
