@@ -148,15 +148,33 @@ function showMyOrders() {
   });
 }
 function renderCamera(show, getShown, setShown) {
-  // De stream wordt alleen opnieuw geladen als de zichtbaarheid verandert (niet bij elke statusupdate).
-  const box = $("#camBox"); const url = CFG.cameraUrl;
-  if (!box || !url || getShown() === show) return;
-  setShown(show);
-  box.innerHTML = show ? `<div class="cam-card"><div class="cam-head"><b>Live meekijken</b><span class="cam-live">● LIVE</span></div><div class="cam-frame"><img id="camImg" alt="Livebeeld van de 3D-printer" src="${safe(url)}"><div class="cam-offline hidden" id="camOff">De camera is op dit moment niet beschikbaar.<br><button class="secondary" id="camRetry">Opnieuw proberen</button></div></div></div>` : "";
-  if (!show) return;
-  const img = $("#camImg"), off = $("#camOff");
-  img.onerror = () => { off.classList.remove("hidden"); img.classList.add("hidden"); };
-  $("#camRetry").onclick = () => { off.classList.add("hidden"); img.classList.remove("hidden"); img.src = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now(); };
+  const box = $("#camBox");
+  if (!box) return;
+  if (!show) {
+    if (getShown() !== false) { setShown(false); box.innerHTML = ""; }
+    return;
+  }
+  const url = String(CFG.cameraUrl || "").trim();
+  if (!url) {
+    if (getShown() !== "setup") {
+      setShown("setup");
+      box.innerHTML = `<div class="cam-card"><div class="cam-head"><b>Printercamera</b><span class="cam-wait">NIET INGESTELD</span></div><div class="cam-offline">De livecamera is nog niet gekoppeld.<br><small>Stel de camerabrug in en vul daarna de HTTPS-stream-URL in bij <code>beheer-config.js</code> (cameraUrl).</small></div></div>`;
+    }
+    return;
+  }
+  if (getShown() === true) return;
+  setShown(true);
+  box.innerHTML = `<div class="cam-card"><div class="cam-head"><b>Live meekijken</b><span class="cam-wait" id="camState">● VERBINDEN…</span></div><div class="cam-frame"><img id="camImg" alt="Livebeeld van de 3D-printer"><div class="cam-offline hidden" id="camOff">De camera is op dit moment niet beschikbaar.<br><button class="secondary" id="camRetry">Opnieuw proberen</button></div></div></div>`;
+  const img = $("#camImg"), off = $("#camOff"), label = $("#camState");
+  const load = () => {
+    off.classList.add("hidden"); img.classList.remove("hidden");
+    label.textContent = "● VERBINDEN…"; label.classList.remove("cam-live"); label.classList.add("cam-wait");
+    img.src = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
+  };
+  img.onload = () => { label.textContent = "● LIVE"; label.classList.remove("cam-wait"); label.classList.add("cam-live"); };
+  img.onerror = () => { label.textContent = "OFFLINE"; img.classList.add("hidden"); off.classList.remove("hidden"); };
+  $("#camRetry").onclick = load;
+  load();
 }
 function showOrderTracking(id) {
   openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Bestelling #${short(id)}</h2><div id="trackBox"></div><div id="camBox"></div>`);

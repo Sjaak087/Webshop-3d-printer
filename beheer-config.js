@@ -5,7 +5,8 @@ export const BEHEER_CONFIG = {
   salt: "MwfuBEam5SYXXg9Ol9nYOg==",
   hash: "qTmXZIPhFyEqzo0Pjf+bkuVHjd6xMsg7Of5zaHJHs5c=",
   iterations: 150000,
-  // Live camerabeeld van de 3D-printer (zie README, stap "Livecamera"). Leeg laten = camera-blok verborgen.
-  // Voorbeeld: "https://jouwdomein.nl"
- cameraUrl: "https://sand-sterling-raises-occupation.trycloudflare.com/api/stream.mjpeg?src=a1mini"
+  // Publieke HTTPS-MJPEG-stream van bambu_cam.py via een tunnel.
+  // Vul dit pas in nadat de camerabrug op de printer-pc werkt.
+  // Voorbeeld: "https://camera.jouwdomein.nl/api/stream.mjpeg"
+  cameraUrl: ""
 };

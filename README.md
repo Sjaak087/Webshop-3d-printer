@@ -8,7 +8,7 @@
 - **Chatlinks**: links met of zonder `https://` (ook `www.` en `tikkie.me/...`) zijn nu klikbaar, ook met & in de link.
 - **Technisch**: bestelling + chat worden in één schrijfactie opgeslagen, klanten laden alleen hun eigen bestellingen/chats (query + index), listeners worden opgeruimd (geen dubbele updates/lekken), winkelwagen blijft bewaard, Escape sluit vensters, prijzen worden bij bestellen opnieuw uit de database genomen.
 
-- **Livecamera (Bambu Lab A1 mini)**: in track & trace staat een live camerabeeld zolang de bestelling de status *verwerkt* of *gemaakt* heeft (aanpassen via `CAMERA_STATUSES` bovenaan `app.js`). Staat `cameraUrl` in `beheer-config.js` leeg, dan is het blok verborgen.
+- **Livecamera (Bambu Lab A1 mini)**: Track & Trace toont het camerablok bij status *verwerkt* of *gemaakt*. Als `cameraUrl` leeg is, verschijnt een duidelijke melding dat de camera nog gekoppeld moet worden. Bij een ingestelde stream toont de pagina verbindingsstatus, livebeeld en een knop om opnieuw te proberen.
 
 ## Installeren
 1. Zet alle bestanden op GitHub Pages (vervang de oude; `storage.rules` en `cors.json` mogen weg).
@@ -24,13 +24,33 @@ Zet de eerste waarde bij `salt` en de tweede bij `hash` in `beheer-config.js`.
 ## Eerlijk over de beveiliging
 Zonder Firebase Authentication of een backend kan de browsercode zelf niets echt afdwingen: iemand die de database-URL kent kan nog steeds producten, bestellingen en chats lezen/wijzigen. De login is daarom een afscherming van de interface, geen harde beveiliging. Voor echte klanten: schakel Firebase Authentication in en laat de regels op `auth.uid` en een admin-claim controleren.
 
-## Livecamera instellen (A1 mini)
-De A1 mini heeft geen RTSP maar een eigen JPEG-stroom op poort 6000. Het meegeleverde `bambu_cam.py` (alleen Python nodig) leest die stroom en biedt hem aan als MJPEG-stream. Hij verbindt alleen met de printer zolang er iemand kijkt.
-1. **Printer**: zet *LAN Mode Liveview* aan (niet de volledige LAN Only Mode). Noteer het IP-adres en de Access Code.
-2. **Python** installeren op een pc die aanstaat (python.org, vink "Add python.exe to PATH" aan).
-3. Open `bambu_cam.py`, vul bovenin `PRINTER_IP` en `ACCESS_CODE` in en start met `python bambu_cam.py`.
-4. Test: `http://localhost:1984/api/stream.mjpeg?src=a1mini` moet live beeld geven (de A1 mini geeft maar ca. 1 beeld per seconde).
-5. **Publiek via https**: Cloudflare Tunnel naar `http://localhost:1984`, met als Path `api/stream.mjpeg`.
-6. Zet het https-adres in `beheer-config.js` bij `cameraUrl` en zet de bestanden op GitHub Pages.
+## Livecamera instellen (Bambu Lab A1 mini)
 
-Let op: wie de camera-URL kent kan meekijken.
+**Belangrijk:** de websitecode kan de camera niet zelf aanzetten. De printer moet bereikbaar zijn via een pc op hetzelfde netwerk en de stream moet via HTTPS beschikbaar worden gemaakt. GitHub Pages kan niet rechtstreeks bij een lokaal IP-adres zoals `192.168.x.x`.
+
+1. Zet op de printer **LAN Mode Liveview** aan. Noteer het lokale IP-adres en de Access Code.
+2. Installeer Python 3 op een pc die aan hetzelfde netwerk hangt als de printer.
+3. Stel de omgevingsvariabelen in en start `bambu_cam.py`:
+   - Windows PowerShell:
+     ```powershell
+     $env:PRINTER_IP="192.168.1.50"
+     $env:ACCESS_CODE="VUL_HIER_DE_ACCESS_CODE_IN"
+     python bambu_cam.py
+     ```
+   - macOS/Linux:
+     ```bash
+     PRINTER_IP="192.168.1.50" ACCESS_CODE="VUL_HIER_DE_ACCESS_CODE_IN" python3 bambu_cam.py
+     ```
+   Vervang het voorbeeld-IP en de Access Code door de waarden van je printer. Bewaar de Access Code privé.
+4. Test op die pc: `http://127.0.0.1:1984/api/stream.mjpeg`. Je moet livebeeld zien.
+5. Maak de camerabrug bereikbaar met een **HTTPS-tunnel** naar `http://127.0.0.1:1984` (bijvoorbeeld Cloudflare Tunnel) met een eigen hostnaam, bijvoorbeeld `camera.jouwdomein.nl`.
+6. Test `https://camera.jouwdomein.nl/api/stream.mjpeg` in een browser.
+7. Vul die exacte HTTPS-URL in als `cameraUrl` in `beheer-config.js`, commit/push de bestanden naar GitHub en wacht tot GitHub Pages is bijgewerkt.
+
+### Privacy en veiligheid
+De stream is toegankelijk voor bezoekers van de website die de URL kunnen openen. Deel de URL niet openbaar als je dat niet wilt. Zet nooit het printer-IP of de Access Code in `beheer-config.js` of GitHub; alleen de publieke HTTPS-stream-URL hoort daar. Laat de pc en de tunnel draaien zolang klanten livebeeld moeten kunnen zien.
+
+### Als het niet werkt
+- Geeft de lokale test-URL geen beeld, controleer IP-adres, Access Code en LAN Mode Liveview.
+- Werkt lokaal wel maar de HTTPS-URL niet, controleer de tunnel en of die naar poort 1984 verwijst.
+- Controleer of `cameraUrl` exact dezelfde HTTPS-URL bevat.
