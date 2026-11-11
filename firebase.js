@@ -1,9 +1,7 @@
-// Firebase-configuratie voor NovaShop.
-// De Firebase web-API-key is bedoeld om in de browser te staan.
-// Beveilig je gegevens met Firebase Authentication en de meegeleverde database-/storage-regels.
+// Firebase-configuratie voor NovaShop (Realtime Database). Firebase Storage is niet meer nodig:
+// productafbeeldingen worden in de browser verkleind en als kleine afbeelding in de database bewaard.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyCBLpFJIC0yppKjQAwazMqv9QC0X4MBNaI",
@@ -16,6 +14,4 @@ export const firebaseConfig = {
   measurementId: "G-7YTVRGHRKL"
 };
 
-const app = initializeApp(firebaseConfig);
-export const db = getDatabase(app);
-export const storage = getStorage(app);
+export const db = getDatabase(initializeApp(firebaseConfig));

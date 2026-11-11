@@ -1,6 +1,19 @@
 {
   "rules": {
-    ".read": true,
-    ".write": true
+    "products": {
+      ".read": true,
+      ".write": true,
+      "$id": { ".validate": "newData.hasChildren(['title','price']) && (!newData.hasChild('image') || newData.child('image').val().length < 450000)" }
+    },
+    "accounts": {
+      ".read": false,
+      "$key": {
+        ".read": true,
+        ".write": "!data.exists()",
+        ".validate": "newData.hasChildren(['email','salt','hash'])"
+      }
+    },
+    "orders": { ".read": true, ".write": true, ".indexOn": ["userId"] },
+    "chats": { ".read": true, ".write": true, ".indexOn": ["userId"] }
   }
-}\n
+}

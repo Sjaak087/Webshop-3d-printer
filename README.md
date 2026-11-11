@@ -1,33 +1,21 @@
-# NovaShop – bijgewerkte webshop
+# NovaShop
 
-Deze versie bevat:
-- Firebase Realtime Database voor producten, bestellingen en chats.
-- Winkelwagen met live totaal aantal stuks en plus/min-knoppen.
-- Chat met automatisch aanklikbare http(s)-links.
-- Herkenbare Tikkie-links met een duidelijke knop om het betaalverzoek te openen.
-- Chatvenster met duidelijkere indeling, berichtrollen en tijdstippen.
-- `favicon.ico`.
+## Wat is er veranderd
+- **Afbeeldingen uploaden werkt weer**: de afbeelding wordt in de browser verkleind (max 900 px) en in de database bewaard. Firebase Storage, CORS en `gcloud` zijn niet meer nodig. Bestaande producten met een oude afbeelding blijven werken.
+- **Sitebeheer**: het e-mailadres wordt niet meer vooringevuld en het beheerderswachtwoord staat gehasht (PBKDF2) in `beheer-config.js`. Er is een uitlogknop en een rem op herhaald fout inloggen.
+- **Klantaccounts**: wachtwoorden worden gehasht opgeslagen (voorheen platte tekst) en het wachtwoord zit niet meer in de sessie. Accounts staan nu in `accounts/`; oude testaccounts uit `users/` moet je opnieuw aanmaken (je kunt `users` in Firebase verwijderen).
+- **Technisch**: bestelling + chat worden in één schrijfactie opgeslagen, klanten laden alleen hun eigen bestellingen/chats (query + index), listeners worden opgeruimd (geen dubbele updates/lekken), winkelwagen blijft bewaard, Escape sluit vensters, prijzen worden bij bestellen opnieuw uit de database genomen.
 
-## Productafbeeldingen uploaden: vereiste Firebase-instelling
+## Installeren
+1. Zet alle bestanden op GitHub Pages (vervang de oude; `storage.rules` en `cors.json` mogen weg).
+2. Firebase Console > Realtime Database > Rules: plak de inhoud van `database.rules.json` en publiceer.
 
-De browserconsole-fout `preflight request does not pass access control check` is een CORS-fout van de Storage-bucket. Alleen de websitecode of ZIP aanpassen kan de bucketconfiguratie niet wijzigen.
-
-1. Open Google Cloud Console / Cloud Shell voor Firebase-project `webshop-3cf70`.
-2. Upload `cors.json` naar Cloud Shell.
-3. Voer uit:
-
-```bash
-gcloud storage buckets update gs://webshop-3cf70.firebasestorage.app --cors-file=cors.json
+## Nieuw beheerderswachtwoord
+Maak een nieuwe `salt` en `hash` met Node:
 ```
+node -e 'const c=require("crypto");const s=c.randomBytes(16);console.log(s.toString("base64"),c.pbkdf2Sync("NIEUW_WACHTWOORD",s,150000,32,"sha256").toString("base64"))'
+```
+Zet de eerste waarde bij `salt` en de tweede bij `hash` in `beheer-config.js`.
 
-4. Controleer de exacte bucketnaam in Firebase Console > Storage als Google Cloud de bucket niet vindt.
-5. Controleer Firebase Console > Storage > Rules en zorg dat de regels uploads toestaan voor de accounts die mogen beheren.
-6. Wacht even, herlaad de GitHub Pages-site en probeer één afbeelding te uploaden.
-
-CORS en Storage Security Rules zijn twee verschillende instellingen. Een upload kan nog steeds worden geweigerd door Storage Rules, ook als CORS correct is. Deel bij een volgende fout de volledige foutcode uit de browserconsole (bijvoorbeeld `storage/unauthorized` of `storage/unknown`).
-
-## Belangrijk over "echte versie"
-
-Deze frontend houdt nog de eerder gevraagde login zonder Firebase Authentication aan. De huidige `database.rules.json` staat lezen en schrijven open en het beheerderswachtwoord staat in `beheer-config.js`. Dat is bruikbaar als persoonlijke test, maar niet geschikt voor een openbare webshop met echte klantgegevens of echte bestellingen: bezoekers kunnen de JavaScript-code bekijken en rechtstreeks databasegegevens wijzigen.
-
-Voor een echte productieversie zonder Firebase Authentication is een backend (bijvoorbeeld Firebase Cloud Functions) nodig die klantlogins, beheerdersrechten en alle databasebewerkingen controleert. Alleen frontendcode kan dat niet veilig afdwingen. Deze ZIP maakt die backend niet automatisch actief.
+## Eerlijk over de beveiliging
+Zonder Firebase Authentication of een backend kan de browsercode zelf niets echt afdwingen: iemand die de database-URL kent kan nog steeds producten, bestellingen en chats lezen/wijzigen. De login is daarom een afscherming van de interface, geen harde beveiliging. Voor echte klanten: schakel Firebase Authentication in en laat de regels op `auth.uid` en een admin-claim controleren.
