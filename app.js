@@ -5,7 +5,7 @@ import { ref, onValue, get, push, set, update, remove, query, orderByChild, equa
 const $ = s => document.querySelector(s);
 const SHIPPING = 3.95;   // verzendkosten per bestelling
 const STATUSES = ["ontvangen", "verwerkt", "gemaakt", "klaar voor bezorging"];
-const CAMERA_STATUSES = ["verwerkt", "gemaakt"];   // bij welke statussen de livecamera in track & trace getoond wordt
+const CAMERA_STATUSES = ["ontvangen", "verwerkt", "gemaakt", "klaar voor bezorging"];   // camera tonen bij alle bestelstatussen
 const state = { user: null, admin: false, products: [], cart: [], tab: "products" };
 const overlay = $("#overlay"), content = $("#dialogContent");
 let unsubs = [];                       // listeners van het open dialoogvenster

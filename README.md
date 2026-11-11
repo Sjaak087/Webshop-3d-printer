@@ -8,7 +8,7 @@
 - **Chatlinks**: links met of zonder `https://` (ook `www.` en `tikkie.me/...`) zijn nu klikbaar, ook met & in de link.
 - **Technisch**: bestelling + chat worden in één schrijfactie opgeslagen, klanten laden alleen hun eigen bestellingen/chats (query + index), listeners worden opgeruimd (geen dubbele updates/lekken), winkelwagen blijft bewaard, Escape sluit vensters, prijzen worden bij bestellen opnieuw uit de database genomen.
 
-- **Livecamera (Bambu Lab A1 mini)**: Track & Trace toont het camerablok bij status *verwerkt* of *gemaakt*. Als `cameraUrl` leeg is, verschijnt een duidelijke melding dat de camera nog gekoppeld moet worden. Bij een ingestelde stream toont de pagina verbindingsstatus, livebeeld en een knop om opnieuw te proberen.
+- **Livecamera (Bambu Lab A1 mini)**: Track & Trace toont het camerablok bij alle bestelstatussen (*ontvangen*, *verwerkt*, *gemaakt* en *klaar voor bezorging*). Als `cameraUrl` leeg is, verschijnt een duidelijke melding dat de camera nog gekoppeld moet worden. Bij een ingestelde stream toont de pagina verbindingsstatus, livebeeld en een knop om opnieuw te proberen.
 
 ## Installeren
 1. Zet alle bestanden op GitHub Pages (vervang de oude; `storage.rules` en `cors.json` mogen weg).
