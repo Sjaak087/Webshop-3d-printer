@@ -3,6 +3,7 @@ import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const $ = s => document.querySelector(s);
+const SHIPPING = 3.95;   // verzendkosten per bestelling
 const STATUSES = ["ontvangen", "verwerkt", "gemaakt", "klaar voor bezorging"];
 const state = { user: null, admin: false, products: [], cart: [], tab: "products" };
 const overlay = $("#overlay"), content = $("#dialogContent");
@@ -78,8 +79,8 @@ function showProduct(id) {
 /* ---------- winkelwagen-dialoog ---------- */
 $("#cartBtn").onclick = showCart;
 function showCart() {
-  const total = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b><small>${money(x.price)} per stuk</small><div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${safe(x.id)}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${safe(x.id)}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${safe(x.id)}">Verwijder</button></div></div>`).join("")}</div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0), total = sub + SHIPPING;
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b><small>${money(x.price)} per stuk</small><div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${safe(x.id)}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${safe(x.id)}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${safe(x.id)}">Verwijder</button></div></div>`).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)}</span></div></div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => x.id !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => x.id === b.dataset.qty); if (!it) return;
@@ -127,11 +128,12 @@ async function placeOrder() {
   if (!state.cart.length) return;
   const items = state.cart.map(c => { const p = state.products.find(x => x.id === c.id); return p ? { id: c.id, title: p.title, price: Number(p.price), qty: c.qty } : null; }).filter(Boolean);
   if (!items.length) { toast("Deze producten zijn niet meer beschikbaar."); state.cart = []; saveCart(); return showCart(); }
+  const subtotal = items.reduce((n, i) => n + i.price * i.qty, 0), total = subtotal + SHIPPING;
   const orderKey = push(ref(db, "orders")).key, chatKey = push(ref(db, "chats")).key, msgKey = push(ref(db, `chats/${chatKey}/messages`)).key, now = Date.now();
   try {
     await update(ref(db), {                         // alles-of-niets in één schrijfactie
-      ["orders/" + orderKey]: { userId: state.user.uid, email: state.user.email, items, total: items.reduce((n, i) => n + i.price * i.qty, 0), status: STATUSES[0], createdAt: now, chatId: chatKey },
-      ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, email: state.user.email, createdAt: now, lastMessage: "Bestelling geplaatst", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: "Je bestelling is ontvangen. Stel hier gerust je vragen.", createdAt: now } } }
+      ["orders/" + orderKey]: { userId: state.user.uid, email: state.user.email, items, subtotal, shipping: SHIPPING, total, status: STATUSES[0], createdAt: now, chatId: chatKey },
+      ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, email: state.user.email, createdAt: now, lastMessage: "Bestelling geplaatst", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is ontvangen. Totaal: ${money(total)} (incl. ${money(SHIPPING)} verzendkosten). Stel hier gerust je vragen.`, createdAt: now } } }
     });
     state.cart = []; saveCart(); toast("Bestelling geplaatst! Je chat is geopend."); openChat(chatKey);
   } catch (e) { console.error(e); toast("Bestellen lukte niet. Probeer het opnieuw."); }
@@ -148,7 +150,7 @@ function showOrderTracking(id) {
   openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Bestelling #${short(id)}</h2><div id="trackBox"></div>`);
   listen(ref(db, "orders/" + id), snap => {
     const o = snap.val(); if (!o) return; const idx = STATUSES.indexOf(o.status);
-    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
+    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
     $("#trackChat").onclick = () => o.chatId && openChat(o.chatId);
   });
 }
@@ -165,16 +167,24 @@ $("#myChatsBtn").onclick = showMyChats;
 
 /* ---------- chat ---------- */
 function formatChatText(value) {
-  const linked = safe(value).replace(/https?:\/\/[^\s<]+/gi, raw => {
-    let u = raw, tail = "";
-    while (/[),.!?;:]$/.test(u)) { tail = u.slice(-1) + tail; u = u.slice(0, -1); }
+  // Werkt op de ruwe tekst: eerst links zoeken, daarna alles apart escapen (geen kapotte &amp;-links).
+  const re = /(?<![@\w.\/-])(?:https?:\/\/[^\s<>"]+|www\.[^\s<>"]+|(?:[a-z0-9-]+\.)+(?:com|nl|me|be|eu|org|net|io|app)(?:\/[^\s<>"]*)?)/gi;
+  const text = String(value ?? ""); let out = "", last = 0, m;
+  while ((m = re.exec(text))) {
+    let raw = m[0], tail = "";
+    while (/[),.!?;:'"\]]$/.test(raw)) { tail = raw.slice(-1) + tail; raw = raw.slice(0, -1); }
+    let html = null;
     try {
-      const url = new URL(u.replace(/&amp;/g, "&")); if (!/^https?:$/.test(url.protocol)) return raw;
-      const h = url.hostname.toLowerCase(), tikkie = /(^|\.)tikkie\.(me|nl)$/.test(h);
-      return `<a class="chat-link ${tikkie ? "tikkie-link" : ""}" href="${safe(url.href)}" target="_blank" rel="noopener noreferrer">${tikkie ? `<span class="tikkie-link-label">Open Tikkie ↗</span>` : safe(h) + " ↗"}</a>${tail}`;
-    } catch { return raw; }
-  });
-  return linked.replace(/\n/g, "<br>");
+      const url = new URL(/^https?:\/\//i.test(raw) ? raw : "https://" + raw);
+      if (/^https?:$/.test(url.protocol) && url.hostname.includes(".")) {
+        const h = url.hostname.toLowerCase(), tikkie = /(^|\.)tikkie\.(me|nl)$/.test(h);
+        html = `<a class="chat-link ${tikkie ? "tikkie-link" : ""}" href="${safe(url.href)}" target="_blank" rel="noopener noreferrer">${tikkie ? `<span class="tikkie-link-label">Open Tikkie ↗</span>` : safe(h.replace(/^www\./, "")) + " ↗"}</a>`;
+      }
+    } catch { }
+    out += safe(text.slice(last, m.index)) + (html ? html + safe(tail) : safe(m[0]));
+    last = m.index + m[0].length;
+  }
+  return out + safe(text.slice(last));   // regels worden door CSS (pre-wrap) getoond
 }
 function openChat(id) {
   if (!state.user) return authForm();
@@ -232,7 +242,7 @@ function adminTab() {
   });
   else if (state.tab === "orders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
-    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `${safe(i.title)} × ${i.qty}`).join(", ")} · ${money(o.total)}</small></div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `${safe(i.title)} × ${i.qty}`).join(", ")} · ${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></small></div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-status]").forEach(s => s.onchange = () => update(ref(db, "orders/" + s.dataset.status), { status: s.value }).then(() => toast("Bestelstatus bijgewerkt")));
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
   });
