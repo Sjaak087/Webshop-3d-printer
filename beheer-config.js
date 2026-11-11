@@ -7,5 +7,5 @@ export const BEHEER_CONFIG = {
   iterations: 150000,
   // Live camerabeeld van de 3D-printer (zie README, stap "Livecamera"). Leeg laten = camera-blok verborgen.
   // Voorbeeld: "https://camera.jouwdomein.nl/api/stream.mjpeg?src=a1mini"
-  cameraUrl: "https://sand-sterling-raises-occupation.trycloudflare.com/api/stream.mjpeg?src=a1mini"
+  cameraUrl:"https://sand-sterling-raises-occupation.trycloudflare.com/api/stream.mjpeg?src=a1mini"
 };
