@@ -41,7 +41,7 @@ Zonder Firebase Authentication of een backend kan de browsercode zelf niets echt
      ```bash
      PRINTER_IP="192.168.1.50" ACCESS_CODE="VUL_HIER_DE_ACCESS_CODE_IN" python3 bambu_cam.py
      ```
-   vervang het voorbeeld-IP en de Access Code door de waarden van je printer. Bewaar de Access Code privé.
+   Vervang het voorbeeld-IP en de Access Code door de waarden van je printer. Bewaar de Access Code privé.
 4. Test op die pc: `http://127.0.0.1:1984/api/stream.mjpeg`. Je moet livebeeld zien.
 5. Maak de camerabrug bereikbaar met een **HTTPS-tunnel** naar `http://127.0.0.1:1984` (bijvoorbeeld Cloudflare Tunnel) met een eigen hostnaam, bijvoorbeeld `camera.jouwdomein.nl`.
 6. Test `https://camera.jouwdomein.nl/api/stream.mjpeg` in een browser.
