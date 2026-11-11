@@ -6,6 +6,6 @@ export const BEHEER_CONFIG = {
   hash: "qTmXZIPhFyEqzo0Pjf+bkuVHjd6xMsg7Of5zaHJHs5c=",
   iterations: 150000,
   // Live camerabeeld van de 3D-printer (zie README, stap "Livecamera"). Leeg laten = camera-blok verborgen.
-  // Voorbeeld: "https://camera.jouwdomein.nl/api/stream.mjpeg?src=a1mini"
-  cameraUrl:"https://sand-sterling-raises-occupation.trycloudflare.com/api/stream.mjpeg?src=a1mini"
+  // Voorbeeld: "https://jouwdomein.nl"
+ cameraUrl: "https://sand-sterling-raises-occupation.trycloudflare.com/api/stream.mjpeg?src=a1mini"
 };
