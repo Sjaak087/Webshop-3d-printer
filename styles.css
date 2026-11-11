@@ -6,7 +6,7 @@
 
 .admin-entry{color:var(--blue);border:1px solid #d7e5fb;background:#f3f7ff;border-radius:9px;padding:9px 12px;font-weight:800}.admin-entry:hover{background:#e8f1ff}
 
-/* NovaShop update: cart quantity controls and clearer support chat */
+/* 3D Printed Shop update: cart quantity controls and clearer support chat */
 .cart-line{align-items:center;gap:14px}
 .cart-line-info{display:flex;flex-direction:column;gap:5px;min-width:0}
 .cart-line-actions{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0}

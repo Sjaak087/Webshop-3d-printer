@@ -95,7 +95,7 @@ function showCart() {
 /* ---------- klantaccount ---------- */
 function authForm(mode = "login", message = "") {
   const login = mode === "login";
-  openDialog(`<p class="eyebrow">NOVA ACCOUNT</p><h2>${login ? "Welkom terug" : "Account aanmaken"}</h2><p class="muted">${safe(message)}</p><form id="authForm" class="stack"><label>E-mailadres<input type="email" id="authEmail" required autocomplete="email"></label><label>Wachtwoord<input type="password" id="authPassword" required minlength="${login ? 1 : 8}" autocomplete="${login ? "current-password" : "new-password"}"></label>${login ? "" : `<p class="hint">Minimaal 8 tekens.</p>`}<button class="primary full">${login ? "Inloggen" : "Account aanmaken"}</button></form><p class="switch-auth">${login ? "Nog geen account?" : "Heb je al een account?"} <button id="switchAuth" class="inline-link">${login ? "Account aanmaken" : "Inloggen"}</button></p>`);
+  openDialog(`<p class="eyebrow">3D PRINTED SHOP ACCOUNT</p><h2>${login ? "Welkom terug" : "Account aanmaken"}</h2><p class="muted">${safe(message)}</p><form id="authForm" class="stack"><label>E-mailadres<input type="email" id="authEmail" required autocomplete="email"></label><label>Wachtwoord<input type="password" id="authPassword" required minlength="${login ? 1 : 8}" autocomplete="${login ? "current-password" : "new-password"}"></label>${login ? "" : `<p class="hint">Minimaal 8 tekens.</p>`}<button class="primary full">${login ? "Inloggen" : "Account aanmaken"}</button></form><p class="switch-auth">${login ? "Nog geen account?" : "Heb je al een account?"} <button id="switchAuth" class="inline-link">${login ? "Account aanmaken" : "Inloggen"}</button></p>`);
   $("#authForm").onsubmit = async e => {
     e.preventDefault(); if (locked()) return;
     const btn = e.submitter; btn && (btn.disabled = true);
@@ -223,7 +223,7 @@ function openChat(id) {
   get(ref(db, "chats/" + id)).then(s => {
     const c = s.val(); if (!c) return toast("Chat niet gevonden");
     if (!state.admin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
-    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">NOVA KLANTENSERVICE</p><h2>Bestelling #${short(c.orderId)}</h2><small class="chat-subtitle">${safe(c.email || "Gesprek met NovaShop")}</small></div><button class="secondary" id="chatTrack">Bestelling volgen</button></div><div class="chat-notice">Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen.</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
+    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>Bestelling #${short(c.orderId)}</h2><small class="chat-subtitle">${safe(c.email || "Gesprek met 3D Printed Shop")}</small></div><button class="secondary" id="chatTrack">Bestelling volgen</button></div><div class="chat-notice">Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen.</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
     $("#chatTrack").onclick = () => c.orderId && showOrderTracking(c.orderId);
     $("#sendMessage").onsubmit = async e => {
       e.preventDefault(); const input = $("#messageText"), text = input.value.trim(); if (!text) return;
@@ -237,7 +237,7 @@ function openChat(id) {
       const box = $("#messages"); if (!box) return;
       const msgs = toList(snap).sort((a, b) => a.createdAt - b.createdAt);
       const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 70 || !box.children.length;
-      box.innerHTML = msgs.map(m => `<div class="message ${m.sender === "admin" ? "theirs" : m.sender === "system" ? "system" : "mine"}"><p>${formatChatText(m.text)}</p><small>${m.sender === "admin" ? "NovaShop" : m.sender === "system" ? "Systeem" : "Jij"} · ${when(m.createdAt)}</small></div>`).join("");
+      box.innerHTML = msgs.map(m => `<div class="message ${m.sender === "admin" ? "theirs" : m.sender === "system" ? "system" : "mine"}"><p>${formatChatText(m.text)}</p><small>${m.sender === "admin" ? "3D Printed Shop" : m.sender === "system" ? "Systeem" : "Jij"} · ${when(m.createdAt)}</small></div>`).join("");
       if (stick) box.scrollTop = box.scrollHeight;
     });
   }).catch(() => toast("Chat laden mislukt."));
@@ -257,7 +257,7 @@ function openAdminLogin() {
 }
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">NOVA SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logout;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();

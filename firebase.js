@@ -1,4 +1,4 @@
-// Firebase-configuratie voor NovaShop (Realtime Database). Firebase Storage is niet meer nodig:
+// Firebase-configuratie voor 3D Printed Shop (Realtime Database). Firebase Storage is niet meer nodig:
 // productafbeeldingen worden in de browser verkleind en als kleine afbeelding in de database bewaard.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";

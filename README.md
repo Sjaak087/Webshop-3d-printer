@@ -1,4 +1,4 @@
-# NovaShop
+# 3D Printed Shop
 
 ## Wat is er veranderd
 - **Afbeeldingen uploaden werkt weer**: de afbeelding wordt in de browser verkleind (max 900 px) en in de database bewaard. Firebase Storage, CORS en `gcloud` zijn niet meer nodig. Bestaande producten met een oude afbeelding blijven werken.
