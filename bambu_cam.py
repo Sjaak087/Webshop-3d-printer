@@ -7,6 +7,7 @@ aan als gewone MJPEG-stream, zodat een <img> op je website hem kan tonen. Alleen
 Start:   python bambu_cam.py
 Stream:  http://localhost:1984/api/stream.mjpeg?src=a1mini
 Foto:    http://localhost:1984/api/frame.jpeg
+Status:  http://localhost:1984/api/status   (de website gebruikt dit om 'printer offline' te tonen)
 """
 import os, socket, ssl, struct, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,6 +23,7 @@ LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "1984"))
 lock = threading.Condition()
 frame = None          # laatste JPEG
 frame_no = 0
+last_frame_at = 0.0   # tijdstip van het laatste beeld (voor /api/status)
 viewers = 0           # alleen verbinden met de printer zolang er iemand kijkt
 
 
@@ -45,7 +47,7 @@ def auth_packet():
 
 
 def reader():
-    global frame, frame_no
+    global frame, frame_no, last_frame_at
     while True:
         with lock:
             while viewers == 0:
@@ -66,7 +68,7 @@ def reader():
                     img = recv_n(s, size)
                     if img[:2] == b"\xff\xd8" and img[-2:] == b"\xff\xd9":
                         with lock:
-                            frame, frame_no = img, frame_no + 1
+                            frame, frame_no, last_frame_at = img, frame_no + 1, time.time()
                             lock.notify_all()
             log("niemand kijkt meer, verbinding gesloten")
         except Exception as e:
@@ -128,6 +130,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(img)
+        elif path == "/api/status":
+            online = frame is not None and time.time() - last_frame_at < 10
+            body = (b'{"online": true}' if online else b'{"online": false}')
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
         else:
             self.send_error(404)
 

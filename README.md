@@ -1,4 +1,4 @@
- # 3D Printed Shop
+# 3D Printed Shop
 
 ## Wat is er veranderd
 - **Afbeeldingen uploaden werkt weer**: de afbeelding wordt in de browser verkleind (max 900 px) en in de database bewaard. Firebase Storage, CORS en `gcloud` zijn niet meer nodig. Bestaande producten met een oude afbeelding blijven werken.
@@ -9,6 +9,11 @@
 - **Technisch**: bestelling + chat worden in één schrijfactie opgeslagen, klanten laden alleen hun eigen bestellingen/chats (query + index), listeners worden opgeruimd (geen dubbele updates/lekken), winkelwagen blijft bewaard, Escape sluit vensters, prijzen worden bij bestellen opnieuw uit de database genomen.
 
 - **Livecamera (Bambu Lab A1 mini)**: Track & Trace toont het camerablok bij alle bestelstatussen (*ontvangen*, *verwerkt*, *gemaakt* en *klaar voor bezorging*). Als `cameraUrl` leeg is, verschijnt een duidelijke melding dat de camera nog gekoppeld moet worden. Bij een ingestelde stream toont de pagina verbindingsstatus, livebeeld en een knop om opnieuw te proberen.
+
+- **Camera offline**: komt er binnen 15 seconden geen beeld, of valt de printer uit terwijl het beeld live is, dan staat er **"3D printer is offline"**. De pagina probeert het elke 20 seconden automatisch opnieuw (of met de knop). Het uitvallen tijdens live beeld herkent de site via `/api/status` van `bambu_cam.py`: **start de camerabrug daarom opnieuw op met het nieuwe bestand**.
+- **Keuzes per product (bijv. kleuren)**: in Sitebeheer > Producten > Bewerken vul je de naam van de keuze (bijv. *Kleur*) in en voeg je opties toe (Rood, Blauw, ...). De klant moet er in het productvenster precies één kiezen voordat het product in de winkelwagen kan. Dezelfde kleur en een andere kleur zijn aparte regels in de winkelwagen.
+- **Uitverkocht**: elk product heeft een knop **Uitverkocht / Weer beschikbaar** in de productlijst, en elke optie is daar met één klik uitverkocht te zetten (klik op de optie). In de editor kan dat ook met de vinkjes. Zijn alle opties uitverkocht, dan is het hele product uitverkocht. Uitverkochte producten/opties zijn niet te bestellen; bij het bestellen wordt dit opnieuw gecontroleerd.
+- **Gekozen optie zichtbaar**: in Sitebeheer > Track & trace staat bij elke bestelling per product welke optie/kleur is gekozen; de klant ziet dit ook in zijn track & trace.
 
 ## Installeren
 1. Zet alle bestanden op GitHub Pages (vervang de oude; `storage.rules` en `cors.json` mogen weg).
