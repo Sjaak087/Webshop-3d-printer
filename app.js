@@ -295,7 +295,7 @@ function openAdminLogin() {
 }
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="history">Bestellingen</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logout;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
@@ -317,6 +317,17 @@ function adminTab() {
     target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small></div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-status]").forEach(s => s.onchange = () => update(ref(db, "orders/" + s.dataset.status), { status: s.value }).then(() => toast("Bestelstatus bijgewerkt")));
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
+  });
+  else if (state.tab === "history") listen(ref(db, "orders"), snap => {
+    const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst
+    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}</div>`).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
+    target.querySelectorAll("[data-finish]").forEach(b => b.onclick = async () => {
+      const o = os.find(x => x.id === b.dataset.finish); if (!o) return;
+      if (!confirm(`Bestelling #${short(o.id)} afronden? De bestelling, de chat en de track & trace worden definitief verwijderd.`)) return;
+      try { await update(ref(db), { ["orders/" + o.id]: null, ...(o.chatId ? { ["chats/" + o.chatId]: null } : {}) }); toast("Bestelling afgerond en verwijderd"); }
+      catch (err) { console.error(err); toast("Verwijderen mislukt. Probeer het opnieuw."); }
+    });
   });
   else listen(ref(db, "chats"), snap => {
     const cs = toList(snap).sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));

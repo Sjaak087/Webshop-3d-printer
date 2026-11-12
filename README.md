@@ -14,6 +14,7 @@
 - **Keuzes per product (bijv. kleuren)**: in Sitebeheer > Producten > Bewerken vul je de naam van de keuze (bijv. *Kleur*) in en voeg je opties toe (Rood, Blauw, ...). De klant moet er in het productvenster precies één kiezen voordat het product in de winkelwagen kan. Dezelfde kleur en een andere kleur zijn aparte regels in de winkelwagen.
 - **Uitverkocht**: elk product heeft een knop **Uitverkocht / Weer beschikbaar** in de productlijst, en elke optie is daar met één klik uitverkocht te zetten (klik op de optie). In de editor kan dat ook met de vinkjes. Zijn alle opties uitverkocht, dan is het hele product uitverkocht. Uitverkochte producten/opties zijn niet te bestellen; bij het bestellen wordt dit opnieuw gecontroleerd.
 - **Gekozen optie zichtbaar**: in Sitebeheer > Track & trace staat bij elke bestelling per product welke optie/kleur is gekozen; de klant ziet dit ook in zijn track & trace.
+- **Tab Bestellingen (Sitebeheer)**: alle bestellingen van oud naar nieuw, met datum en tijd van plaatsen, de gekozen opties en de bedragen. Met **Afronden en verwijderen** (na bevestiging) verdwijnen de bestelling, de chat en de track & trace van die bestelling definitief uit de database.
 
 ## Installeren
 1. Zet alle bestanden op GitHub Pages (vervang de oude; `storage.rules` en `cors.json` mogen weg).

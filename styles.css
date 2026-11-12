@@ -79,3 +79,9 @@
 .cam-off{color:#c34e4e;font-size:11px;font-weight:800;letter-spacing:1px}
 .cam-off-title{color:#fff;font-size:15px}
 @media(max-width:620px){.admin-row{flex-wrap:wrap}.admin-actions{justify-content:flex-start}.opt-row{flex-wrap:wrap}}
+
+.order-card{border:1px solid var(--line);border-radius:14px;padding:16px;margin:0 0 14px;display:grid;gap:8px}
+.order-card-head{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.order-card small{color:var(--muted);font-size:12px}
+.order-when{font-weight:700;color:#31577f!important}
+.order-card .admin-actions{justify-content:flex-start;margin-top:4px}
