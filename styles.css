@@ -97,3 +97,5 @@
 .stage-chip.st0{background:#eef1f5;color:#6b7a90}
 .stage-chip.st1{background:#fff3d6;color:#9a6a00}
 .stage-chip.st2{background:#e1f5e8;color:#237a45}
+
+.unit-stages{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}.unit-stages .stage-chip{margin-left:0}
