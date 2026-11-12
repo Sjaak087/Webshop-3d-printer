@@ -22,6 +22,8 @@
 - **Sitebeheer en klantaccount los van elkaar**: inloggen bij Sitebeheer logt je niet meer uit bij je klantaccount (en uitloggen bij Sitebeheer laat je klantaccount staan). In een chat die je vanuit Sitebeheer opent praat je als beheerder; je eigen bestellingschat blijft een klantchat.
 - **Fase per stuk in de agenda**: onder elk stuk in de agenda kies je in wachtrij, bezig of gemaakt. In de track & trace staat dan bij dat stuk een geel pulserend **bezig** of een groen **✓ gemaakt**; in de agenda krijgt het blok een vinkje of ⏳.
 
+- **Productafbeelding volledig zichtbaar**: op de homepage en in het productvenster wordt de hele afbeelding getoond (niet meer half bijgesneden).
+
 ## Installeren
 1. Zet alle bestanden op GitHub Pages (vervang de oude; `storage.rules` en `cors.json` mogen weg).
 2. Firebase Console > Realtime Database > Rules: plak de inhoud van `database.rules.json` en publiceer.

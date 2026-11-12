@@ -144,3 +144,7 @@
 .plan-unit{flex-wrap:wrap}
 .ag-block.blk-st1{box-shadow:inset 0 0 0 2px #ffd166,0 1px 4px #0003}
 .ag-block.blk-st2{filter:saturate(.55) brightness(1.08);box-shadow:inset 0 0 0 2px #7fdca0,0 1px 4px #0003}
+
+/* Productafbeelding altijd volledig zichtbaar (niet bijgesneden) */
+.product-image,.detail-image{position:relative;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
+.product-image img,.detail-image img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px}
