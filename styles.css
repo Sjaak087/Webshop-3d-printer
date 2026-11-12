@@ -128,3 +128,19 @@
 .ag-block{position:absolute;left:2px;right:2px;border:0;border-radius:7px;color:#fff;font-size:11px;line-height:1.25;text-align:left;padding:3px 5px;overflow:hidden;opacity:.92;box-shadow:0 1px 4px #0003}
 .ag-block small{font-size:10px;opacity:.9}.ag-block.sel{outline:3px solid #ffd84d;opacity:1;z-index:2}
 @media(max-width:620px){.plan-form{grid-template-columns:1fr 1fr}}
+
+/* Fase per stuk: bezig / vinkje, met kleur */
+.stage-chip{display:inline-flex;align-items:center;gap:4px;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:800;text-transform:none;letter-spacing:.2px}
+.stage-chip.st0{background:#eaf0f8;color:#5d6f88}
+.stage-chip.st1{background:linear-gradient(135deg,#ffe9a8,#ffd166);color:#8a5a00;box-shadow:0 0 0 2px #fff3cf;animation:pulseBusy 1.6s ease-in-out infinite}
+.stage-chip.st2{background:linear-gradient(135deg,#b8f0cb,#7fdca0);color:#145c33;box-shadow:0 0 0 2px #e3f8ea}
+@keyframes pulseBusy{50%{box-shadow:0 0 0 4px #ffe7a066}}
+.unit-chip{display:inline-flex;align-items:center;gap:6px;font-size:11px;color:#52647b;margin-right:6px}
+.stage-btns{display:flex;gap:4px;flex-wrap:wrap;margin-left:4px}
+.stage-btn{border:1px solid #dce4ef;background:#fff;border-radius:20px;padding:4px 9px;font-size:11px;font-weight:700;color:#6b7a90}
+.stage-btn.st1.on{background:#ffd166;border-color:#f0b429;color:#7a4e00}
+.stage-btn.st2.on{background:#7fdca0;border-color:#4cc27a;color:#0f4f2b}
+.stage-btn.st0.on{background:#dfe8f4;border-color:#b9c8dc;color:#3f5470}
+.plan-unit{flex-wrap:wrap}
+.ag-block.blk-st1{box-shadow:inset 0 0 0 2px #ffd166,0 1px 4px #0003}
+.ag-block.blk-st2{filter:saturate(.55) brightness(1.08);box-shadow:inset 0 0 0 2px #7fdca0,0 1px 4px #0003}

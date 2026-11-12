@@ -19,6 +19,9 @@
 - **Opmerking bij je bestelling**: in de winkelwagen staat een veld voor een opmerking (max. 500 tekens). Die staat bij de bestelling in Sitebeheer (beide bestelltabs) en in de track & trace van de klant.
 - **Agenda (Sitebeheer > Agenda)**: weekoverzicht van maandag t/m zondag met elk uur (00:00–23:00). Kies eerst een bestelling (oudste bovenaan, nieuwste onderaan), kies daarna één product uit die bestelling (elk stuk apart: bij 1 kerstboom en 3 openers kies je dus 4 keer een stuk), kies datum, van- en tot-tijd (einddatum voor nachtprints) en klik op Inplannen. Je kunt ook op een uur in de agenda klikken om datum en tijd in te vullen. Ingeplande tijd is bezet: dubbel inplannen (één printer) wordt geweigerd. Zodra alle stukken van een bestelling zijn ingepland, wordt de verwachte klaartijd (het einde van het laatste stuk) berekend. Die staat in de track & trace van de klant (met per stuk de geplande tijd) en bij de bestelling in Sitebeheer. Klik op een blok in de agenda om het te selecteren; met Verwijder maak je de tijd weer vrij. Er is geen nieuwe databaseregel nodig: de planning staat bij de bestelling en verdwijnt dus ook bij Afronden en verwijderen.
 
+- **Sitebeheer en klantaccount los van elkaar**: inloggen bij Sitebeheer logt je niet meer uit bij je klantaccount (en uitloggen bij Sitebeheer laat je klantaccount staan). In een chat die je vanuit Sitebeheer opent praat je als beheerder; je eigen bestellingschat blijft een klantchat.
+- **Fase per stuk in de agenda**: onder elk stuk in de agenda kies je in wachtrij, bezig of gemaakt. In de track & trace staat dan bij dat stuk een geel pulserend **bezig** of een groen **✓ gemaakt**; in de agenda krijgt het blok een vinkje of ⏳.
+
 ## Installeren
 1. Zet alle bestanden op GitHub Pages (vervang de oude; `storage.rules` en `cors.json` mogen weg).
 2. Firebase Console > Realtime Database > Rules: plak de inhoud van `database.rules.json` en publiceer.

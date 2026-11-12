@@ -9,7 +9,12 @@ const STAGES = ["in wachtrij", "in bereiding", "gemaakt"];   // fase per product
 const stageOf = i => STAGES.includes(i.stage) ? i.stage : STAGES[0];
 // fase per stuk: bij 6x hetzelfde product kan elk stuk een eigen fase hebben (i.stages[n]); oude bestellingen vallen terug op i.stage
 const unitStages = i => Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, n) => STAGES.includes(i.stages?.[n]) ? i.stages[n] : stageOf(i));
-const stageChips = i => { const u = unitStages(i); return u.length === 1 ? ` <span class="stage-chip st${STAGES.indexOf(u[0])}">${u[0]}</span>` : `<span class="unit-stages">${u.map((st, n) => `<span class="stage-chip st${STAGES.indexOf(st)}">Stuk ${n + 1}: ${st}</span>`).join("")}</span>`; };
+const STAGE_LABEL = { "in wachtrij": "in wachtrij", "in bereiding": "bezig", "gemaakt": "✓ gemaakt" };
+const stageChip = st => `<span class="stage-chip st${STAGES.indexOf(st)}">${STAGE_LABEL[st]}</span>`;
+const hasStage = i => !!i.stage || (i.stages && Object.values(i.stages).some(Boolean));
+const showStage = (o, i) => o.status === "in de maak" || hasStage(i);   // ook zichtbaar als je een stuk in de agenda een fase geeft
+async function setStage(o, n, u, st) { const it = (o.items || [])[n]; if (!it) return; const arr = unitStages(it); arr[u] = st; await update(ref(db, `orders/${o.id}/items/${n}`), { stages: arr }); }
+const stageChips = i => { const u = unitStages(i); return u.length === 1 ? ` ${stageChip(u[0])}` : `<span class="unit-stages">${u.map((st, n) => `<span class="unit-chip">Stuk ${n + 1} ${stageChip(st)}</span>`).join("")}</span>`; };
 const CAMERA_STATUSES = [...STATUSES];   // camera tonen bij alle bestelstatussen
 const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, orderNote: "", plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
@@ -50,10 +55,11 @@ async function emailKey(email) {
 let fails = 0, lockUntil = 0;           // simpele rem op gokken
 function locked() { const s = Math.ceil((lockUntil - Date.now()) / 1000); if (s > 0) { toast(`Te veel pogingen. Probeer het over ${s} seconden opnieuw.`); return true } return false; }
 function failed() { if (++fails >= 5) { lockUntil = Date.now() + Math.min(300000, 15000 * 2 ** (fails - 5)); } toast("E-mailadres of wachtwoord klopt niet."); }
-function saveSession() { sessionStorage.setItem("novashopUser", JSON.stringify({ uid: state.user.uid, email: state.user.email, role: state.user.role })); }
-function setUser(u, admin) { state.user = u; state.admin = admin; fails = 0; saveSession(); refreshNav(); }
+// klant en beheerder zijn twee aparte sessies: inloggen bij Sitebeheer logt je niet uit bij je klantaccount (en andersom)
+function setCustomer(u) { state.user = u; fails = 0; sessionStorage.setItem("novashopUser", JSON.stringify({ uid: u.uid, email: u.email, role: "customer" })); refreshNav(); }
+function setAdmin() { state.admin = true; fails = 0; sessionStorage.setItem("novashopAdmin", "1"); refreshNav(); }
 function refreshNav() {
-  $("#accountBtn").textContent = state.user && !state.admin ? "Mijn account" : "Inloggen";
+  $("#accountBtn").textContent = state.user ? "Mijn account" : "Inloggen";
   $("#adminEntry").textContent = state.admin ? "Sitebeheer · ingelogd" : "Sitebeheer";
 }
 
@@ -116,7 +122,7 @@ function showCart() {
   });
   $("#continue")?.addEventListener("click", closeDialog);
   $("#orderNote")?.addEventListener("input", e => state.orderNote = e.target.value);
-  $("#checkout")?.addEventListener("click", () => state.user && !state.admin ? placeOrder() : authForm("login", "Log in met een klantaccount om je bestelling af te ronden."));
+  $("#checkout")?.addEventListener("click", () => state.user ? placeOrder() : authForm("login", "Log in met een klantaccount om je bestelling af te ronden."));
 }
 
 /* ---------- klantaccount ---------- */
@@ -133,23 +139,24 @@ function authForm(mode = "login", message = "") {
         if (acc) return toast("Dit e-mailadres bestaat al.");
         const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
         await set(accRef, { email, salt, hash: await hashPw(pw, salt), createdAt: Date.now() });
-        setUser({ uid: key, email, role: "customer" }, false); closeDialog(); toast("Account aangemaakt!");
+        setCustomer({ uid: key, email, role: "customer" }); closeDialog(); toast("Account aangemaakt!");
       } else {
         if (!acc || await hashPw(pw, acc.salt) !== acc.hash) return failed();
-        setUser({ uid: key, email, role: "customer" }, false); closeDialog(); toast("Je bent ingelogd");
+        setCustomer({ uid: key, email, role: "customer" }); closeDialog(); toast("Je bent ingelogd");
       }
     } catch (err) { console.error(err); toast("Accountactie mislukt. Probeer het opnieuw."); }
     finally { btn && (btn.disabled = false); }
   };
   $("#switchAuth").onclick = () => authForm(login ? "register" : "login");
 }
-$("#accountBtn").onclick = () => state.user && !state.admin ? accountMenu() : authForm();
+$("#accountBtn").onclick = () => state.user ? accountMenu() : authForm();
 function accountMenu() {
   openDialog(`<p class="eyebrow">MIJN ACCOUNT</p><h2>${safe(state.user.email)}</h2><div class="stack"><button class="secondary full" id="myOrders">Mijn bestellingen</button><button class="secondary full" id="myChats">Mijn chats</button><button class="secondary full" id="logout">Uitloggen</button></div>`);
   $("#myOrders").onclick = showMyOrders; $("#myChats").onclick = showMyChats;
-  $("#logout").onclick = logout;
+  $("#logout").onclick = logoutCustomer;
 }
-function logout() { state.user = null; state.admin = false; sessionStorage.removeItem("novashopUser"); refreshNav(); closeDialog(); toast("Je bent uitgelogd"); }
+function logoutCustomer() { state.user = null; sessionStorage.removeItem("novashopUser"); refreshNav(); closeDialog(); toast("Je bent uitgelogd"); }
+function logoutAdmin() { state.admin = false; sessionStorage.removeItem("novashopAdmin"); refreshNav(); closeDialog(); toast("Je bent uitgelogd bij Sitebeheer"); }
 
 /* ---------- bestellen ---------- */
 async function placeOrder() {
@@ -221,14 +228,14 @@ function renderCamera(show, getShown, setShown) {
   unsubs.push(() => { stopAll(); img.onload = img.onerror = null; });
   load();
 }
-function showOrderTracking(id) {
+function showOrderTracking(id, asAdmin = false) {
   openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Bestelling #${short(id)}</h2><div id="trackBox"></div><div id="camBox"></div>`);
   let camShown = null;
   listen(ref(db, "orders/" + id), snap => {
     const o = snap.val(); if (!o) return; const idx = STATUSES.indexOf(o.status);
     renderCamera(CAMERA_STATUSES.includes(o.status), () => camShown, v => camShown = v);
-    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${o.status === "in de maak" ? stageChips(i) : ""}${Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, u) => slotLine(o, (o.items || []).indexOf(i), u)).join("")}</div>`).join("")}</div>${planBox(o, false)}${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
-    $("#trackChat").onclick = () => o.chatId && openChat(o.chatId);
+    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${showStage(o, i) ? stageChips(i) : ""}${Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, u) => slotLine(o, (o.items || []).indexOf(i), u)).join("")}</div>`).join("")}</div>${planBox(o, false)}${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
+    $("#trackChat").onclick = () => o.chatId && openChat(o.chatId, asAdmin);
   });
 }
 function showMyChats() {
@@ -263,18 +270,19 @@ function formatChatText(value) {
   }
   return out + safe(text.slice(last));   // regels worden door CSS (pre-wrap) getoond
 }
-function openChat(id) {
-  if (!state.user) return authForm();
+function openChat(id, asAdmin = false) {
+  asAdmin = asAdmin && state.admin;
+  if (!asAdmin && !state.user) return authForm();
   get(ref(db, "chats/" + id)).then(s => {
     const c = s.val(); if (!c) return toast("Chat niet gevonden");
-    if (!state.admin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
+    if (!asAdmin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
     openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>Bestelling #${short(c.orderId)}</h2><small class="chat-subtitle">${safe(c.email || "Gesprek met 3D Printed Shop")}</small></div><button class="secondary" id="chatTrack">Bestelling volgen</button></div><div class="chat-notice">Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen.</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
-    $("#chatTrack").onclick = () => c.orderId && showOrderTracking(c.orderId);
+    $("#chatTrack").onclick = () => c.orderId && showOrderTracking(c.orderId, asAdmin);
     $("#sendMessage").onsubmit = async e => {
       e.preventDefault(); const input = $("#messageText"), text = input.value.trim(); if (!text) return;
       const now = Date.now();
       try {
-        await update(ref(db), { [`chats/${id}/messages/${push(ref(db, `chats/${id}/messages`)).key}`]: { sender: state.admin ? "admin" : "user", uid: state.user.uid, text, createdAt: now }, [`chats/${id}/lastMessage`]: text, [`chats/${id}/lastMessageAt`]: now });
+        await update(ref(db), { [`chats/${id}/messages/${push(ref(db, `chats/${id}/messages`)).key}`]: { sender: asAdmin ? "admin" : "user", uid: asAdmin ? "admin" : state.user.uid, text, createdAt: now }, [`chats/${id}/lastMessage`]: text, [`chats/${id}/lastMessageAt`]: now });
         input.value = ""; input.focus();
       } catch (err) { console.error(err); toast("Bericht verzenden mislukt."); }
     };
@@ -329,7 +337,7 @@ function agendaTab(target, orders) {
       const s = new Date(Math.max(a.sl.startTs, ds)), e = a.sl.endTs >= de ? null : new Date(a.sl.endTs);
       const m1 = s.getHours() * 60 + s.getMinutes(), m2 = e ? e.getHours() * 60 + e.getMinutes() : 1440;
       const h = Math.max(18, (m2 - m1) / 60 * HOUR_PX - 2), isSel = a.o.id === P.orderId && a.x.key === P.key;
-      return `<button type="button" class="ag-block ${isSel ? "sel" : ""}" data-blk="${safe(a.o.id)}|${a.x.key}" style="top:${m1 / 60 * HOUR_PX}px;height:${h}px;background:hsl(${hueOf(a.o.id)} 55% 42%)" title="#${short(a.o.id)} · ${safe(unitLabel(a.x))}"><b>#${short(a.o.id)}</b> ${safe(unitLabel(a.x))}<br><small>${timeStr(new Date(a.sl.startTs))}–${timeStr(new Date(a.sl.endTs))}</small></button>`;
+      return `<button type="button" class="ag-block ${isSel ? "sel" : ""} blk-st${STAGES.indexOf(unitStages(a.x.item)[a.x.u])}" data-blk="${safe(a.o.id)}|${a.x.key}" style="top:${m1 / 60 * HOUR_PX}px;height:${h}px;background:hsl(${hueOf(a.o.id)} 55% 42%)" title="#${short(a.o.id)} · ${safe(unitLabel(a.x))}">${unitStages(a.x.item)[a.x.u] === "gemaakt" ? "✓ " : unitStages(a.x.item)[a.x.u] === "in bereiding" ? "⏳ " : ""}<b>#${short(a.o.id)}</b> ${safe(unitLabel(a.x))}<br><small>${timeStr(new Date(a.sl.startTs))}–${timeStr(new Date(a.sl.endTs))}</small></button>`;
     }).join("");
   };
   const prevScroll = target.querySelector(".ag-wrap")?.scrollTop;
@@ -339,7 +347,7 @@ function agendaTab(target, orders) {
     <div class="plan-step"><b>1. Kies een bestelling</b> <small>(oudste bovenaan, nieuwste onderaan)</small>
       <div class="plan-list">${os.length ? os.map(o => { const p = planInfo(o); return `<button type="button" class="plan-item ${o.id === P.orderId ? "active" : ""}" data-pord="${safe(o.id)}"><b>#${short(o.id)}</b> · ${when(o.createdAt)}<small>${safe(o.email)} · ${p.total} stuks · ${p.ready ? "✓ alles ingepland" : `${p.planned}/${p.total} ingepland`}</small></button>`; }).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}</div></div>
     ${sel ? `<div class="plan-step"><b>2. Kies een product uit bestelling #${short(sel.id)}</b> <small>(elk stuk apart)</small>
-      <div class="plan-list">${units.map(x => { const sl = slotOf(sel, x.key); return `<div class="plan-unit ${x.key === P.key ? "active" : ""}"><button type="button" class="plan-item" data-punit="${x.key}"><b>${safe(unitLabel(x))}</b><small>${sl ? `ingepland: ${whenShort(sl.startTs)} – ${timeStr(new Date(sl.endTs))}` : "nog niet ingepland"}</small></button>${sl ? `<button type="button" class="remove-item" data-pdel="${x.key}">Verwijder</button>` : ""}</div>`; }).join("")}</div></div>
+      <div class="plan-list">${units.map(x => { const sl = slotOf(sel, x.key); return `<div class="plan-unit ${x.key === P.key ? "active" : ""}"><button type="button" class="plan-item" data-punit="${x.key}"><b>${safe(unitLabel(x))}</b><small>${sl ? `ingepland: ${whenShort(sl.startTs)} – ${timeStr(new Date(sl.endTs))}` : "nog niet ingepland"}</small></button>${sl ? `<button type="button" class="remove-item" data-pdel="${x.key}">Verwijder</button>` : ""}<div class="stage-btns">${STAGES.map(st => `<button type="button" class="stage-btn st${STAGES.indexOf(st)} ${unitStages(x.item)[x.u] === st ? "on" : ""}" data-pstage="${x.key}|${st}">${STAGE_LABEL[st]}</button>`).join("")}</div></div>`; }).join("")}</div></div>
     <div class="plan-step"><b>3. Datum en tijd</b>
       <div class="plan-form"><label>Datum<input type="date" id="pgDate" value="${F.date}"></label><label>Van<input type="time" id="pgFrom" value="${F.from}" step="900"></label><label>Tot<input type="time" id="pgTo" value="${F.to}" step="900"></label><label>Einddatum<input type="date" id="pgEnd" value="${F.endDate}"></label></div>
       <button type="button" class="primary" id="pgGo">Inplannen</button></div>
@@ -355,6 +363,7 @@ function agendaTab(target, orders) {
   target.querySelectorAll("[data-pord]").forEach(b => b.onclick = () => { P.orderId = b.dataset.pord; P.key = null; again(); });
   target.querySelectorAll("[data-punit]").forEach(b => b.onclick = () => { P.key = b.dataset.punit; again(); });
   target.querySelectorAll("[data-pdel]").forEach(b => b.onclick = async () => { try { await setSlot(sel, b.dataset.pdel, null); toast("Afspraak verwijderd"); } catch (e) { console.error(e); toast("Verwijderen mislukt"); } });
+  target.querySelectorAll("[data-pstage]").forEach(b => b.onclick = async () => { const [k, st] = b.dataset.pstage.split("|"), x = units.find(y => y.key === k); if (!x) return; try { await setStage(sel, x.n, x.u, st); toast(st === "gemaakt" ? "Stuk staat op gemaakt ✓" : st === "in bereiding" ? "Stuk staat op bezig" : "Stuk staat in de wachtrij"); } catch (e) { console.error(e); toast("Opslaan mislukt"); } });
   target.querySelectorAll("[data-blk]").forEach(b => b.onclick = e => { e.stopPropagation(); const [oid, k] = b.dataset.blk.split("|"); P.orderId = oid; P.key = k; again(); });
   const keep = (id, k) => { const el = target.querySelector(id); if (el) el.oninput = () => { F[k] = el.value; if (k === "date" && (!F.endDate || F.endDate < el.value)) { F.endDate = el.value; const e2 = target.querySelector("#pgEnd"); if (e2) e2.value = el.value; } }; };
   keep("#pgDate", "date"); keep("#pgFrom", "from"); keep("#pgTo", "to"); keep("#pgEnd", "endDate");
@@ -397,13 +406,13 @@ function openAdminLogin() {
     const email = $("#adminEmail").value.trim().toLowerCase(), pw = $("#adminPassword").value;
     const hash = await hashPw(pw, CFG.salt, CFG.iterations);
     if (email !== CFG.adminEmail.toLowerCase() || hash !== CFG.hash) return failed();
-    setUser({ uid: "admin", email, role: "admin" }, true); closeDialog(); adminPanel();
+    setAdmin(); closeDialog(); adminPanel();
   };
 }
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
   openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
-  $("#adminLogout").onclick = logout;
+  $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
 }
@@ -424,13 +433,13 @@ function adminTab() {
     target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-status]").forEach(s => s.onchange = () => update(ref(db, "orders/" + s.dataset.status), { status: s.value }).then(() => toast("Bestelstatus bijgewerkt")));
     target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; return update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }).then(() => toast("Fase bijgewerkt")).catch(() => toast("Opslaan mislukt")); });
-    target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
+    target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
   });
   else if (state.tab === "agenda") listen(ref(db, "orders"), snap => agendaTab(target, toList(snap)));
   else if (state.tab === "history") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst
-    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}${o.status === "in de maak" ? stageChips(i) : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${planBox(o, true)}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
-    target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
+    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}${showStage(o, i) ? stageChips(i) : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${planBox(o, true)}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
     target.querySelectorAll("[data-finish]").forEach(b => b.onclick = async () => {
       const o = os.find(x => x.id === b.dataset.finish); if (!o) return;
       if (!confirm(`Bestelling #${short(o.id)} afronden? De bestelling, de chat en de track & trace worden definitief verwijderd.`)) return;
@@ -441,7 +450,7 @@ function adminTab() {
   else listen(ref(db, "chats"), snap => {
     const cs = toList(snap).sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
     target.innerHTML = `<h3>Klantenchats</h3>${cs.length ? cs.map(c => `<button class="chat-list-item" data-achat="${safe(c.id)}"><b>${safe(c.email || "Klant")} · #${short(c.orderId)}</b><small>${safe(c.lastMessage || "Nieuw gesprek")}</small></button>`).join("") : "<p class='muted'>Er zijn nog geen chats.</p>"}`;
-    target.querySelectorAll("[data-achat]").forEach(b => b.onclick = () => openChat(b.dataset.achat));
+    target.querySelectorAll("[data-achat]").forEach(b => b.onclick = () => openChat(b.dataset.achat, true));
   });
 }
 
@@ -483,5 +492,6 @@ async function productEditor(id = null) {
 }
 
 /* ---------- start ---------- */
-try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid) { state.user = s; state.admin = s.role === "admin"; } } catch { sessionStorage.removeItem("novashopUser"); }
+try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid && s.role === "customer") state.user = s; else if (s?.role === "admin") { sessionStorage.removeItem("novashopUser"); sessionStorage.setItem("novashopAdmin", "1"); } } catch { sessionStorage.removeItem("novashopUser"); }
+if (sessionStorage.getItem("novashopAdmin") === "1") state.admin = true;
 refreshNav(); saveCart();
