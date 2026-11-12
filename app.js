@@ -4,9 +4,11 @@ import { ref, onValue, get, push, set, update, remove, query, orderByChild, equa
 
 const $ = s => document.querySelector(s);
 const SHIPPING = 3.95;   // verzendkosten per bestelling
-const STATUSES = ["ontvangen", "verwerkt", "gemaakt", "klaar voor bezorging"];
-const CAMERA_STATUSES = ["ontvangen", "verwerkt", "gemaakt", "klaar voor bezorging"];   // camera tonen bij alle bestelstatussen
-const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false };
+const STATUSES = ["ontvangen", "verwerkt", "in de maak", "gemaakt", "klaar voor bezorging"];
+const STAGES = ["in wachtrij", "in bereiding", "gemaakt"];   // fase per product zolang de bestelling "in de maak" is
+const stageOf = i => STAGES.includes(i.stage) ? i.stage : STAGES[0];
+const CAMERA_STATUSES = [...STATUSES];   // camera tonen bij alle bestelstatussen
+const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, orderNote: "" };
 const overlay = $("#overlay"), content = $("#dialogContent");
 let unsubs = [];                       // listeners van het open dialoogvenster
 $("#year").textContent = new Date().getFullYear();
@@ -102,7 +104,7 @@ function showProduct(id) {
 $("#cartBtn").onclick = showCart;
 function showCart() {
   const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0), total = sub + SHIPPING;
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, x.option)), issue = state.loaded ? cartIssue(x) : ""; return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${x.option ? `<small>${safe(x.optionLabel || "Keuze")}: <b>${safe(x.option)}</b></small>` : ""}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)}</span></div></div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, x.option)), issue = state.loaded ? cartIssue(x) : ""; return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${x.option ? `<small>${safe(x.optionLabel || "Keuze")}: <b>${safe(x.option)}</b></small>` : ""}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)}</span></div></div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, x.option) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => itemKey(x.id, x.option) === b.dataset.qty); if (!it) return;
@@ -110,6 +112,7 @@ function showCart() {
     saveCart(); showCart();
   });
   $("#continue")?.addEventListener("click", closeDialog);
+  $("#orderNote")?.addEventListener("input", e => state.orderNote = e.target.value);
   $("#checkout")?.addEventListener("click", () => state.user && !state.admin ? placeOrder() : authForm("login", "Log in met een klantaccount om je bestelling af te ronden."));
 }
 
@@ -153,13 +156,14 @@ async function placeOrder() {
   if (bad.length) { state.cart = state.cart.filter(c => !cartIssue(c)); saveCart(); toast("Niet meer beschikbaar en uit je winkelwagen gehaald: " + bad.map(b => b.title + (b.option ? ` (${b.option})` : "")).join(", ")); return showCart(); }
   const items = state.cart.map(c => { const p = state.products.find(x => x.id === c.id); return { id: c.id, title: p.title, price: Number(p.price), qty: c.qty, ...(optList(p).length ? { option: c.option, optionLabel: p.optionLabel || "Keuze" } : {}) }; });
   const subtotal = items.reduce((n, i) => n + i.price * i.qty, 0), total = subtotal + SHIPPING;
+  const note = (state.orderNote || "").trim().slice(0, 500);
   const orderKey = push(ref(db, "orders")).key, chatKey = push(ref(db, "chats")).key, msgKey = push(ref(db, `chats/${chatKey}/messages`)).key, now = Date.now();
   try {
     await update(ref(db), {                         // alles-of-niets in één schrijfactie
-      ["orders/" + orderKey]: { userId: state.user.uid, email: state.user.email, items, subtotal, shipping: SHIPPING, total, status: STATUSES[0], createdAt: now, chatId: chatKey },
+      ["orders/" + orderKey]: { userId: state.user.uid, email: state.user.email, items, subtotal, shipping: SHIPPING, total, status: STATUSES[0], createdAt: now, chatId: chatKey, ...(note ? { note } : {}) },
       ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, email: state.user.email, createdAt: now, lastMessage: "Bestelling geplaatst", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is ontvangen. Totaal: ${money(total)} (incl. ${money(SHIPPING)} verzendkosten). Stel hier gerust je vragen.`, createdAt: now } } }
     });
-    state.cart = []; saveCart(); toast("Bestelling geplaatst! Je chat is geopend."); openChat(chatKey);
+    state.cart = []; state.orderNote = ""; saveCart(); toast("Bestelling geplaatst! Je chat is geopend."); openChat(chatKey);
   } catch (e) { console.error(e); toast("Bestellen lukte niet. Probeer het opnieuw."); }
 }
 function showMyOrders() {
@@ -220,7 +224,7 @@ function showOrderTracking(id) {
   listen(ref(db, "orders/" + id), snap => {
     const o = snap.val(); if (!o) return; const idx = STATUSES.indexOf(o.status);
     renderCamera(CAMERA_STATUSES.includes(o.status), () => camShown, v => camShown = v);
-    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}</div>`).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
+    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${o.status === "in de maak" ? ` <span class="stage-chip st${STAGES.indexOf(stageOf(i))}">${stageOf(i)}</span>` : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
     $("#trackChat").onclick = () => o.chatId && openChat(o.chatId);
   });
 }
@@ -314,13 +318,14 @@ function adminTab() {
   });
   else if (state.tab === "orders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
-    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small></div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)} × ${i.qty}</span><select data-stage="${safe(o.id)}" data-i="${n}">${STAGES.map(st => `<option ${stageOf(i) === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-status]").forEach(s => s.onchange = () => update(ref(db, "orders/" + s.dataset.status), { status: s.value }).then(() => toast("Bestelstatus bijgewerkt")));
+    target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = () => update(ref(db, `orders/${sel.dataset.stage}/items/${sel.dataset.i}`), { stage: sel.value }).then(() => toast("Fase bijgewerkt")).catch(() => toast("Opslaan mislukt")));
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
   });
   else if (state.tab === "history") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst
-    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}</div>`).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}${o.status === "in de maak" ? ` <span class="stage-chip st${STAGES.indexOf(stageOf(i))}">${stageOf(i)}</span>` : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
     target.querySelectorAll("[data-finish]").forEach(b => b.onclick = async () => {
       const o = os.find(x => x.id === b.dataset.finish); if (!o) return;

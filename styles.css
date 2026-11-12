@@ -85,3 +85,15 @@
 .order-card small{color:var(--muted);font-size:12px}
 .order-when{font-weight:700;color:#31577f!important}
 .order-card .admin-actions{justify-content:flex-start;margin-top:4px}
+
+.note-field{margin:0 0 4px}
+.order-note{background:#fff8dc;border-radius:9px;padding:9px 12px;font-size:12px;color:#5b4a12;margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.stage-panel{margin-top:10px;padding:10px 12px;background:#f5f8fc;border-radius:10px;display:grid;gap:8px}
+.stage-panel>b{font-size:11px;color:#52647b;letter-spacing:.4px}
+.stage-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px}
+.stage-row span{min-width:0;overflow-wrap:anywhere}
+.stage-row select{max-width:150px}
+.stage-chip{display:inline-block;border-radius:20px;padding:2px 9px;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.4px;margin-left:4px}
+.stage-chip.st0{background:#eef1f5;color:#6b7a90}
+.stage-chip.st1{background:#fff3d6;color:#9a6a00}
+.stage-chip.st2{background:#e1f5e8;color:#237a45}
