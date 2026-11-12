@@ -11,7 +11,7 @@ const stageOf = i => STAGES.includes(i.stage) ? i.stage : STAGES[0];
 const unitStages = i => Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, n) => STAGES.includes(i.stages?.[n]) ? i.stages[n] : stageOf(i));
 const stageChips = i => { const u = unitStages(i); return u.length === 1 ? ` <span class="stage-chip st${STAGES.indexOf(u[0])}">${u[0]}</span>` : `<span class="unit-stages">${u.map((st, n) => `<span class="stage-chip st${STAGES.indexOf(st)}">Stuk ${n + 1}: ${st}</span>`).join("")}</span>`; };
 const CAMERA_STATUSES = [...STATUSES];   // camera tonen bij alle bestelstatussen
-const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, orderNote: "" };
+const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, orderNote: "", plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 let unsubs = [];                       // listeners van het open dialoogvenster
 $("#year").textContent = new Date().getFullYear();
@@ -227,7 +227,7 @@ function showOrderTracking(id) {
   listen(ref(db, "orders/" + id), snap => {
     const o = snap.val(); if (!o) return; const idx = STATUSES.indexOf(o.status);
     renderCamera(CAMERA_STATUSES.includes(o.status), () => camShown, v => camShown = v);
-    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${o.status === "in de maak" ? stageChips(i) : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
+    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${o.status === "in de maak" ? stageChips(i) : ""}${Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, u) => slotLine(o, (o.items || []).indexOf(i), u)).join("")}</div>`).join("")}</div>${planBox(o, false)}${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
     $("#trackChat").onclick = () => o.chatId && openChat(o.chatId);
   });
 }
@@ -288,6 +288,106 @@ function openChat(id) {
   }).catch(() => toast("Chat laden mislukt."));
 }
 
+
+/* ---------- agenda / printplanning ---------- */
+const HOUR_PX = 44;
+const DAYNAMES = ["Maandag", "Dinsdag", "Woensdag", "Donderdag", "Vrijdag", "Zaterdag", "Zondag"];
+const pad2 = n => String(n).padStart(2, "0");
+const dateStr = d => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const timeStr = d => `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+const toTs = (date, time) => new Date(`${date}T${time}`).getTime();
+const whenShort = t => new Date(t).toLocaleString("nl-NL", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+const mondayOf = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; };
+// elk stuk van een bestelling is apart in te plannen: 1 kerstboom + 3 openers = 4 stukken
+const unitsOf = o => (o.items || []).flatMap((i, n) => { const of = Math.max(1, Number(i.qty) || 1); return Array.from({ length: of }, (_, u) => ({ key: `${n}_${u}`, item: i, n, u, of })); });
+const slotOf = (o, key) => { const p = o.plan?.[key]; return p && Number.isFinite(p.startTs) && Number.isFinite(p.endTs) ? p : null; };
+const planInfo = o => { const us = unitsOf(o), done = us.filter(x => slotOf(o, x.key)); return { total: us.length, planned: done.length, ready: us.length && done.length === us.length ? Math.max(...done.map(x => slotOf(o, x.key).endTs)) : null }; };
+const unitLabel = x => `${x.item.title}${x.item.option ? " · " + x.item.option : ""}${x.of > 1 ? ` (stuk ${x.u + 1} van ${x.of})` : ""}`;
+const hueOf = id => [...String(id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
+// samenvatting voor klant en beheerder: verwachte klaartijd of hoeveel nog ingepland moet worden
+const planBox = (o, forAdmin) => { const p = planInfo(o); if (!p.total) return ""; return `<div class="plan-box ${p.ready ? "ready" : ""}">${p.ready ? `<b>🖨️ Verwacht klaar met printen:</b> ${whenShort(p.ready)}` : `<b>🖨️ Printplanning:</b> ${p.planned === 0 ? "nog niet ingepland" : `${p.planned} van ${p.total} stuks ingepland`}${forAdmin ? "" : " · de verwachte klaartijd volgt zodra alles is ingepland"}`}</div>`; };
+const slotLine = (o, n, u) => { const sl = slotOf(o, `${n}_${u}`); return sl ? `<small class="slot-line">🗓️ ${whenShort(sl.startTs)} – ${new Date(sl.endTs).toLocaleTimeString("nl-NL", { hour: "2-digit", minute: "2-digit" })}</small>` : ""; };
+async function setSlot(o, key, slot) {
+  const plan = { ...(o.plan || {}) }; if (slot) plan[key] = slot; else delete plan[key];
+  const { ready } = planInfo({ ...o, plan });
+  await update(ref(db), { [`orders/${o.id}/plan/${key}`]: slot, [`orders/${o.id}/estimatedReady`]: ready });
+}
+function agendaTab(target, orders) {
+  const P = state.plan; P.orders = orders;
+  const os = [...orders].sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oud boven, nieuw onder
+  if (!P.week) P.week = mondayOf(new Date());
+  const sel = os.find(o => o.id === P.orderId) || null; if (!sel) { P.orderId = null; P.key = null; }
+  const units = sel ? unitsOf(sel) : [];
+  if (sel && !units.some(x => x.key === P.key)) P.key = (units.find(x => !slotOf(sel, x.key)) || units[0])?.key || null;
+  const F = P.form, info = sel ? planInfo(sel) : null;
+  const all = os.flatMap(o => unitsOf(o).map(x => ({ o, x, sl: slotOf(o, x.key) })).filter(a => a.sl));
+  const days = Array.from({ length: 7 }, (_, i) => new Date(P.week.getFullYear(), P.week.getMonth(), P.week.getDate() + i));
+  const todayS = dateStr(new Date());
+  const col = (d) => {
+    const ds = d.getTime(), de = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1).getTime();
+    return all.filter(a => a.sl.startTs < de && a.sl.endTs > ds).map(a => {
+      const s = new Date(Math.max(a.sl.startTs, ds)), e = a.sl.endTs >= de ? null : new Date(a.sl.endTs);
+      const m1 = s.getHours() * 60 + s.getMinutes(), m2 = e ? e.getHours() * 60 + e.getMinutes() : 1440;
+      const h = Math.max(18, (m2 - m1) / 60 * HOUR_PX - 2), isSel = a.o.id === P.orderId && a.x.key === P.key;
+      return `<button type="button" class="ag-block ${isSel ? "sel" : ""}" data-blk="${safe(a.o.id)}|${a.x.key}" style="top:${m1 / 60 * HOUR_PX}px;height:${h}px;background:hsl(${hueOf(a.o.id)} 55% 42%)" title="#${short(a.o.id)} · ${safe(unitLabel(a.x))}"><b>#${short(a.o.id)}</b> ${safe(unitLabel(a.x))}<br><small>${timeStr(new Date(a.sl.startTs))}–${timeStr(new Date(a.sl.endTs))}</small></button>`;
+    }).join("");
+  };
+  const prevScroll = target.querySelector(".ag-wrap")?.scrollTop;
+  if (prevScroll != null) P.scroll = prevScroll;
+  target.innerHTML = `<h3>Agenda · printafspraken inplannen</h3>
+  <div class="plan-panel">
+    <div class="plan-step"><b>1. Kies een bestelling</b> <small>(oudste bovenaan, nieuwste onderaan)</small>
+      <div class="plan-list">${os.length ? os.map(o => { const p = planInfo(o); return `<button type="button" class="plan-item ${o.id === P.orderId ? "active" : ""}" data-pord="${safe(o.id)}"><b>#${short(o.id)}</b> · ${when(o.createdAt)}<small>${safe(o.email)} · ${p.total} stuks · ${p.ready ? "✓ alles ingepland" : `${p.planned}/${p.total} ingepland`}</small></button>`; }).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}</div></div>
+    ${sel ? `<div class="plan-step"><b>2. Kies een product uit bestelling #${short(sel.id)}</b> <small>(elk stuk apart)</small>
+      <div class="plan-list">${units.map(x => { const sl = slotOf(sel, x.key); return `<div class="plan-unit ${x.key === P.key ? "active" : ""}"><button type="button" class="plan-item" data-punit="${x.key}"><b>${safe(unitLabel(x))}</b><small>${sl ? `ingepland: ${whenShort(sl.startTs)} – ${timeStr(new Date(sl.endTs))}` : "nog niet ingepland"}</small></button>${sl ? `<button type="button" class="remove-item" data-pdel="${x.key}">Verwijder</button>` : ""}</div>`; }).join("")}</div></div>
+    <div class="plan-step"><b>3. Datum en tijd</b>
+      <div class="plan-form"><label>Datum<input type="date" id="pgDate" value="${F.date}"></label><label>Van<input type="time" id="pgFrom" value="${F.from}" step="900"></label><label>Tot<input type="time" id="pgTo" value="${F.to}" step="900"></label><label>Einddatum<input type="date" id="pgEnd" value="${F.endDate}"></label></div>
+      <button type="button" class="primary" id="pgGo">Inplannen</button></div>
+    ${planBox(sel, true)}` : ""}
+  </div>
+  <div class="ag-nav"><button type="button" class="secondary" id="agPrev">‹ Vorige week</button><b>${days[0].toLocaleDateString("nl-NL", { day: "numeric", month: "long" })} – ${days[6].toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" })}</b><button type="button" class="secondary" id="agToday">Vandaag</button><button type="button" class="secondary" id="agNext">Volgende week ›</button></div>
+  <p class="hint">Klik op een uur in de agenda om die datum en tijd in te vullen. Bezette tijden kunnen niet dubbel worden ingepland (er is één printer).</p>
+  <div class="ag-wrap"><div class="ag-grid"><div class="ag-corner"></div>${days.map((d, i) => `<div class="ag-head ${dateStr(d) === todayS ? "today" : ""}">${DAYNAMES[i]}<small>${d.getDate()}/${d.getMonth() + 1}</small></div>`).join("")}
+    <div class="ag-times">${Array.from({ length: 24 }, (_, h) => `<div>${pad2(h)}:00</div>`).join("")}</div>
+    ${days.map(d => `<div class="ag-col ${dateStr(d) === todayS ? "today" : ""}" data-day="${dateStr(d)}">${col(d)}</div>`).join("")}</div></div>`;
+  const wrap = target.querySelector(".ag-wrap"); wrap.scrollTop = P.scroll;
+  const again = () => agendaTab(target, P.orders);
+  target.querySelectorAll("[data-pord]").forEach(b => b.onclick = () => { P.orderId = b.dataset.pord; P.key = null; again(); });
+  target.querySelectorAll("[data-punit]").forEach(b => b.onclick = () => { P.key = b.dataset.punit; again(); });
+  target.querySelectorAll("[data-pdel]").forEach(b => b.onclick = async () => { try { await setSlot(sel, b.dataset.pdel, null); toast("Afspraak verwijderd"); } catch (e) { console.error(e); toast("Verwijderen mislukt"); } });
+  target.querySelectorAll("[data-blk]").forEach(b => b.onclick = e => { e.stopPropagation(); const [oid, k] = b.dataset.blk.split("|"); P.orderId = oid; P.key = k; again(); });
+  const keep = (id, k) => { const el = target.querySelector(id); if (el) el.oninput = () => { F[k] = el.value; if (k === "date" && (!F.endDate || F.endDate < el.value)) { F.endDate = el.value; const e2 = target.querySelector("#pgEnd"); if (e2) e2.value = el.value; } }; };
+  keep("#pgDate", "date"); keep("#pgFrom", "from"); keep("#pgTo", "to"); keep("#pgEnd", "endDate");
+  target.querySelector("#agPrev").onclick = () => { P.week = new Date(P.week.getFullYear(), P.week.getMonth(), P.week.getDate() - 7); again(); };
+  target.querySelector("#agNext").onclick = () => { P.week = new Date(P.week.getFullYear(), P.week.getMonth(), P.week.getDate() + 7); again(); };
+  target.querySelector("#agToday").onclick = () => { P.week = mondayOf(new Date()); again(); };
+  target.querySelectorAll(".ag-col").forEach(c => c.onclick = e => {
+    const h = Math.min(23, Math.max(0, Math.floor((e.clientY - c.getBoundingClientRect().top) / HOUR_PX)));
+    const [y, m, d] = c.dataset.day.split("-").map(Number), s = new Date(y, m - 1, d, h), en = new Date(s.getTime() + 3600000);
+    Object.assign(F, { date: dateStr(s), from: timeStr(s), to: timeStr(en), endDate: dateStr(en) });
+    if (!sel) toast("Kies eerst een bestelling en een product"); again();
+  });
+  const go = target.querySelector("#pgGo");
+  if (go) go.onclick = async () => {
+    if (!sel || !P.key) return toast("Kies eerst een bestelling en een product");
+    if (!F.date || !F.from || !F.to) return toast("Vul datum, van- en tot-tijd in");
+    const startTs = toTs(F.date, F.from), endTs = toTs(F.endDate || F.date, F.to);
+    if (!Number.isFinite(startTs) || !Number.isFinite(endTs)) return toast("Ongeldige datum of tijd");
+    if (endTs <= startTs) return toast("De eindtijd moet na de starttijd liggen");
+    const clash = all.find(a => !(a.o.id === sel.id && a.x.key === P.key) && a.sl.startTs < endTs && startTs < a.sl.endTs);
+    if (clash) return toast(`Die tijd is al bezet door bestelling #${short(clash.o.id)} (${whenShort(clash.sl.startTs)} – ${timeStr(new Date(clash.sl.endTs))})`);
+    go.disabled = true;
+    try {
+      await setSlot(sel, P.key, { date: F.date, start: F.from, end: F.to, endDate: F.endDate || F.date, startTs, endTs });
+      const unplanned = units.find(x => x.key !== P.key && !slotOf(sel, x.key));
+      if (unplanned) P.key = unplanned.key;
+      Object.assign(F, { date: F.endDate || F.date, from: F.to, to: "", endDate: F.endDate || F.date });   // volgende stuk begint standaard waar dit eindigt
+      toast("Printafspraak ingepland");
+    } catch (e) { console.error(e); toast("Inplannen mislukt. Probeer het opnieuw."); }
+    finally { go.disabled = false; }
+  };
+}
+
 /* ---------- sitebeheer ---------- */
 $("#adminEntry").onclick = () => state.admin ? adminPanel() : openAdminLogin();
 function openAdminLogin() {
@@ -302,7 +402,7 @@ function openAdminLogin() {
 }
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="history">Bestellingen</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logout;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
@@ -321,14 +421,15 @@ function adminTab() {
   });
   else if (state.tab === "orders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
-    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-status]").forEach(s => s.onchange = () => update(ref(db, "orders/" + s.dataset.status), { status: s.value }).then(() => toast("Bestelstatus bijgewerkt")));
     target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; return update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }).then(() => toast("Fase bijgewerkt")).catch(() => toast("Opslaan mislukt")); });
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
   });
+  else if (state.tab === "agenda") listen(ref(db, "orders"), snap => agendaTab(target, toList(snap)));
   else if (state.tab === "history") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst
-    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}${o.status === "in de maak" ? stageChips(i) : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}${o.status === "in de maak" ? stageChips(i) : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${planBox(o, true)}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat));
     target.querySelectorAll("[data-finish]").forEach(b => b.onclick = async () => {
       const o = os.find(x => x.id === b.dataset.finish); if (!o) return;
