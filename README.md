@@ -40,26 +40,23 @@ Zonder Firebase Authentication of een backend kan de browsercode zelf niets echt
 
 ## Livecamera instellen (Bambu Lab A1 mini)
 
-**Belangrijk:** de websitecode kan de camera niet zelf aanzetten. De printer moet bereikbaar zijn via een pc op hetzelfde netwerk en de stream moet via HTTPS beschikbaar worden gemaakt. GitHub Pages kan niet rechtstreeks bij een lokaal IP-adres zoals `192.168.x.x`.
+**Belangrijk:** de printer moet bereikbaar zijn via een pc op hetzelfde netwerk, en de stream moet via HTTPS online komen. GitHub Pages kan niet rechtstreeks bij een lokaal IP-adres zoals `192.168.x.x`.
 
-1. Zet op de printer **LAN Mode Liveview** aan. Noteer het lokale IP-adres en de Access Code.
-2. Installeer Python 3 op een pc die aan hetzelfde netwerk hangt als de printer.
-3. Stel de omgevingsvariabelen in en start `bambu_cam.py`:
-   - Windows PowerShell:
-     ```powershell
-     $env:PRINTER_IP="192.168.1.50"
-     $env:ACCESS_CODE="VUL_HIER_DE_ACCESS_CODE_IN"
-     python bambu_cam.py
-     ```
-   - macOS/Linux:
-     ```bash
-     PRINTER_IP="192.168.1.50" ACCESS_CODE="VUL_HIER_DE_ACCESS_CODE_IN" python3 bambu_cam.py
-     ```
-   Vervang het voorbeeld-IP en de Access Code door de waarden van je printer. Bewaar de Access Code privé.
-4. Test op die pc: `http://127.0.0.1:1984/api/stream.mjpeg`. Je moet livebeeld zien.
-5. Maak de camerabrug bereikbaar met een **HTTPS-tunnel** naar `http://127.0.0.1:1984` (bijvoorbeeld Cloudflare Tunnel) met een eigen hostnaam, bijvoorbeeld `camera.jouwdomein.nl`.
-6. Test `https://camera.jouwdomein.nl/api/stream.mjpeg` in een browser.
-7. Vul die exacte HTTPS-URL in als `cameraUrl` in `beheer-config.js`, commit/push de bestanden naar GitHub en wacht tot GitHub Pages is bijgewerkt.
+1. Zet op de printer **LAN Mode Liveview** aan. Noteer het lokale IP-adres en de Access Code (8 tekens).
+2. Installeer Python 3 op een pc die aan hetzelfde netwerk hangt als de printer (vink *Add to PATH* aan).
+3. Start in PowerShell, in de map van de site:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File .\start-camera.ps1
+   ```
+   Het script **vraagt zelf om het IP-adres en de Access Code** (en onthoudt ze in je gebruikersmap, niet in GitHub), controleert of de printer bereikbaar is, installeert zo nodig `cloudflared`, start de tunnel en **geeft het nieuwe tunnel-adres automatisch door aan de website** via Firebase. Je hoeft `cameraUrl` dus niet meer aan te passen en te pushen.
+   Handmatig kan ook: `python bambu_cam.py --tunnel` (of zonder `--tunnel` alleen de lokale brug).
+4. Test lokaal: `http://127.0.0.1:1984/api/stream.mjpeg`. Je moet livebeeld zien.
+5. Wil je liever een vaste URL? Gebruik een named tunnel met eigen domein en zet die in `beheer-config.js` (`cameraUrl`). Een adres in Firebase (automatisch) wint van `beheer-config.js`.
+
+**Eenmalig:** publiceer de bijgewerkte `database.rules.json` in de Firebase-console (Realtime Database > Regels), anders kan de camera-tab niets opslaan.
+
+### Camera uitschakelen (Sitebeheer > Camera)
+In Sitebeheer staat een tab **Camera**. Daar zet je de camera voor een tijd uit (30 min, 1, 3, 12, 24 uur of tot je hem zelf weer aanzet). Klanten zien dan in plaats van het beeld: *"Sorry, we ervaren op dit moment problemen met de camera. We proberen dit zo snel mogelijk op te lossen."* Na afloop gaat de camera vanzelf weer aan.
 
 ### Privacy en veiligheid
 De stream is toegankelijk voor bezoekers van de website die de URL kunnen openen. Deel de URL niet openbaar als je dat niet wilt. Zet nooit het printer-IP of de Access Code in `beheer-config.js` of GitHub; alleen de publieke HTTPS-stream-URL hoort daar. Laat de pc en de tunnel draaien zolang klanten livebeeld moeten kunnen zien.

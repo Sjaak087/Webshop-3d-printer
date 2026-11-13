@@ -184,23 +184,34 @@ function showMyOrders() {
     content.querySelectorAll("[data-track]").forEach(b => b.onclick = () => showOrderTracking(b.dataset.track));
   });
 }
+let camStop = null, camUrlShown = "", camCfg = {};   // camCfg = settings/camera uit Firebase (aan/uit, tijdelijk uit, stream-URL)
+const CAM_MSG = "Sorry, we ervaren op dit moment problemen met de camera. We proberen dit zo snel mogelijk op te lossen.";
+const camDisabled = () => camCfg.enabled === false && (!camCfg.until || camCfg.until > Date.now());
+function camHalt() { if (camStop) camStop(); camStop = null; }
 function renderCamera(show, getShown, setShown) {
   const box = $("#camBox");
   if (!box) return;
   if (!show) {
-    if (getShown() !== false) { setShown(false); box.innerHTML = ""; }
+    if (getShown() !== false) { camHalt(); setShown(false); box.innerHTML = ""; }
     return;
   }
-  const url = String(CFG.cameraUrl || "").trim();
+  if (camDisabled()) {
+    if (getShown() !== "off") {
+      camHalt(); setShown("off");
+      box.innerHTML = `<div class="cam-card"><div class="cam-head"><b>Printercamera</b><span class="cam-off">TIJDELIJK UIT</span></div><div class="cam-offline"><b class="cam-off-title">Camera tijdelijk niet beschikbaar</b><br><small>${CAM_MSG}</small></div></div>`;
+    }
+    return;
+  }
+  const url = String(camCfg.url || CFG.cameraUrl || "").trim();   // URL uit Firebase (door bambu_cam.py) wint van beheer-config.js
   if (!url) {
     if (getShown() !== "setup") {
-      setShown("setup");
+      camHalt(); setShown("setup");
       box.innerHTML = `<div class="cam-card"><div class="cam-head"><b>Printercamera</b><span class="cam-wait">NIET INGESTELD</span></div><div class="cam-offline">De livecamera is nog niet gekoppeld.<br><small>Stel de camerabrug in en vul daarna de HTTPS-stream-URL in bij <code>beheer-config.js</code> (cameraUrl).</small></div></div>`;
     }
     return;
   }
-  if (getShown() === true) return;
-  setShown(true);
+  if (getShown() === true && camUrlShown === url) return;
+  camHalt(); camUrlShown = url; setShown(true);
   box.innerHTML = `<div class="cam-card"><div class="cam-head"><b>Live meekijken</b><span class="cam-wait" id="camState">● VERBINDEN…</span></div><div class="cam-frame"><img id="camImg" alt="Livebeeld van de 3D-printer"><div class="cam-offline hidden" id="camOff"><b class="cam-off-title">3D printer is offline</b><br><small>We proberen het automatisch opnieuw.</small><br><button class="secondary" id="camRetry">Opnieuw proberen</button></div></div></div>`;
   const img = $("#camImg"), off = $("#camOff"), label = $("#camState");
   let loadTimer, retryTimer, pollTimer, statusOk = false, fails = 0;
@@ -225,15 +236,23 @@ function renderCamera(show, getShown, setShown) {
   img.onload = () => { fails = 0; clearTimeout(loadTimer); setLabel("● LIVE", "cam-live"); clearInterval(pollTimer); pollTimer = setInterval(poll, 8000); };
   img.onerror = offline;
   $("#camRetry").onclick = () => { fails = 0; load(); };
+  camStop = () => { stopAll(); img.onload = img.onerror = null; img.removeAttribute("src"); };
   unsubs.push(() => { stopAll(); img.onload = img.onerror = null; });
   load();
 }
 function showOrderTracking(id, asAdmin = false) {
   openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Bestelling #${short(id)}</h2><div id="trackBox"></div><div id="camBox"></div>`);
-  let camShown = null;
+  let camShown = null, curOrder = null, camTimer;
+  const drawCam = () => {
+    clearTimeout(camTimer);
+    renderCamera(!!curOrder && CAMERA_STATUSES.includes(curOrder.status), () => camShown, v => camShown = v);
+    if (camCfg.enabled === false && camCfg.until > Date.now()) camTimer = setTimeout(drawCam, Math.min(camCfg.until - Date.now() + 500, 2147483000));   // na afloop vanzelf weer aan
+  };
+  unsubs.push(() => clearTimeout(camTimer));
+  unsubs.push(onValue(ref(db, "settings/camera"), snap => { camCfg = snap.val() || {}; drawCam(); }, () => {}));
   listen(ref(db, "orders/" + id), snap => {
     const o = snap.val(); if (!o) return; const idx = STATUSES.indexOf(o.status);
-    renderCamera(CAMERA_STATUSES.includes(o.status), () => camShown, v => camShown = v);
+    curOrder = o; drawCam();
     $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${showStage(o, i) ? stageChips(i) : ""}${Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, u) => slotLine(o, (o.items || []).indexOf(i), u)).join("")}</div>`).join("")}</div>${planBox(o, false)}${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
     $("#trackChat").onclick = () => o.chatId && openChat(o.chatId, asAdmin);
   });
@@ -411,10 +430,25 @@ function openAdminLogin() {
 }
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="camera">Camera</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
+}
+function cameraTab(target) {
+  const save = data => update(ref(db, "settings/camera"), { ...data, updatedAt: Date.now() }).catch(() => toast("Opslaan mislukt. Zijn de Firebase-regels (database.rules.json) al gepubliceerd?"));
+  listen(ref(db, "settings/camera"), snap => {
+    const c = snap.val() || {}; camCfg = c;
+    const off = camDisabled();
+    const until = off && c.until ? new Date(c.until).toLocaleString("nl-NL", { weekday: "short", hour: "2-digit", minute: "2-digit" }) : "";
+    const src = c.url ? "automatisch doorgegeven door bambu_cam.py" : CFG.cameraUrl ? "uit beheer-config.js" : "nog niet ingesteld";
+    target.innerHTML = `<h3>Printercamera</h3><div class="cam-admin"><div class="cam-admin-state ${off ? "is-off" : "is-on"}"><span class="dot"></span><div><b>${off ? "Camera is uitgeschakeld" : "Camera staat aan"}</b><small>${off ? (until ? `Gaat automatisch weer aan op ${safe(until)}` : "Blijft uit totdat je hem weer inschakelt") : "Klanten zien het livebeeld bij hun bestelling"}</small></div></div>${off ? `<button class="primary full" id="camToggle">Camera weer inschakelen</button>` : `<div class="stack"><label>Hoe lang uitschakelen?<select id="camDur"><option value="30">30 minuten</option><option value="60" selected>1 uur</option><option value="180">3 uur</option><option value="720">12 uur</option><option value="1440">24 uur</option><option value="0">Tot ik hem weer aanzet</option></select></label><button class="primary full" id="camToggle">Camera uitschakelen</button></div>`}<p class="muted cam-admin-src">Stream-adres: ${safe(src)}</p><p class="eyebrow cam-admin-lbl">ZO ZIEN KLANTEN HET ALS DE CAMERA UIT STAAT</p><div class="cam-card"><div class="cam-head"><b>Printercamera</b><span class="cam-off">TIJDELIJK UIT</span></div><div class="cam-offline"><b class="cam-off-title">Camera tijdelijk niet beschikbaar</b><br><small>${CAM_MSG}</small></div></div></div>`;
+    $("#camToggle").onclick = () => {
+      if (off) return save({ enabled: true, until: 0 }).then(() => toast("Camera weer ingeschakeld"));
+      const m = Number($("#camDur").value) || 0;
+      save({ enabled: false, until: m ? Date.now() + m * 60000 : 0 }).then(() => toast("Camera uitgeschakeld"));
+    };
+  });
 }
 function adminTab() {
   content.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab === state.tab));
@@ -435,6 +469,7 @@ function adminTab() {
     target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; return update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }).then(() => toast("Fase bijgewerkt")).catch(() => toast("Opslaan mislukt")); });
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
   });
+  else if (state.tab === "camera") cameraTab(target);
   else if (state.tab === "agenda") listen(ref(db, "orders"), snap => agendaTab(target, toList(snap)));
   else if (state.tab === "history") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst

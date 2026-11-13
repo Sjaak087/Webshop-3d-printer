@@ -3,7 +3,9 @@
     "products": {
       ".read": true,
       ".write": true,
-      "$id": { ".validate": "newData.hasChildren(['title','price']) && (!newData.hasChild('image') || newData.child('image').val().length < 450000)" }
+      "$id": {
+        ".validate": "newData.hasChildren(['title','price']) && (!newData.hasChild('image') || newData.child('image').val().length < 450000)"
+      }
     },
     "accounts": {
       ".read": false,
@@ -13,7 +15,26 @@
         ".validate": "newData.hasChildren(['email','salt','hash'])"
       }
     },
-    "orders": { ".read": true, ".write": true, ".indexOn": ["userId"] },
-    "chats": { ".read": true, ".write": true, ".indexOn": ["userId"] }
+    "orders": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": [
+        "userId"
+      ]
+    },
+    "chats": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": [
+        "userId"
+      ]
+    },
+    "settings": {
+      ".read": true,
+      ".write": true,
+      "camera": {
+        ".validate": "newData.hasChildren() && (!newData.hasChild('url') || (newData.child('url').isString() && newData.child('url').val().matches(/^https:\\/\\/.*/) && newData.child('url').val().length < 300))"
+      }
+    }
   }
 }

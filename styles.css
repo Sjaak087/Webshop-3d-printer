@@ -148,3 +148,25 @@
 /* Productafbeelding altijd volledig zichtbaar (niet bijgesneden) */
 .product-image,.detail-image{position:relative;grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,1fr)}
 .product-image img,.detail-image img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;padding:6px}
+
+/* ---------- camera-tab in sitebeheer ---------- */
+.cam-admin{display:grid;gap:14px}.cam-admin-state{display:flex;gap:12px;align-items:center;padding:14px;border-radius:12px;border:1px solid var(--line);background:#f5f8fc}.cam-admin-state small{display:block;color:var(--muted);font-size:12px;margin-top:3px}.cam-admin-state .dot{width:12px;height:12px;border-radius:50%;flex:none;background:#2fa866}.cam-admin-state.is-off{background:#fff4f4;border-color:#f1cfcf}.cam-admin-state.is-off .dot{background:#d33}.cam-admin .full{margin-top:0}.cam-admin-src{margin:0}.cam-admin-lbl{margin:8px 0 0}
+
+/* ---------- sitebeheer op telefoon ---------- */
+.dialog{max-height:90vh;max-height:90dvh;overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.tabs{overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}.tabs button{flex:none;white-space:nowrap}
+@media(max-width:620px){
+  .overlay{padding:0;align-items:end}
+  .dialog{width:100%;max-height:94vh;max-height:94dvh;border-radius:20px 20px 0 0;padding:22px 14px calc(22px + env(safe-area-inset-bottom))}
+  .dialog:has(.ag-wrap){width:100%}
+  .close{position:sticky;float:right;top:0;right:0;margin:-8px -2px 0 8px;z-index:3;width:40px;height:40px}
+  .admin-head{padding-right:30px}.tabs{margin:14px -14px;padding:0 10px}.tabs button{padding:13px 12px;font-size:14px}
+  input,textarea,select{font-size:16px!important}
+  button.primary,button.secondary,.tabs button,.admin-actions button{min-height:44px}
+  .admin-row{align-items:flex-start;flex-direction:column;gap:10px}.admin-row>*{width:100%}
+  .admin-actions{width:100%;justify-content:stretch}.admin-actions button{flex:1 1 auto}
+  .admin-toolbar{flex-wrap:wrap}.admin-toolbar h3{max-width:none}.admin-toolbar .primary{width:100%}
+  .order-admin select{max-width:none;width:100%}
+  .stage-row{flex-direction:column;align-items:stretch;gap:6px}.stage-row select{width:100%}
+  .cam-admin-state{padding:12px}
+}

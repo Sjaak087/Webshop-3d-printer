@@ -4,21 +4,102 @@ Brug voor de camera van de Bambu Lab A1 / A1 mini.
 De A1 mini heeft geen RTSP maar een eigen JPEG-stroom op poort 6000. Dit script leest die stroom en biedt hem
 aan als gewone MJPEG-stream, zodat een <img> op je website hem kan tonen. Alleen standaard Python nodig.
 
-Start:   python bambu_cam.py
+Start:   python bambu_cam.py            (vraagt IP + Access Code)
+         python bambu_cam.py --tunnel   (maakt ook zelf het publieke adres en geeft het door aan de website)
 Stream:  http://localhost:1984/api/stream.mjpeg?src=a1mini
 Foto:    http://localhost:1984/api/frame.jpeg
 Status:  http://localhost:1984/api/status   (de website gebruikt dit om 'printer offline' te tonen)
 """
-import os, socket, ssl, struct, sys, threading, time
+import json, os, re, socket, ssl, struct, subprocess, sys, threading, time, urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-# ====== HIER INVULLEN ======
-PRINTER_IP = os.environ.get("PRINTER_IP", "PRINTER_IP")        # bijv. "192.168.1.50"
-ACCESS_CODE = os.environ.get("ACCESS_CODE", "32830799")        # de Access Code van de printer
-# ===========================
+# Instellingen worden gevraagd bij het starten (en onthouden in je gebruikersmap, NIET in deze map/GitHub).
+# Je kunt ze ook vooraf zetten met de omgevingsvariabelen PRINTER_IP en ACCESS_CODE.
+CONFIG_FILE = os.path.join(os.path.expanduser("~"), ".bambu_cam.json")
 PRINTER_PORT = int(os.environ.get("PRINTER_PORT", "6000"))
 LISTEN_HOST = "127.0.0.1"                                       # alleen deze pc; de tunnel verbindt hiermee
 LISTEN_PORT = int(os.environ.get("LISTEN_PORT", "1984"))
+FIREBASE_DB = "https://webshop-3cf70-default-rtdb.europe-west1.firebasedatabase.app"
+PRINTER_IP = ""
+ACCESS_CODE = ""
+USE_TUNNEL = "--tunnel" in sys.argv
+
+
+def ask_settings():
+    """Haalt IP + Access Code uit omgeving, opgeslagen bestand of vraagt ze (zodat PowerShell ze gewoon invult)."""
+    global PRINTER_IP, ACCESS_CODE
+    saved = {}
+    try:
+        with open(CONFIG_FILE, encoding="utf-8") as f:
+            saved = json.load(f)
+    except Exception:
+        pass
+    ip = os.environ.get("PRINTER_IP", "").strip() or saved.get("ip", "")
+    code = os.environ.get("ACCESS_CODE", "").strip() or saved.get("code", "")
+    if ip and code:
+        ans = input(f"Printer {ip} gebruiken? [Enter = ja, n = andere invullen]: ").strip().lower() if sys.stdin.isatty() and not os.environ.get("PRINTER_IP") else "j"
+        if ans.startswith("n"):
+            ip = code = ""
+    while not re.fullmatch(r"\d{1,3}(\.\d{1,3}){3}", ip):
+        ip = input("IP-adres van de printer (bijv. 192.168.1.50): ").strip()
+    while len(code) != 8 or not code.isalnum():
+        code = input("Access Code van de printer (8 tekens, staat op het printerscherm): ").strip()
+    PRINTER_IP, ACCESS_CODE = ip, code
+    try:
+        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+            json.dump({"ip": ip, "code": code}, f)
+    except Exception:
+        pass
+
+
+def preflight():
+    """Controleert vooraf of de printer bereikbaar is en geeft een duidelijke melding als dat niet zo is."""
+    try:
+        socket.create_connection((PRINTER_IP, PRINTER_PORT), timeout=6).close()
+        print(f"OK: printer {PRINTER_IP} is bereikbaar op poort {PRINTER_PORT}.")
+        return True
+    except Exception as e:
+        print(f"\nLET OP: geen verbinding met de printer ({PRINTER_IP}:{PRINTER_PORT}): {e}")
+        print("  - Staat 'LAN Mode Liveview' aan op de printer? (Instellingen > WLAN/LAN)")
+        print("  - Klopt het IP-adres, en zit deze pc op hetzelfde netwerk/wifi als de printer?")
+        print("  - Kijkt er al een ander programma (Bambu Studio / Handy) live mee? Sluit die.\n")
+        return False
+
+
+def publish_url(url):
+    """Zet de tunnel-URL in Firebase zodat de website hem vanzelf gebruikt (geen handmatig aanpassen meer)."""
+    try:
+        req = urllib.request.Request(f"{FIREBASE_DB}/settings/camera/url.json", data=json.dumps(url).encode(), method="PUT",
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=10).read()
+        log("tunnel-adres doorgegeven aan de website:", url)
+        return True
+    except Exception as e:
+        log("kon het adres niet naar Firebase schrijven:", e, "- zet het handmatig in beheer-config.js")
+        return False
+
+
+def start_tunnel():
+    """Start een Cloudflare quick tunnel en publiceert de nieuwe URL (cloudflared moet geinstalleerd zijn)."""
+    try:
+        proc = subprocess.Popen(["cloudflared", "tunnel", "--url", f"http://127.0.0.1:{LISTEN_PORT}"],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    except FileNotFoundError:
+        log("cloudflared niet gevonden. Installeer met:  winget install Cloudflare.cloudflared  (daarna PowerShell opnieuw openen)")
+        return None
+
+    def pump():
+        done = False
+        for line in proc.stdout:
+            m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+            if m and not done:
+                done = True
+                full = m.group(0) + "/api/stream.mjpeg?src=a1mini"
+                log("tunnel is klaar:", full)
+                publish_url(full)
+    threading.Thread(target=pump, daemon=True).start()
+    return proc
+
 
 lock = threading.Condition()
 frame = None          # laatste JPEG
@@ -144,13 +225,23 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    if PRINTER_IP == "PRINTER_IP":
-        sys.exit("Vul bovenin dit bestand eerst het IP-adres van je printer in (PRINTER_IP).")
+    ask_settings()
+    preflight()
     threading.Thread(target=reader, daemon=True).start()
     srv = ThreadingHTTPServer((LISTEN_HOST, LISTEN_PORT), Handler)
     srv.daemon_threads = True
     log(f"Camerabrug draait op http://localhost:{LISTEN_PORT}/api/stream.mjpeg?src=a1mini")
+    tunnel = start_tunnel() if USE_TUNNEL else None
+    if not USE_TUNNEL:
+        log("Tip: start met  python bambu_cam.py --tunnel  om automatisch een publiek adres te maken.")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        if tunnel:
+            tunnel.terminate()
+            try:
+                urllib.request.urlopen(urllib.request.Request(f"{FIREBASE_DB}/settings/camera/url.json", data=b"null", method="PUT"), timeout=5).read()
+            except Exception:
+                pass
