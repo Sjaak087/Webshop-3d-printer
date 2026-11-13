@@ -8,5 +8,5 @@ export const BEHEER_CONFIG = {
   // Publieke HTTPS-MJPEG-stream van bambu_cam.py via een tunnel.
   // Vul dit pas in nadat de camerabrug op de printer-pc werkt.
   // Voorbeeld: "https://camera.jouwdomein.nl/api/stream.mjpeg"
-  cameraUrl: "https://quantum-card-basement-regardless.trycloudflare.com/api/stream.mjpeg?src=a1mini"
+  cameraUrl: "https://sand-sterling-raises-occupation.trycloudflare.com/api/stream.mjpeg?src=a1mini"
 };

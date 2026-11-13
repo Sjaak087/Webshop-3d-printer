@@ -203,11 +203,11 @@ function renderCamera(show, getShown, setShown) {
   setShown(true);
   box.innerHTML = `<div class="cam-card"><div class="cam-head"><b>Live meekijken</b><span class="cam-wait" id="camState">● VERBINDEN…</span></div><div class="cam-frame"><img id="camImg" alt="Livebeeld van de 3D-printer"><div class="cam-offline hidden" id="camOff"><b class="cam-off-title">3D printer is offline</b><br><small>We proberen het automatisch opnieuw.</small><br><button class="secondary" id="camRetry">Opnieuw proberen</button></div></div></div>`;
   const img = $("#camImg"), off = $("#camOff"), label = $("#camState");
-  let loadTimer, retryTimer, pollTimer, statusOk = false;
+  let loadTimer, retryTimer, pollTimer, statusOk = false, fails = 0;
   const statusUrl = (() => { try { const u = new URL(url); u.pathname = u.pathname.replace(/stream\.mjpeg$/, "status"); u.search = ""; return u.href; } catch { return ""; } })();
   const stopAll = () => { clearTimeout(loadTimer); clearTimeout(retryTimer); clearInterval(pollTimer); };
   const setLabel = (text, cls) => { label.textContent = text; label.className = cls; };
-  const offline = () => { stopAll(); img.removeAttribute("src"); setLabel("● OFFLINE", "cam-off"); img.classList.add("hidden"); off.classList.remove("hidden"); retryTimer = setTimeout(load, 20000); };
+  const offline = () => { stopAll(); img.removeAttribute("src"); setLabel("● OFFLINE", "cam-off"); img.classList.add("hidden"); off.classList.remove("hidden"); retryTimer = setTimeout(load, Math.min(20000 * 2 ** fails++, 300000)); };   // backoff: 20s, 40s, 80s … max 5 min (geen foutenregen in de console)
   const poll = async () => {                       // vangt een printer op die uitvalt terwijl het beeld al live was
     if (!statusUrl) return;
     try {
@@ -222,9 +222,9 @@ function renderCamera(show, getShown, setShown) {
     img.src = url + (url.includes("?") ? "&" : "?") + "t=" + Date.now();
     loadTimer = setTimeout(offline, 15000);        // geen beeld binnen 15 seconden = printer offline
   };
-  img.onload = () => { clearTimeout(loadTimer); setLabel("● LIVE", "cam-live"); clearInterval(pollTimer); pollTimer = setInterval(poll, 8000); };
+  img.onload = () => { fails = 0; clearTimeout(loadTimer); setLabel("● LIVE", "cam-live"); clearInterval(pollTimer); pollTimer = setInterval(poll, 8000); };
   img.onerror = offline;
-  $("#camRetry").onclick = load;
+  $("#camRetry").onclick = () => { fails = 0; load(); };
   unsubs.push(() => { stopAll(); img.onload = img.onerror = null; });
   load();
 }

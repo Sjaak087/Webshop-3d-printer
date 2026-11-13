@@ -64,6 +64,9 @@ Zonder Firebase Authentication of een backend kan de browsercode zelf niets echt
 ### Privacy en veiligheid
 De stream is toegankelijk voor bezoekers van de website die de URL kunnen openen. Deel de URL niet openbaar als je dat niet wilt. Zet nooit het printer-IP of de Access Code in `beheer-config.js` of GitHub; alleen de publieke HTTPS-stream-URL hoort daar. Laat de pc en de tunnel draaien zolang klanten livebeeld moeten kunnen zien.
 
+### Let op: trycloudflare.com-adressen verlopen
+Een "quick tunnel" (`cloudflared tunnel --url ...`, adres eindigt op `.trycloudflare.com`) krijgt bij elke herstart een **nieuwe willekeurige naam**. De oude naam bestaat dan niet meer en de browser meldt `net::ERR_NAME_NOT_RESOLVED`. Gebruik voor een vaste URL een **named tunnel** met je eigen domein (stap 5), of werk `cameraUrl` bij elke herstart bij en push opnieuw.
+
 ### Als het niet werkt
 - Geeft de lokale test-URL geen beeld, controleer IP-adres, Access Code en LAN Mode Liveview.
 - Werkt lokaal wel maar de HTTPS-URL niet, controleer de tunnel en of die naar poort 1984 verwijst.
