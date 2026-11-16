@@ -1,5 +1,18 @@
 # 3D Printed Shop
 
+## Nieuwe webshop-update
+
+- **Vernieuwd Tailwind-ontwerp**: strakkere productkaarten met drie producten per rij op desktop, moderne knoppen, voordelenbalk, Lucide-iconen en vloeiende hover-/vensteranimaties.
+- **Productdetail met galerij**: per product maximaal drie afbeeldingen. De eerste afbeelding is de hoofdafbeelding.
+- **Meerdere productopties**: voeg in Sitebeheer > Producten > Bewerken meerdere optiegroepen toe, zoals *Kleur*, *Formaat* en *Afwerking*. Elke optiegroep vormt één stap in de configurator (bijvoorbeeld **Stap 1 / 3**).
+- **Prijs per optie**: geef iedere optie een toeslag (bijvoorbeeld `2.50`) of korting (bijvoorbeeld `-1.00`). De berekende prijs wordt in de configurator en winkelwagen getoond en opnieuw berekend wanneer de bestelling wordt geplaatst. Verschillende combinaties blijven aparte winkelwagenregels.
+- **Openbare track & trace-link**: bij Mijn bestellingen staat een knop **Deellink**. De link werkt zonder account en toont alleen het volg-overzicht, de status, productkeuzes, voortgang en planning. De chat, klantnaam en het e-mailadres worden niet in dit openbare volg-overzicht opgenomen. De willekeurige deelcode is 192 bits lang. De pagina zelf bevat geen bedieningsknoppen voor chat of account. De huidige Firebase-regels geven op dit pad nog wel schrijfrechten voor de browserapp; een Cloud Function is nodig om dit ook op databaseniveau strikt alleen-lezen te maken.
+- **Bijwerken van gedeelde status**: wijzigingen van bestelstatus, printfase en printplanning worden ook naar de openbare volgpagina bijgewerkt.
+
+### Nieuwe installatie-/publicatiestap
+
+Upload de bijgewerkte bestanden naar je hosting en publiceer daarna ook de bijgewerkte `database.rules.json` via Firebase Console > Realtime Database > Regels. De openbare volgpagina gebruikt het pad `publicTrack/<willekeurige-deelcode>`; publiceer de regels voordat je de deellinks deelt.
+
 ## Wat is er veranderd
 - **Afbeeldingen uploaden werkt weer**: de afbeelding wordt in de browser verkleind (max 900 px) en in de database bewaard. Firebase Storage, CORS en `gcloud` zijn niet meer nodig. Bestaande producten met een oude afbeelding blijven werken.
 - **Sitebeheer**: het e-mailadres wordt niet meer vooringevuld en het beheerderswachtwoord staat gehasht (PBKDF2) in `beheer-config.js`. Er is een uitlogknop en een rem op herhaald fout inloggen.
@@ -35,8 +48,8 @@ node -e 'const c=require("crypto");const s=c.randomBytes(16);console.log(s.toStr
 ```
 Zet de eerste waarde bij `salt` en de tweede bij `hash` in `beheer-config.js`.
 
-## Eerlijk over de beveiliging
-Zonder Firebase Authentication of een backend kan de browsercode zelf niets echt afdwingen: iemand die de database-URL kent kan nog steeds producten, bestellingen en chats lezen/wijzigen. De login is daarom een afscherming van de interface, geen harde beveiliging. Voor echte klanten: schakel Firebase Authentication in en laat de regels op `auth.uid` en een admin-claim controleren.
+## Eerlijk over de beveiliging en openbare volg-links
+Zonder Firebase Authentication of een backend kan de browsercode zelf niets echt afdwingen. De nieuwe openbare volg-link gebruikt een willekeurige, moeilijk te raden code en leest alleen het afgeslankte pad `publicTrack/<code>`, maar de bestaande database-regels geven voor compatibiliteit nog steeds brede lees-/schrijfrechten op onder andere `orders`, `chats`, `products` en de schrijfkant van `publicTrack`. Daardoor is de hele database met de huidige configuratie niet privé of fraudebestendig. De login is een afscherming van de interface, geen harde beveiliging. Deel geen klantgegevens of gevoelige gegevens via deze huidige database-opzet. Voor een echte klantwebshop moet Firebase Authentication met gebruikersgebonden regels en een server-/Cloud Function voor order- en public-track-updates worden ingericht.
 
 ## Livecamera instellen (Bambu Lab A1 mini)
 

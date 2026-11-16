@@ -2,19 +2,19 @@
 <html lang="nl">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#0756c9"><title>3D Printed Shop</title>
-  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css">
+  <meta name="theme-color" content="#111827"><meta name="description" content="Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen."><title>3D Printed Shop</title>
+  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="./styles.css"><script>tailwind.config={theme:{extend:{fontFamily:{sans:["DM Sans","sans-serif"],display:["Manrope","sans-serif"]},colors:{brand:{50:"#eef2ff",100:"#e0e7ff",500:"#6366f1",600:"#4f46e5",700:"#4338ca"}}}}}</script><script src="https://cdn.tailwindcss.com"></script><script src="https://unpkg.com/lucide@latest"></script>
 </head>
-<body>
+<body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <header class="topbar">
   <a class="brand" href="#"><span class="brand-mark">3D</span> printed<span>shop</span></a>
-  <div class="search-wrap"><input id="search" placeholder="Waar ben je naar op zoek?" aria-label="Zoeken"><button id="searchBtn">Zoeken</button></div>
-  <nav><button class="nav-btn" id="accountBtn">Inloggen</button><button class="nav-btn" id="myChatsBtn">Mijn chats</button><button class="nav-btn admin-entry" id="adminEntry">Sitebeheer</button><button class="cart-btn" id="cartBtn">🛒 <span>Winkelwagen</span> <b id="cartCount">0</b></button></nav>
+  <div class="search-wrap"><input id="search" placeholder="Waar ben je naar op zoek?" aria-label="Zoeken"><button id="searchBtn"><i data-lucide="search"></i><span>Zoeken</span></button></div>
+  <nav><button class="nav-btn" id="accountBtn"><i data-lucide="user-round"></i><span>Inloggen</span></button><button class="nav-btn" id="myChatsBtn"><i data-lucide="messages-square"></i><span>Mijn chats</span></button><button class="nav-btn admin-entry" id="adminEntry"><i data-lucide="sliders-horizontal"></i><span>Sitebeheer</span></button><button class="cart-btn" id="cartBtn"><i data-lucide="shopping-bag"></i><span>Winkelwagen</span> <b id="cartCount">0</b></button></nav>
 </header>
-<div class="notice">Welkom bij 3D Printed Shop · Persoonlijke service en snel geholpen</div>
-<main>
-  <section class="hero">
-    <div><p class="eyebrow">ONTDEK JOUW FAVORIETEN</p><h1>Goed gekozen.<br><em>Goed geregeld.</em></h1><p>Bekijk onze producten en bestel eenvoudig online.</p><a href="#producten" class="primary-link">Bekijk producten <span>→</span></a></div>
+<div class="notice"><i data-lucide="sparkles"></i> Welkom bij 3D Printed Shop <span>·</span> Persoonlijke service en snel geholpen</div>
+<main class="mx-auto">
+  <section class="hero flex items-center">
+    <div><p class="eyebrow">ONTDEK JOUW FAVORIETEN</p><h1>Goed gekozen.<br><em>Goed geregeld.</em></h1><p>Bekijk onze producten en bestel eenvoudig online.</p><a href="#producten" class="primary-link">Bekijk producten <i data-lucide="arrow-right"></i></a></div>
     <div class="hero-art"><div class="orb"></div><div class="hero-card">✦<strong>3D prints</strong><small>Nieuwe favorieten<br>ontdekken</small></div><div class="hero-spark">✳</div></div>
   </section>
   <section id="producten" class="products-section"><div class="section-head"><div><p class="eyebrow">ONS ASSORTIMENT</p><h2>Populaire producten</h2></div><span id="productTotal" class="muted"></span></div><div id="products" class="product-grid"><div class="loading">Producten laden…</div></div></section>
@@ -26,5 +26,5 @@
  <section class="dialog"><button class="close" id="closeDialog" aria-label="Sluiten">×</button><div id="dialogContent"></div></section>
 </div>
 <div id="toast" class="toast"></div>
-<script type="module" src="./app.js"></script>
+<script>if(window.lucide){const iconObserver=new MutationObserver(()=>window.lucide.createIcons());iconObserver.observe(document.body,{subtree:true,childList:true});window.lucide.createIcons();}</script><script type="module" src="./app.js"></script>
 </body></html>

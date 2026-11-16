@@ -35,6 +35,12 @@
       "camera": {
         ".validate": "newData.hasChildren() && (!newData.hasChild('url') || (newData.child('url').isString() && newData.child('url').val().matches(/^https:\\/\\/.*/) && newData.child('url').val().length < 300))"
       }
+    },
+    "publicTrack": {
+      "$token": {
+        ".read": true,
+        ".write": true
+      }
     }
   }
 }

@@ -13,7 +13,7 @@ const STAGE_LABEL = { "in wachtrij": "in wachtrij", "in bereiding": "bezig", "ge
 const stageChip = st => `<span class="stage-chip st${STAGES.indexOf(st)}">${STAGE_LABEL[st]}</span>`;
 const hasStage = i => !!i.stage || (i.stages && Object.values(i.stages).some(Boolean));
 const showStage = (o, i) => o.status === "in de maak" || hasStage(i);   // ook zichtbaar als je een stuk in de agenda een fase geeft
-async function setStage(o, n, u, st) { const it = (o.items || [])[n]; if (!it) return; const arr = unitStages(it); arr[u] = st; await update(ref(db, `orders/${o.id}/items/${n}`), { stages: arr }); }
+async function setStage(o, n, u, st) { const it = (o.items || [])[n]; if (!it) return; const arr = unitStages(it); arr[u] = st; await update(ref(db, `orders/${o.id}/items/${n}`), { stages: arr }); await syncPublicTrack(o.id); }
 const stageChips = i => { const u = unitStages(i); return u.length === 1 ? ` ${stageChip(u[0])}` : `<span class="unit-stages">${u.map((st, n) => `<span class="unit-chip">Stuk ${n + 1} ${stageChip(st)}</span>`).join("")}</span>`; };
 const CAMERA_STATUSES = [...STATUSES];   // camera tonen bij alle bestelstatussen
 const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, orderNote: "", plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
@@ -33,10 +33,51 @@ function cleanup() { unsubs.forEach(u => u()); unsubs = []; }
 function closeDialog() { cleanup(); overlay.classList.add("hidden"); content.innerHTML = ""; }
 function listen(q, cb) { unsubs.push(onValue(q, cb)); }   // wordt automatisch opgeruimd
 const toList = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
-const optList = p => (Array.isArray(p?.options) ? p.options : Object.values(p?.options || {})).filter(o => o && o.name);
-const isSoldOut = p => !!p.soldOut || (optList(p).length > 0 && optList(p).every(o => o.soldOut));
-const itemKey = (id, option) => id + "|" + (option || "");
-const optText = i => i.option ? ` · ${safe(i.optionLabel || "Keuze")}: <b>${safe(i.option)}</b>` : "";
+const legacyOptions = p => (Array.isArray(p?.options) ? p.options : Object.values(p?.options || {})).filter(o => o && o.name);
+const optionGroupsOf = p => {
+  const raw = Array.isArray(p?.optionGroups) ? p.optionGroups : Object.values(p?.optionGroups || {});
+  const groups = raw.filter(g => g && g.label && (Array.isArray(g.options) || g.options)).map((g, i) => ({
+    id: g.id || `group-${i}`, label: String(g.label), options: (Array.isArray(g.options) ? g.options : Object.values(g.options || {})).filter(o => o && o.name).map(o => ({
+      name: String(o.name), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut
+    }))
+  }));
+  if (groups.length) return groups;
+  const old = legacyOptions(p);
+  return old.length ? [{ id: "legacy", label: p.optionLabel || "Keuze", options: old.map(o => ({ name: String(o.name), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut })) }] : [];
+};
+const optList = p => optionGroupsOf(p).flatMap(g => g.options);
+const isSoldOut = p => !!p.soldOut || optionGroupsOf(p).some(g => g.options.length > 0 && g.options.every(o => o.soldOut));
+const selectionsOf = item => Array.isArray(item?.selections) ? item.selections : (item?.option ? [{ label: item.optionLabel || "Keuze", value: item.option, priceDelta: 0 }] : []);
+const selectionsKey = selections => selectionsOf({ selections }).map(s => `${encodeURIComponent(s.label)}=${encodeURIComponent(s.value)}`).join("|");
+const itemKey = (id, selections) => id + "|" + (Array.isArray(selections) ? selectionsKey(selections) : (selections || ""));
+const optText = item => {
+  const choices = selectionsOf(item);
+  return choices.length ? ` · ${choices.map(s => `${safe(s.label)}: <b>${safe(s.value)}</b>`).join(" · ")}` : "";
+};
+const deltaText = n => Number(n) > 0 ? `+ ${money(n)}` : Number(n) < 0 ? `− ${money(Math.abs(n))}` : "Geen meerprijs";
+const productImages = p => (Array.isArray(p?.images) && p.images.length ? p.images : [p?.image]).filter(Boolean).slice(0, 3);
+const publicTrackPayload = o => ({
+  shortId: short(o.id), status: o.status || "ontvangen", createdAt: o.createdAt || Date.now(),
+  items: (o.items || []).map((i, n) => ({ title: i.title, qty: i.qty, selections: selectionsOf(i), stages: unitStages(i), plan: Object.fromEntries(Object.entries(o.plan || {}).filter(([k]) => k.startsWith(`${n}_`))) })),
+  subtotal: o.subtotal ?? o.total ?? 0, shipping: o.shipping ?? 0, total: o.total ?? 0,
+  estimatedReady: o.estimatedReady || planInfoSafe(o).ready || null
+});
+function planInfoSafe(o) {
+  const total = (o.items || []).reduce((n, i) => n + Math.max(1, Number(i.qty) || 1), 0);
+  const endTimes = Object.values(o.plan || {}).map(s => Number(s?.endTs)).filter(Number.isFinite);
+  return { ready: total && endTimes.length === total ? Math.max(...endTimes) : null };
+}
+const randomToken = () => [...crypto.getRandomValues(new Uint8Array(24))].map(x => x.toString(16).padStart(2, "0")).join("");
+const trackUrl = token => `${location.origin}${location.pathname}?track=${encodeURIComponent(token)}`;
+async function syncPublicTrack(orderId) {
+  const snap = await get(ref(db, `orders/${orderId}`)), order = snap.val();
+  if (order?.publicToken) await set(ref(db, `publicTrack/${order.publicToken}`), publicTrackPayload({ ...order, id: orderId }));
+}
+async function copyTrackLink(token) {
+  const url = trackUrl(token);
+  try { await navigator.clipboard.writeText(url); toast("Deellink gekopieerd"); }
+  catch { openDialog(`<p class="eyebrow">TRACK & TRACE DELEN</p><h2>Jouw deellink</h2><p class="muted">Kopieer deze link en stuur hem door.</p><input class="share-url" readonly value="${safe(url)}"><button class="primary full" id="copyFallback">Kopiëren</button>`); $("#copyFallback").onclick = () => { $("#dialogContent .share-url").select(); document.execCommand("copy"); toast("Link gekopieerd"); }; }
+}
 $("#closeDialog").onclick = closeDialog;
 overlay.addEventListener("click", e => { if (e.target === overlay) closeDialog(); });
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !overlay.classList.contains("hidden")) closeDialog(); });
@@ -59,8 +100,8 @@ function failed() { if (++fails >= 5) { lockUntil = Date.now() + Math.min(300000
 function setCustomer(u) { state.user = u; fails = 0; sessionStorage.setItem("novashopUser", JSON.stringify({ uid: u.uid, email: u.email, role: "customer" })); refreshNav(); }
 function setAdmin() { state.admin = true; fails = 0; sessionStorage.setItem("novashopAdmin", "1"); refreshNav(); }
 function refreshNav() {
-  $("#accountBtn").textContent = state.user ? "Mijn account" : "Inloggen";
-  $("#adminEntry").textContent = state.admin ? "Sitebeheer · ingelogd" : "Sitebeheer";
+  $("#accountBtn").innerHTML = `<i data-lucide="user-round"></i><span>${state.user ? "Mijn account" : "Inloggen"}</span>`;
+  $("#adminEntry").innerHTML = `<i data-lucide="sliders-horizontal"></i><span>${state.admin ? "Sitebeheer · ingelogd" : "Sitebeheer"}</span>`;
 }
 
 /* ---------- winkelwagen (blijft bewaard) ---------- */
@@ -69,22 +110,34 @@ function saveCart() { try { localStorage.setItem("novashopCart", JSON.stringify(
 function cartIssue(c) {
   const p = state.products.find(x => x.id === c.id); if (!p) return "Niet meer beschikbaar";
   if (isSoldOut(p)) return "Uitverkocht";
-  const opts = optList(p);
-  if (opts.length) { const o = opts.find(x => x.name === c.option); if (!o) return "Kies opnieuw een " + (p.optionLabel || "optie").toLowerCase(); if (o.soldOut) return "Deze optie is uitverkocht"; }
+  const groups = optionGroupsOf(p), selected = selectionsOf(c);
+  if (groups.length !== selected.length) return "Kies de productopties opnieuw";
+  for (const group of groups) {
+    const s = selected.find(x => x.label === group.label);
+    const choice = group.options.find(o => o.name === s?.value);
+    if (!choice) return `Kies opnieuw een ${group.label.toLowerCase()}`;
+    if (choice.soldOut) return `De optie ${choice.name} is uitverkocht`;
+  }
   return "";
 }
-function addCart(id, option = "") {
+function addCart(id, selections = []) {
   const p = state.products.find(x => x.id === id); if (!p) return;
   if (isSoldOut(p)) return toast("Dit product is uitverkocht");
-  const opts = optList(p); let choice = null;
-  if (opts.length) {
-    choice = opts.find(o => o.name === option);
-    if (!choice) return toast(`Kies eerst een ${(p.optionLabel || "optie").toLowerCase()}`);
-    if (choice.soldOut) return toast("Deze optie is uitverkocht");
+  const groups = optionGroupsOf(p), chosen = Array.isArray(selections) ? selections : [];
+  if (groups.length !== chosen.length) return toast("Kies eerst alle productopties");
+  let delta = 0;
+  for (const group of groups) {
+    const selected = chosen.find(x => x.label === group.label);
+    const option = group.options.find(o => o.name === selected?.value);
+    if (!option) return toast(`Kies eerst een ${group.label.toLowerCase()}`);
+    if (option.soldOut) return toast("Deze optie is uitverkocht");
+    delta += Number(option.priceDelta) || 0;
   }
-  const key = itemKey(id, choice?.name);
-  const it = state.cart.find(x => itemKey(x.id, x.option) === key);
-  if (it) it.qty++; else state.cart.push({ id, title: p.title, price: Number(p.price), image: "", qty: 1, ...(choice ? { option: choice.name, optionLabel: p.optionLabel || "Keuze" } : {}) });
+  const itemPrice = Math.max(0, Number(p.price) + delta);
+  const key = itemKey(id, chosen);
+  const it = state.cart.find(x => itemKey(x.id, selectionsOf(x)) === key);
+  if (it) it.qty++;
+  else state.cart.push({ id, title: p.title, basePrice: Number(p.price), price: itemPrice, selections: chosen.map(x => ({ ...x })), qty: 1 });
   saveCart(); toast("Toegevoegd aan je winkelwagen");
 }
 
@@ -94,7 +147,16 @@ function renderProducts() {
   const q = ($("#search").value || "").toLowerCase();
   const list = state.products.filter(p => (p.title + " " + (p.description || "")).toLowerCase().includes(q));
   $("#productTotal").textContent = `${list.length} producten`;
-  $("#products").innerHTML = list.length ? list.map(p => { const out = isSoldOut(p), opts = optList(p); return `<article class="product-card ${out ? "sold-out" : ""}"><button class="product-open" data-open="${safe(p.id)}"><div class="product-image">${p.image ? `<img loading="lazy" src="${safe(p.image)}" alt="${safe(p.title)}">` : "<span>✦</span>"}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}</div><div class="product-info"><h3>${safe(p.title)}</h3><strong>${money(p.price)}</strong></div></button>${out ? `<button class="add-small" disabled>Uitverkocht</button>` : opts.length ? `<button class="add-small" data-open="${safe(p.id)}">Kies ${safe((p.optionLabel || "optie").toLowerCase())}</button>` : `<button class="add-small" data-add="${safe(p.id)}">＋ In winkelwagen</button>`}</article>`; }).join("") : `<div class="empty-state">Nog geen producten gevonden.<br><small>Beheerder? Voeg producten toe via Sitebeheer.</small></div>`;
+  $("#products").innerHTML = list.length ? list.map(p => {
+    const out = isSoldOut(p), groups = optionGroupsOf(p), images = productImages(p), image = images[0];
+    return `<article class="product-card ${out ? "sold-out" : ""}">
+      <button class="product-open" data-open="${safe(p.id)}" aria-label="Bekijk ${safe(p.title)}">
+        <div class="product-image">${image ? `<img loading="lazy" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
+        <div class="product-info"><h3>${safe(p.title)}</h3><strong>${money(p.price)}</strong>${groups.length ? `<small class="product-options-hint">${groups.length} ${groups.length === 1 ? "keuze" : "keuzes"} mogelijk</small>` : ""}</div>
+      </button>
+      ${out ? `<button class="add-small" disabled>Uitverkocht</button>` : groups.length ? `<button class="add-small" data-open="${safe(p.id)}">Stel samen</button>` : `<button class="add-small" data-add="${safe(p.id)}">In winkelwagen</button>`}
+    </article>`;
+  }).join("") : `<div class="empty-state">Geen producten gevonden.<br><small>Pas je zoekopdracht aan of bekijk later nog eens ons assortiment.</small></div>`;
 }
 $("#searchBtn").onclick = renderProducts; $("#search").addEventListener("input", renderProducts);
 $("#products").addEventListener("click", e => {
@@ -103,20 +165,72 @@ $("#products").addEventListener("click", e => {
 });
 function showProduct(id) {
   const p = state.products.find(x => x.id === id); if (!p) return;
-  const opts = optList(p), out = isSoldOut(p), label = p.optionLabel || "Keuze"; let chosen = "";
-  openDialog(`<div class="product-detail"><div class="detail-image">${p.image ? `<img src="${safe(p.image)}" alt="${safe(p.title)}">` : "✦"}</div><div><p class="eyebrow">PRODUCTDETAILS</p><h2>${safe(p.title)}</h2><div class="detail-price">${money(p.price)}</div><p class="description">${safe(p.description || "Geen beschrijving beschikbaar.")}</p>${opts.length ? `<div class="option-group"><b>Kies een ${safe(label.toLowerCase())}</b><div class="option-chips">${opts.map((o, i) => `<button type="button" class="opt-chip" data-opt="${i}" ${o.soldOut ? "disabled" : ""}>${safe(o.name)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div></div>` : ""}${out ? `<div class="sold-note">Dit product is uitverkocht.</div>` : ""}<button class="primary full" id="detailAdd" ${out ? "disabled" : ""}>＋ Toevoegen aan winkelwagen</button></div></div>`);
-  content.querySelectorAll("[data-opt]").forEach(b => b.onclick = () => { chosen = opts[Number(b.dataset.opt)].name; content.querySelectorAll("[data-opt]").forEach(x => x.classList.toggle("active", x === b)); });
-  $("#detailAdd").onclick = () => { if (opts.length && !chosen) return toast(`Kies eerst een ${label.toLowerCase()}`); addCart(id, chosen); closeDialog(); };
+  const groups = optionGroupsOf(p), images = productImages(p), out = isSoldOut(p);
+  let chosen = [], step = 0, activeImage = 0;
+  const selectedPrice = () => Number(p.price) + chosen.reduce((sum, x) => sum + (Number(x?.priceDelta) || 0), 0);
+  const render = () => {
+    const total = Math.max(0, selectedPrice());
+    const current = groups[step];
+    const currentChoice = chosen[step]?.value;
+    const image = images[activeImage] || "";
+    content.innerHTML = `<div class="product-detail">
+      <div class="detail-gallery">
+        <div class="detail-image">${image ? `<img src="${safe(image)}" alt="${safe(p.title)} afbeelding ${activeImage + 1}">` : `<i data-lucide="box"></i>`}</div>
+        ${images.length > 1 ? `<div class="detail-thumbs">${images.map((src, i) => `<button class="detail-thumb ${i === activeImage ? "active" : ""}" data-image="${i}" aria-label="Afbeelding ${i + 1}"><img src="${safe(src)}" alt=""></button>`).join("")}</div>` : ""}
+      </div>
+      <div class="detail-content">
+        <p class="eyebrow">PRODUCTDETAILS</p><h2>${safe(p.title)}</h2>
+        <div class="detail-price">${money(total)}</div>
+        <p class="description">${safe(p.description || "Een uniek product, met zorg gemaakt. Stel hieronder jouw uitvoering samen.")}</p>
+        ${out ? `<div class="sold-note">Dit product is uitverkocht.</div>` : ""}
+        ${groups.length && !out ? `<div class="option-wizard">
+          <div class="option-wizard-top"><b>${safe(current.label)}</b><span>STAP ${step + 1} / ${groups.length}</span></div>
+          <div class="option-progress">${groups.map((g, i) => `<span class="${i <= step ? "done" : ""}"></span>`).join("")}</div>
+          <div class="option-choices">${current.options.map((o, i) => {
+            const active = currentChoice === o.name;
+            return `<button type="button" class="option-choice ${active ? "active" : ""}" data-choice="${i}" ${o.soldOut ? "disabled" : ""}>
+              <b>${safe(o.name)}</b><small>${deltaText(o.priceDelta)}${o.soldOut ? " · Uitverkocht" : ""}</small>
+            </button>`;
+          }).join("")}</div>
+          <div class="option-wizard-actions">
+            <button type="button" class="secondary" id="optionBack" ${step === 0 ? "disabled" : ""}><i data-lucide="chevron-left"></i> Vorige</button>
+            ${step < groups.length - 1
+              ? `<button type="button" class="primary" id="optionNext" ${!chosen[step] ? "disabled" : ""}>Volgende stap <i data-lucide="arrow-right"></i></button>`
+              : `<button type="button" class="primary" id="detailAdd" ${!chosen[step] ? "disabled" : ""}><i data-lucide="shopping-bag"></i> Toevoegen aan winkelwagen</button>`}
+          </div>
+          <div class="option-summary"><span>Prijs tot nu toe</span><b>${money(total)}</b></div>
+          ${chosen.some(Boolean) ? `<div class="config-summary">${chosen.filter(Boolean).map(s => `<div class="config-summary-row"><span>${safe(s.label)}</span><b>${safe(s.value)} · ${deltaText(s.priceDelta)}</b></div>`).join("")}</div>` : ""}
+        </div>` : ""}
+        ${!groups.length && !out ? `<button class="primary full" id="detailAdd"><i data-lucide="shopping-bag"></i> Toevoegen aan winkelwagen · ${money(p.price)}</button>` : ""}
+        ${groups.length && !out && step === groups.length - 1 && chosen.every(Boolean) ? `<p class="hint">Je hebt alle ${groups.length} keuzes gemaakt. De prijs hierboven is inclusief alle toeslagen en kortingen.</p>` : ""}
+        ${out ? `<button class="primary full" disabled>Momenteel niet beschikbaar</button>` : ""}
+      </div>
+    </div>`;
+    content.querySelectorAll("[data-image]").forEach(b => b.onclick = () => { activeImage = Number(b.dataset.image); render(); });
+    content.querySelectorAll("[data-choice]").forEach(b => b.onclick = () => {
+      const option = current.options[Number(b.dataset.choice)];
+      chosen[step] = { label: current.label, value: option.name, priceDelta: Number(option.priceDelta) || 0 };
+      chosen = chosen.slice(0, step + 1); render();
+    });
+    $("#optionBack")?.addEventListener("click", () => { step = Math.max(0, step - 1); render(); });
+    $("#optionNext")?.addEventListener("click", () => { if (!chosen[step]) return; step = Math.min(groups.length - 1, step + 1); render(); });
+    $("#detailAdd")?.addEventListener("click", () => {
+      if (groups.length && chosen.length !== groups.length) return toast("Maak eerst alle keuzes af");
+      addCart(id, chosen); closeDialog();
+    });
+  };
+  openDialog(`<div class="loading">Product laden…</div>`);
+  render();
 }
 
 /* ---------- winkelwagen-dialoog ---------- */
 $("#cartBtn").onclick = showCart;
 function showCart() {
   const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0), total = sub + SHIPPING;
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, x.option)), issue = state.loaded ? cartIssue(x) : ""; return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${x.option ? `<small>${safe(x.optionLabel || "Keuze")}: <b>${safe(x.option)}</b></small>` : ""}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)}</span></div></div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
-  content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, x.option) !== b.dataset.remove); saveCart(); showCart(); });
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)}</span></div></div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, selectionsOf(x)) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
-    const it = state.cart.find(x => itemKey(x.id, x.option) === b.dataset.qty); if (!it) return;
+    const it = state.cart.find(x => itemKey(x.id, selectionsOf(x)) === b.dataset.qty); if (!it) return;
     it.qty += Number(b.dataset.delta); if (it.qty <= 0) state.cart = state.cart.filter(x => x !== it);
     saveCart(); showCart();
   });
@@ -163,26 +277,46 @@ async function placeOrder() {
   if (!state.cart.length) return;
   if (!state.loaded) return toast("Producten worden nog geladen, probeer het zo opnieuw.");
   const bad = state.cart.filter(c => cartIssue(c));
-  if (bad.length) { state.cart = state.cart.filter(c => !cartIssue(c)); saveCart(); toast("Niet meer beschikbaar en uit je winkelwagen gehaald: " + bad.map(b => b.title + (b.option ? ` (${b.option})` : "")).join(", ")); return showCart(); }
-  const items = state.cart.map(c => { const p = state.products.find(x => x.id === c.id); return { id: c.id, title: p.title, price: Number(p.price), qty: c.qty, ...(optList(p).length ? { option: c.option, optionLabel: p.optionLabel || "Keuze" } : {}) }; });
+  if (bad.length) { state.cart = state.cart.filter(c => !cartIssue(c)); saveCart(); toast("Niet meer beschikbaar en uit je winkelwagen gehaald: " + bad.map(b => b.title + (selectionsOf(b).length ? ` (${selectionsOf(b).map(s => s.value).join(", ")})` : "")).join(", ")); return showCart(); }
+  const items = state.cart.map(c => {
+    const p = state.products.find(x => x.id === c.id), selected = selectionsOf(c);
+    const delta = selected.reduce((sum, s) => {
+      const group = optionGroupsOf(p).find(g => g.label === s.label), option = group?.options.find(o => o.name === s.value);
+      return sum + (Number(option?.priceDelta) || 0);
+    }, 0);
+    return { id: c.id, title: p.title, price: Math.max(0, Number(p.price) + delta), qty: c.qty, ...(selected.length ? { selections: selected } : {}) };
+  });
   const subtotal = items.reduce((n, i) => n + i.price * i.qty, 0), total = subtotal + SHIPPING;
   const note = (state.orderNote || "").trim().slice(0, 500);
-  const orderKey = push(ref(db, "orders")).key, chatKey = push(ref(db, "chats")).key, msgKey = push(ref(db, `chats/${chatKey}/messages`)).key, now = Date.now();
+  const orderKey = push(ref(db, "orders")).key, chatKey = push(ref(db, "chats")).key, msgKey = push(ref(db, `chats/${chatKey}/messages`)).key, now = Date.now(), publicToken = randomToken();
+  const newOrder = { userId: state.user.uid, email: state.user.email, items, subtotal, shipping: SHIPPING, total, status: STATUSES[0], createdAt: now, chatId: chatKey, publicToken, ...(note ? { note } : {}) };
   try {
-    await update(ref(db), {                         // alles-of-niets in één schrijfactie
-      ["orders/" + orderKey]: { userId: state.user.uid, email: state.user.email, items, subtotal, shipping: SHIPPING, total, status: STATUSES[0], createdAt: now, chatId: chatKey, ...(note ? { note } : {}) },
-      ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, email: state.user.email, createdAt: now, lastMessage: "Bestelling geplaatst", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is ontvangen. Totaal: ${money(total)} (incl. ${money(SHIPPING)} verzendkosten). Stel hier gerust je vragen.`, createdAt: now } } }
+    await update(ref(db), {                         // bestelling, openbare volgkaart en chat samen opslaan
+      ["orders/" + orderKey]: newOrder,
+      ["publicTrack/" + publicToken]: publicTrackPayload({ ...newOrder, id: orderKey }),
+      ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, email: state.user.email, createdAt: now, lastMessage: "Bestelling geplaatst", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is ontvangen. Totaal: ${money(total)} (incl. ${money(SHIPPING)} verzendkosten). Je openbare track & trace-link staat bij Mijn bestellingen.`, createdAt: now } } }
     });
-    state.cart = []; state.orderNote = ""; saveCart(); toast("Bestelling geplaatst! Je chat is geopend."); openChat(chatKey);
+    state.cart = []; state.orderNote = ""; saveCart(); toast("Bestelling geplaatst!"); openChat(chatKey);
   } catch (e) { console.error(e); toast("Bestellen lukte niet. Probeer het opnieuw."); }
 }
 function showMyOrders() {
   openDialog(`<p class="eyebrow">OVERZICHT</p><h2>Mijn bestellingen</h2><div id="ordersBox" class="stack"><p class="muted">Laden…</p></div>`);
   listen(query(ref(db, "orders"), orderByChild("userId"), equalTo(state.user.uid)), snap => {
     const orders = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
-    $("#ordersBox").innerHTML = orders.length ? orders.map(o => `<div class="order-row"><div><b>Bestelling #${short(o.id)}</b><small>${when(o.createdAt)} · ${money(o.total)}</small><span class="status-pill">${safe(o.status)}</span></div><button class="secondary" data-track="${safe(o.id)}">Volgen</button></div>`).join("") : "<p class='muted'>Je hebt nog geen bestellingen.</p>";
+    $("#ordersBox").innerHTML = orders.length ? orders.map(o => `<div class="order-row"><div><b>Bestelling #${short(o.id)}</b><small>${when(o.createdAt)} · ${money(o.total)}</small><span class="status-pill">${safe(o.status)}</span></div><div class="order-actions"><button class="secondary" data-track="${safe(o.id)}">Volgen</button><button class="secondary" data-share="${safe(o.id)}"><i data-lucide="share-2"></i> Deellink</button></div></div>`).join("") : "<p class='muted'>Je hebt nog geen bestellingen.</p>";
     content.querySelectorAll("[data-track]").forEach(b => b.onclick = () => showOrderTracking(b.dataset.track));
+    content.querySelectorAll("[data-share]").forEach(b => b.onclick = () => createShareTrack(b.dataset.share));
   });
+}
+async function createShareTrack(orderId) {
+  try {
+    const snap = await get(ref(db, `orders/${orderId}`)), order = snap.val();
+    if (!order || (state.user && order.userId !== state.user.uid && !state.admin)) return toast("Deze bestelling is niet beschikbaar");
+    const token = order.publicToken || randomToken();
+    if (!order.publicToken) await update(ref(db, `orders/${orderId}`), { publicToken: token });
+    await set(ref(db, `publicTrack/${token}`), publicTrackPayload({ ...order, id: orderId }));
+    await copyTrackLink(token);
+  } catch (e) { console.error(e); toast("Deellink maken is niet gelukt"); }
 }
 let camStop = null, camUrlShown = "", camCfg = {};   // camCfg = settings/camera uit Firebase (aan/uit, tijdelijk uit, stream-URL)
 const CAM_MSG = "Sorry, we ervaren op dit moment problemen met de camera. We proberen dit zo snel mogelijk op te lossen.";
@@ -253,9 +387,37 @@ function showOrderTracking(id, asAdmin = false) {
   listen(ref(db, "orders/" + id), snap => {
     const o = snap.val(); if (!o) return; const idx = STATUSES.indexOf(o.status);
     curOrder = o; drawCam();
-    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${showStage(o, i) ? stageChips(i) : ""}${Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, u) => slotLine(o, (o.items || []).indexOf(i), u)).join("")}</div>`).join("")}</div>${planBox(o, false)}${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><button class="primary full" id="trackChat">Open chat over deze bestelling</button>`;
-    $("#trackChat").onclick = () => o.chatId && openChat(o.chatId, asAdmin);
+    $("#trackBox").innerHTML = `<div class="tracking">${STATUSES.map((x, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${i + 1}</span><b>${x}</b></div>`).join("")}</div><p class="muted">Huidige status: <b>${safe(o.status)}</b></p><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty}${showStage(o, i) ? stageChips(i) : ""}${Array.from({ length: Math.max(1, Number(i.qty) || 1) }, (_, u) => slotLine(o, (o.items || []).indexOf(i), u)).join("")}</div>`).join("")}</div>${planBox(o, false)}${o.note ? `<p class="order-note"><b>Jouw opmerking:</b> ${safe(o.note)}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="tracking-actions"><button class="secondary" id="trackShare"><i data-lucide="share-2"></i> Deel track & trace</button><button class="primary" id="trackChat">Open chat over deze bestelling</button></div>`;
+    $("#trackShare").onclick = () => o.publicToken ? copyTrackLink(o.publicToken) : createShareTrack(id);
+     $("#trackChat").onclick = () => o.chatId && openChat(o.chatId, asAdmin);
   });
+}
+function showPublicTracking(token) {
+  document.body.classList.add("public-tracking-mode");
+  if (!/^[a-f0-9]{32,64}$/i.test(String(token || ""))) {
+    openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Ongeldige volg-link</h2><p class="muted">Controleer of je de volledige link hebt ontvangen.</p>`);
+    return;
+  }
+  openDialog(`<div class="public-track-head"><div><p class="eyebrow">3D PRINTED SHOP · TRACK & TRACE</p><h2>Bestelling volgen</h2><p class="public-track-note">Dit is een alleen-lezen overzicht. Inloggen is niet nodig.</p></div><span class="status-pill">Link actief</span></div><div id="publicTrackBox" class="stack"><p class="muted">Bestelling laden…</p></div>`);
+  listen(ref(db, `publicTrack/${token}`), snap => {
+    const o = snap.val(), box = $("#publicTrackBox");
+    if (!box) return;
+    if (!o) { box.innerHTML = `<div class="empty-state">Deze track & trace-link is niet gevonden of niet meer beschikbaar.</div>`; return; }
+    const idx = STATUSES.indexOf(o.status);
+    const whenReady = o.estimatedReady ? whenShort(o.estimatedReady) : "";
+    box.innerHTML = `<div class="public-track-head"><div><b>Bestelling #${safe(o.shortId || "—")}</b><small class="public-track-note">Geplaatst op ${when(o.createdAt)}</small></div><span class="status-pill">${safe(o.status)}</span></div>
+      <div class="tracking">${STATUSES.map((s, i) => `<div class="track-step ${idx >= i ? "done" : ""}"><span>${idx > i ? "✓" : i + 1}</span><b>${safe(s)}</b></div>`).join("")}</div>
+      <h3>Bestellingsoverzicht</h3>
+      ${(o.items || []).map((item, n) => {
+        const units = Math.max(1, Number(item.qty) || 1), stages = item.stages || [];
+        const selectionText = (item.selections || []).map(s => `${safe(s.label)}: <b>${safe(s.value)}</b>`).join(" · ");
+        const schedules = Object.entries(item.plan || {}).sort(([a],[b]) => a.localeCompare(b)).map(([k, slot]) => slot?.startTs ? `<small>Stuk ${Number(k.split("_").pop()) + 1}: ${whenShort(slot.startTs)} – ${new Date(slot.endTs).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</small>` : "").join("");
+        return `<div class="public-item"><b>${safe(item.title)} × ${units}</b>${selectionText ? `<small>${selectionText}</small>` : ""}${units > 1 || idx >= 2 ? `<div class="unit-stages">${Array.from({length:units},(_,u)=>`<span class="unit-chip">Stuk ${u+1}: ${stageChip(stages[u] || STAGES[0])}</span>`).join("")}</div>` : ""}${schedules}</div>`;
+      }).join("")}
+      ${whenReady ? `<div class="plan-box ready"><b>Verwacht klaar met printen:</b> ${safe(whenReady)}</div>` : ""}
+      <div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div>
+      <p class="public-track-note">Deze link geeft alleen de bestelstatus en productvoortgang weer. Klantaccount en chat zijn niet zichtbaar.</p>`;
+  }, () => { const box = $("#publicTrackBox"); if (box) box.innerHTML = `<p class="muted">Track & trace kon niet worden geladen.</p>`; });
 }
 function showMyChats() {
   if (!state.user) return authForm();
@@ -329,7 +491,7 @@ const mondayOf = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getD
 const unitsOf = o => (o.items || []).flatMap((i, n) => { const of = Math.max(1, Number(i.qty) || 1); return Array.from({ length: of }, (_, u) => ({ key: `${n}_${u}`, item: i, n, u, of })); });
 const slotOf = (o, key) => { const p = o.plan?.[key]; return p && Number.isFinite(p.startTs) && Number.isFinite(p.endTs) ? p : null; };
 const planInfo = o => { const us = unitsOf(o), done = us.filter(x => slotOf(o, x.key)); return { total: us.length, planned: done.length, ready: us.length && done.length === us.length ? Math.max(...done.map(x => slotOf(o, x.key).endTs)) : null }; };
-const unitLabel = x => `${x.item.title}${x.item.option ? " · " + x.item.option : ""}${x.of > 1 ? ` (stuk ${x.u + 1} van ${x.of})` : ""}`;
+const unitLabel = x => `${x.item.title}${selectionsOf(x.item).length ? " · " + selectionsOf(x.item).map(s => `${s.label}: ${s.value}`).join(", ") : ""}${x.of > 1 ? ` (stuk ${x.u + 1} van ${x.of})` : ""}`;
 const hueOf = id => [...String(id)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 // samenvatting voor klant en beheerder: verwachte klaartijd of hoeveel nog ingepland moet worden
 const planBox = (o, forAdmin) => { const p = planInfo(o); if (!p.total) return ""; return `<div class="plan-box ${p.ready ? "ready" : ""}">${p.ready ? `<b>🖨️ Verwacht klaar met printen:</b> ${whenShort(p.ready)}` : `<b>🖨️ Printplanning:</b> ${p.planned === 0 ? "nog niet ingepland" : `${p.planned} van ${p.total} stuks ingepland`}${forAdmin ? "" : " · de verwachte klaartijd volgt zodra alles is ingepland"}`}</div>`; };
@@ -338,6 +500,7 @@ async function setSlot(o, key, slot) {
   const plan = { ...(o.plan || {}) }; if (slot) plan[key] = slot; else delete plan[key];
   const { ready } = planInfo({ ...o, plan });
   await update(ref(db), { [`orders/${o.id}/plan/${key}`]: slot, [`orders/${o.id}/estimatedReady`]: ready });
+  await syncPublicTrack(o.id);
 }
 function agendaTab(target, orders) {
   const P = state.plan; P.orders = orders;
@@ -455,18 +618,18 @@ function adminTab() {
   cleanup(); const target = $("#adminContent"); if (!target) return;
   if (state.tab === "products") listen(ref(db, "products"), snap => {
     const ps = toList(snap);
-    target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct">＋ Product toevoegen</button></div>${ps.length ? ps.map(p => { const opts = optList(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${p.soldOut ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}<small>${money(p.price)}</small>${opts.length ? `<div class="opt-admin"><small>${safe(p.optionLabel || "Keuze")}:</small>${opts.map((o, i) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-i="${i}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>` : ""}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
+    target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = optionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${p.soldOut ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}<small>${money(p.price)}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
     $("#newProduct").onclick = () => productEditor();
     target.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => productEditor(b.dataset.edit));
     target.querySelectorAll("[data-delete]").forEach(b => b.onclick = async () => { if (confirm("Dit product verwijderen?")) { await remove(ref(db, "products/" + b.dataset.delete)); toast("Product verwijderd"); } });
     target.querySelectorAll("[data-soldout]").forEach(b => b.onclick = () => { const p = ps.find(x => x.id === b.dataset.soldout); if (p) update(ref(db, "products/" + p.id), { soldOut: !p.soldOut }).then(() => toast(p.soldOut ? "Product weer beschikbaar" : "Product op uitverkocht gezet")).catch(() => toast("Opslaan mislukt")); });
-    target.querySelectorAll("[data-optout]").forEach(b => b.onclick = () => { const p = ps.find(x => x.id === b.dataset.optout), o = p && optList(p)[Number(b.dataset.i)]; if (o) update(ref(db, `products/${p.id}/options/${b.dataset.i}`), { soldOut: !o.soldOut }).then(() => toast(o.soldOut ? `${o.name} weer beschikbaar` : `${o.name} op uitverkocht gezet`)).catch(() => toast("Opslaan mislukt")); });
+    target.querySelectorAll("[data-optout]").forEach(b => b.onclick = () => { const p = ps.find(x => x.id === b.dataset.optout), g = p && optionGroupsOf(p)[Number(b.dataset.g)], o = g && g.options[Number(b.dataset.i)]; if (!o) return; const path = p.optionGroups ? `products/${p.id}/optionGroups/${b.dataset.g}/options/${b.dataset.i}` : `products/${p.id}/options/${b.dataset.i}`; update(ref(db, path), { soldOut: !o.soldOut }).then(() => toast(o.soldOut ? `${o.name} weer beschikbaar` : `${o.name} op uitverkocht gezet`)).catch(() => toast("Opslaan mislukt")); });
   });
   else if (state.tab === "orders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
     target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
-    target.querySelectorAll("[data-status]").forEach(s => s.onchange = () => update(ref(db, "orders/" + s.dataset.status), { status: s.value }).then(() => toast("Bestelstatus bijgewerkt")));
-    target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; return update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }).then(() => toast("Fase bijgewerkt")).catch(() => toast("Opslaan mislukt")); });
+    target.querySelectorAll("[data-status]").forEach(s => s.onchange = async () => { try { await update(ref(db, "orders/" + s.dataset.status), { status: s.value }); await syncPublicTrack(s.dataset.status); toast("Bestelstatus bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
+    target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = async () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; try { await update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }); await syncPublicTrack(o.id); toast("Fase bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
   });
   else if (state.tab === "camera") cameraTab(target);
@@ -478,7 +641,7 @@ function adminTab() {
     target.querySelectorAll("[data-finish]").forEach(b => b.onclick = async () => {
       const o = os.find(x => x.id === b.dataset.finish); if (!o) return;
       if (!confirm(`Bestelling #${short(o.id)} afronden? De bestelling, de chat en de track & trace worden definitief verwijderd.`)) return;
-      try { await update(ref(db), { ["orders/" + o.id]: null, ...(o.chatId ? { ["chats/" + o.chatId]: null } : {}) }); toast("Bestelling afgerond en verwijderd"); }
+      try { await update(ref(db), { ["orders/" + o.id]: null, ...(o.chatId ? { ["chats/" + o.chatId]: null } : {}), ...(o.publicToken ? { ["publicTrack/" + o.publicToken]: null } : {}) }); toast("Bestelling afgerond en verwijderd"); }
       catch (err) { console.error(err); toast("Verwijderen mislukt. Probeer het opnieuw."); }
     });
   });
@@ -500,27 +663,71 @@ async function shrinkImage(file, max = 900, limit = 300000) {
 }
 async function productEditor(id = null) {
   const p = id ? ((await get(ref(db, "products/" + id))).val() || {}) : {};
-  let image = p.image || "";
-  openDialog(`<p class="eyebrow">CATALOGUS</p><h2>${id ? "Product bewerken" : "Nieuw product"}</h2><form id="productForm" class="stack"><label>Titel<input id="pTitle" required maxlength="100" value="${safe(p.title || "")}"></label><label>Prijs in euro<input id="pPrice" type="number" min="0" step="0.01" required value="${p.price ?? ""}"></label><label>Beschrijving<textarea id="pDescription" rows="4" maxlength="2000">${safe(p.description || "")}</textarea></label><label>Productafbeelding<input id="pImage" type="file" accept="image/*"></label><p class="hint">JPG, PNG of WEBP. De afbeelding wordt automatisch verkleind.</p><img id="pPreview" class="preview" alt="" ${image ? `src="${safe(image)}"` : "hidden"}><fieldset class="opt-editor"><legend>Keuzes voor de klant (bijv. kleuren)</legend><label>Naam van de keuze<input id="pOptLabel" maxlength="30" placeholder="Kleur" value="${safe(p.optionLabel || "")}"></label><div id="optRows" class="opt-rows"></div><button type="button" class="secondary" id="addOpt">＋ Optie toevoegen</button><p class="hint">Laat leeg als dit product geen keuze heeft. Klanten kiezen er dan precies één. Met "uitverkocht" blokkeer je alleen die optie.</p></fieldset><label class="check"><input type="checkbox" id="pSoldOut" ${p.soldOut ? "checked" : ""}> Hele product uitverkocht</label><button class="primary full" id="pSave">Product opslaan</button></form>`);
-  const rows = $("#optRows");
-  const addRow = (o = {}) => {
-    const d = document.createElement("div"); d.className = "opt-row";
-    d.innerHTML = `<input class="o-name" maxlength="40" placeholder="bijv. Rood" value="${safe(o.name || "")}"><label><input type="checkbox" class="o-out" ${o.soldOut ? "checked" : ""}> uitverkocht</label><button type="button" class="remove-item o-del" aria-label="Optie verwijderen">✕</button>`;
-    d.querySelector(".o-del").onclick = () => d.remove(); rows.appendChild(d);
+  let images = productImages(p);
+  let groups = optionGroupsOf(p).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
+  openDialog(`<p class="eyebrow">CATALOGUS</p><h2>${id ? "Product bewerken" : "Nieuw product"}</h2>
+    <form id="productForm" class="stack">
+      <label>Titel<input id="pTitle" required maxlength="100" value="${safe(p.title || "")}"></label>
+      <label>Basisprijs in euro<input id="pPrice" type="number" min="0" step="0.01" required value="${p.price ?? ""}"></label>
+      <label>Beschrijving<textarea id="pDescription" rows="4" maxlength="2000">${safe(p.description || "")}</textarea></label>
+      <fieldset class="opt-editor"><legend>Productafbeeldingen · maximaal 3</legend>
+        <input id="pImage" type="file" accept="image/*" multiple>
+        <p class="hint">Voeg maximaal drie foto's toe. De eerste afbeelding wordt de hoofdafbeelding in de productlijst.</p>
+        <div id="imagePreviewGrid" class="image-editor-grid"></div>
+      </fieldset>
+      <fieldset class="opt-editor"><legend>Productopties en prijsaanpassingen</legend>
+        <div id="optionGroupsEditor" class="choice-groups-editor"></div>
+        <button type="button" class="secondary" id="addOptionGroup"><i data-lucide="plus"></i> Optiegroep toevoegen</button>
+        <p class="hint">Elke optiegroep wordt één stap in de productconfigurator. Per optie kun je een bedrag toevoegen (bijv. 2,50) of aftrekken (bijv. -1,00). Laat de prijs op 0,00 voor geen prijsverschil.</p>
+      </fieldset>
+      <label class="check"><input type="checkbox" id="pSoldOut" ${p.soldOut ? "checked" : ""}> Hele product uitverkocht</label>
+      <button class="primary full" id="pSave">Product opslaan</button>
+    </form>`);
+  const imageGrid = $("#imagePreviewGrid"), imageInput = $("#pImage"), groupWrap = $("#optionGroupsEditor");
+  const drawImages = () => {
+    imageGrid.innerHTML = images.map((src, i) => `<div class="image-editor-item"><img src="${safe(src)}" alt="Productfoto ${i + 1}"><button type="button" data-remove-image="${i}" aria-label="Afbeelding ${i + 1} verwijderen">×</button></div>`).join("");
+    imageGrid.querySelectorAll("[data-remove-image]").forEach(b => b.onclick = () => { images.splice(Number(b.dataset.removeImage), 1); drawImages(); });
   };
-  optList(p).forEach(addRow); $("#addOpt").onclick = () => addRow();
-  $("#pImage").onchange = async e => {
-    const f = e.target.files[0]; if (!f) return;
-    try { image = await shrinkImage(f); $("#pPreview").src = image; $("#pPreview").hidden = false; toast("Afbeelding klaar"); }
-    catch (err) { console.error(err); e.target.value = ""; toast(err.message.includes("groot") ? err.message : "Deze afbeelding kan niet worden gelezen. Kies een JPG, PNG of WEBP."); }
+  const drawGroups = () => {
+    groupWrap.innerHTML = groups.map((g, gi) => `<div class="choice-group-editor" data-group="${gi}">
+      <div class="choice-group-head"><label>Naam van stap ${gi + 1}<input class="group-label" maxlength="40" required placeholder="Bijv. Kleur, formaat of afwerking" value="${safe(g.label)}"></label><button type="button" class="remove-item" data-remove-group="${gi}">Verwijder stap</button></div>
+      <div class="choice-options">${g.options.map((o, oi) => `<div class="choice-option-row" data-option="${oi}">
+        <input class="choice-name" maxlength="50" required placeholder="Optienaam, bijv. Rood" value="${safe(o.name)}">
+        <div class="delta-wrap"><input class="choice-delta" type="number" step="0.01" value="${Number(o.priceDelta) || 0}" aria-label="Prijsaanpassing in euro"></div>
+        <label><input class="choice-out" type="checkbox" ${o.soldOut ? "checked" : ""}> uitverkocht</label>
+        <button type="button" class="remove-item" data-remove-option="${oi}" aria-label="Optie verwijderen">×</button>
+      </div>`).join("")}</div>
+      <button type="button" class="secondary" data-add-option="${gi}"><i data-lucide="plus"></i> Optie toevoegen</button>
+    </div>`).join("");
+    groupWrap.querySelectorAll(".group-label").forEach(el => el.oninput = () => { groups[Number(el.closest("[data-group]").dataset.group)].label = el.value; });
+    groupWrap.querySelectorAll(".choice-name").forEach(el => el.oninput = () => { const g = Number(el.closest("[data-group]").dataset.group), o = Number(el.closest("[data-option]").dataset.option); groups[g].options[o].name = el.value; });
+    groupWrap.querySelectorAll(".choice-delta").forEach(el => el.oninput = () => { const g = Number(el.closest("[data-group]").dataset.group), o = Number(el.closest("[data-option]").dataset.option); groups[g].options[o].priceDelta = Number(el.value) || 0; });
+    groupWrap.querySelectorAll(".choice-out").forEach(el => el.onchange = () => { const g = Number(el.closest("[data-group]").dataset.group), o = Number(el.closest("[data-option]").dataset.option); groups[g].options[o].soldOut = el.checked; });
+    groupWrap.querySelectorAll("[data-remove-group]").forEach(b => b.onclick = () => { groups.splice(Number(b.dataset.removeGroup), 1); drawGroups(); });
+    groupWrap.querySelectorAll("[data-add-option]").forEach(b => b.onclick = () => { groups[Number(b.dataset.addOption)].options.push({ name: "", priceDelta: 0, soldOut: false }); drawGroups(); });
+    groupWrap.querySelectorAll("[data-remove-option]").forEach(b => b.onclick = () => { const g = Number(b.closest("[data-group]").dataset.group); groups[g].options.splice(Number(b.dataset.removeOption), 1); drawGroups(); });
+  };
+  drawImages(); drawGroups();
+  $("#addOptionGroup").onclick = () => { groups.push({ label: `Keuze ${groups.length + 1}`, options: [{ name: "", priceDelta: 0, soldOut: false }] }); drawGroups(); };
+  imageInput.onchange = async e => {
+    const files = [...e.target.files || []];
+    if (images.length + files.length > 3) { toast("Je kunt maximaal 3 afbeeldingen toevoegen"); imageInput.value = ""; return; }
+    try {
+      for (const file of files) images.push(await shrinkImage(file, 900, 180000));
+      drawImages(); toast("Afbeeldingen toegevoegd");
+    } catch (err) { console.error(err); toast("Een afbeelding kon niet worden verwerkt. Probeer een kleiner bestand."); }
+    finally { imageInput.value = ""; }
   };
   $("#productForm").onsubmit = async e => {
     e.preventDefault();
-    const price = Number($("#pPrice").value); if (!Number.isFinite(price) || price < 0) return toast("Vul een geldige prijs in");
-    const opts = [...rows.querySelectorAll(".opt-row")].map(r => ({ name: r.querySelector(".o-name").value.trim(), soldOut: r.querySelector(".o-out").checked })).filter(o => o.name);
-    const names = opts.map(o => o.name.toLowerCase()); if (new Set(names).size !== names.length) return toast("Elke optie moet een andere naam hebben");
+    const price = Number($("#pPrice").value); if (!Number.isFinite(price) || price < 0) return toast("Vul een geldige basisprijs in");
+    const optionGroups = groups.map(g => ({ label: String(g.label || "").trim(), options: g.options.map(o => ({ name: String(o.name || "").trim(), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut })).filter(o => o.name) })).filter(g => g.label || g.options.length);
+    if (optionGroups.some(g => !g.label || !g.options.length)) return toast("Geef elke optiestap een naam en voeg minimaal één optie toe");
+    if (new Set(optionGroups.map(g => g.label.toLowerCase())).size !== optionGroups.length) return toast("Elke optiestap moet een eigen naam hebben");
+    const allNamesValid = optionGroups.every(g => new Set(g.options.map(o => o.name.toLowerCase())).size === g.options.length);
+    if (!allNamesValid) return toast("Binnen een optiestap moeten de optienamen uniek zijn");
     const btn = $("#pSave"); btn.disabled = true; btn.textContent = "Opslaan…";
-    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image, active: true, soldOut: $("#pSoldOut").checked, optionLabel: opts.length ? ($("#pOptLabel").value.trim() || "Kleur") : null, options: opts.length ? opts : null, updatedAt: Date.now() };
+    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), active: true, soldOut: $("#pSoldOut").checked, optionGroups: optionGroups.length ? optionGroups : null, optionLabel: null, options: null, updatedAt: Date.now() };
     try { id ? await update(ref(db, "products/" + id), data) : await set(push(ref(db, "products")), { ...data, createdAt: Date.now() }); toast("Product opgeslagen"); adminPanel(); }
     catch (err) { console.error(err); btn.disabled = false; btn.textContent = "Product opslaan"; toast("Opslaan mislukt: " + (err.code || err.message)); }
   };
@@ -530,3 +737,5 @@ async function productEditor(id = null) {
 try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid && s.role === "customer") state.user = s; else if (s?.role === "admin") { sessionStorage.removeItem("novashopUser"); sessionStorage.setItem("novashopAdmin", "1"); } } catch { sessionStorage.removeItem("novashopUser"); }
 if (sessionStorage.getItem("novashopAdmin") === "1") state.admin = true;
 refreshNav(); saveCart();
+const publicTrackToken = new URLSearchParams(location.search).get("track");
+if (publicTrackToken) showPublicTracking(publicTrackToken);
