@@ -131,3 +131,7 @@ Sitebeheer accepteert nu zowel HTTPS-links van `tikkie.me` / `tikkie.nl` als Rab
 
 ### Nieuw tabblad Mijn bestellingen
 In Sitebeheer staat nu een apart tabblad **Mijn bestellingen** naast **Track & trace** en **Bestellingen**. Het toont de volledige orderlijst met betaalstatus, betaalverzoekveld, klantadres en bestelvoortgang. In het klantaccount is **Mijn bestellingen** eveneens robuuster gemaakt: bestellingen worden gevonden op account-ID óf op het e-mailadres van het account, zodat oudere bestellingen die alleen een e-mailadres bevatten ook zichtbaar zijn.
+
+
+### Mijn bestellingen-knop in de hoofdnavigatie
+Er staat nu een aparte knop **Mijn bestellingen** direct naast **Mijn chats** in de navigatie bovenaan de webshop. Klanten die zijn ingelogd openen hiermee direct hun orders en betaallinks. Bezoekers die nog niet zijn ingelogd krijgen eerst het inlogscherm. Op kleine schermen blijft de knop zichtbaar als een pakket/check-icoon met de toegankelijke naam “Mijn bestellingen”.

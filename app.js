@@ -498,6 +498,7 @@ function showMyChats() {
     content.querySelectorAll("[data-chat]").forEach(b => b.onclick = () => openChat(b.dataset.chat));
   });
 }
+$("#myOrdersBtn").onclick = () => state.user ? showMyOrders() : authForm();
 $("#myChatsBtn").onclick = showMyChats;
 
 /* ---------- chat ---------- */
