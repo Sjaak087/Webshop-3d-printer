@@ -1,9 +1,10 @@
-import { db } from "./firebase.js";
+import { db, functions } from "./firebase.js";
+import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
-import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const $ = s => document.querySelector(s);
-const SHIPPING = 3.95;   // verzendkosten per bestelling
+const SHIPPING = 3.95;   // verzendkosten bij bezorgen; ophalen en chat zijn gratis
 const STATUSES = ["ontvangen", "verwerkt", "in de maak", "gemaakt", "klaar voor bezorging"];
 const STAGES = ["in wachtrij", "in bereiding", "gemaakt"];   // fase per product zolang de bestelling "in de maak" is
 const stageOf = i => STAGES.includes(i.stage) ? i.stage : STAGES[0];
@@ -19,6 +20,7 @@ const CAMERA_STATUSES = [...STATUSES];   // camera tonen bij alle bestelstatusse
 const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, orderNote: "", plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 let unsubs = [];                       // listeners van het open dialoogvenster
+let lockDialog = false;
 $("#year").textContent = new Date().getFullYear();
 
 /* ---------- helpers ---------- */
@@ -28,9 +30,9 @@ const short = id => String(id || "").slice(-6);
 const when = t => t ? new Date(t).toLocaleString("nl-NL") : "";
 let toastTimer;
 function toast(msg) { const el = $("#toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 3000); }
-function openDialog(html) { cleanup(); content.innerHTML = html; overlay.classList.remove("hidden"); }
+function openDialog(html) { lockDialog = false; $("#closeDialog").hidden = false; cleanup(); content.innerHTML = html; overlay.classList.remove("hidden"); }
 function cleanup() { unsubs.forEach(u => u()); unsubs = []; }
-function closeDialog() { cleanup(); overlay.classList.add("hidden"); content.innerHTML = ""; }
+function closeDialog(force = false) { if (lockDialog && force !== true) return; lockDialog = false; $("#closeDialog").hidden = false; cleanup(); overlay.classList.add("hidden"); content.innerHTML = ""; }
 function listen(q, cb) { unsubs.push(onValue(q, cb)); }   // wordt automatisch opgeruimd
 const toList = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
 const legacyOptions = p => (Array.isArray(p?.options) ? p.options : Object.values(p?.options || {})).filter(o => o && o.name);
@@ -78,9 +80,9 @@ async function copyTrackLink(token) {
   try { await navigator.clipboard.writeText(url); toast("Deellink gekopieerd"); }
   catch { openDialog(`<p class="eyebrow">TRACK & TRACE DELEN</p><h2>Jouw deellink</h2><p class="muted">Kopieer deze link en stuur hem door.</p><input class="share-url" readonly value="${safe(url)}"><button class="primary full" id="copyFallback">Kopiëren</button>`); $("#copyFallback").onclick = () => { $("#dialogContent .share-url").select(); document.execCommand("copy"); toast("Link gekopieerd"); }; }
 }
-$("#closeDialog").onclick = closeDialog;
-overlay.addEventListener("click", e => { if (e.target === overlay) closeDialog(); });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && !overlay.classList.contains("hidden")) closeDialog(); });
+$("#closeDialog").onclick = () => closeDialog();
+overlay.addEventListener("click", e => { if (e.target === overlay && !lockDialog) closeDialog(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !overlay.classList.contains("hidden") && !lockDialog) closeDialog(); });
 
 /* ---------- wachtwoorden (PBKDF2, nooit meer platte tekst) ---------- */
 const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
@@ -97,10 +99,37 @@ let fails = 0, lockUntil = 0;           // simpele rem op gokken
 function locked() { const s = Math.ceil((lockUntil - Date.now()) / 1000); if (s > 0) { toast(`Te veel pogingen. Probeer het over ${s} seconden opnieuw.`); return true } return false; }
 function failed() { if (++fails >= 5) { lockUntil = Date.now() + Math.min(300000, 15000 * 2 ** (fails - 5)); } toast("E-mailadres of wachtwoord klopt niet."); }
 // klant en beheerder zijn twee aparte sessies: inloggen bij Sitebeheer logt je niet uit bij je klantaccount (en andersom)
-function setCustomer(u) { state.user = u; fails = 0; sessionStorage.setItem("novashopUser", JSON.stringify({ uid: u.uid, email: u.email, role: "customer" })); refreshNav(); }
+function setCustomer(u) { state.user = u; fails = 0; sessionStorage.setItem("novashopUser", JSON.stringify({ uid: u.uid, email: u.email, username: u.username || "", role: "customer" })); refreshNav(); }
+const usernameKey = value => String(value || "").trim().toLowerCase();
+function validUsername(value) { return /^[a-zA-Z0-9._-]{3,20}$/.test(String(value || "").trim()); }
+async function claimUsername(uid, username) {
+  const clean = String(username || "").trim(), key = usernameKey(clean);
+  if (!validUsername(clean)) throw new Error("Gebruikersnaam moet 3–20 tekens bevatten: letters, cijfers, punt, _ of -.");
+  const result = await runTransaction(ref(db, `usernames/${key}`), current => current == null || current === uid ? uid : undefined);
+  if (!result.committed || result.snapshot.val() !== uid) throw new Error("Deze gebruikersnaam is al bezet. Kies een andere.");
+  await set(ref(db, `profiles/${uid}`), { username: clean, usernameKey: key, updatedAt: Date.now() });
+  return clean;
+}
+async function activateCustomer(uid, email, suggested = "") {
+  const profile = (await get(ref(db, `profiles/${uid}`))).val();
+  if (profile?.username) { setCustomer({ uid, email, username: profile.username, role: "customer" }); closeDialog(); toast("Je bent ingelogd"); return; }
+  usernamePrompt(uid, email, suggested);
+}
+function usernamePrompt(uid, email, suggested = "") {
+  openDialog(`<p class="eyebrow">PROFIEL AFRONDEN</p><h2>Kies je gebruikersnaam</h2><p class="muted">Je account heeft nog geen gebruikersnaam. Deze naam wordt zichtbaar op je profiel, bestellingen en chats. Je e-mailadres blijft privé voor klanten.</p><form id="usernameForm" class="stack"><label>Gebruikersnaam<input id="usernameInput" required minlength="3" maxlength="20" pattern="[A-Za-z0-9._-]{3,20}" autocomplete="nickname" value="${safe(suggested)}" placeholder="Bijv. printfan23"></label><small class="hint">3–20 tekens: letters, cijfers, punt, _ of -.</small><button class="primary full">Gebruikersnaam opslaan</button></form>`);
+  lockDialog = true; $("#closeDialog").hidden = true;
+  $("#usernameForm").onsubmit = async e => {
+    e.preventDefault(); const btn = e.submitter; btn.disabled = true;
+    try {
+      const username = await claimUsername(uid, $("#usernameInput").value);
+      setCustomer({ uid, email, username, role: "customer" }); closeDialog(true); toast("Gebruikersnaam ingesteld!");
+    } catch (err) { toast(err.message || "Gebruikersnaam opslaan mislukt"); }
+    finally { btn.disabled = false; }
+  };
+}
 function setAdmin() { state.admin = true; fails = 0; sessionStorage.setItem("novashopAdmin", "1"); refreshNav(); }
 function refreshNav() {
-  $("#accountBtn").innerHTML = `<i data-lucide="user-round"></i><span>${state.user ? "Mijn account" : "Inloggen"}</span>`;
+  $("#accountBtn").innerHTML = `<i data-lucide="user-round"></i><span>${state.user ? safe(state.user.username || "Mijn account") : "Inloggen"}</span>`;
   $("#adminEntry").innerHTML = `<i data-lucide="sliders-horizontal"></i><span>${state.admin ? "Sitebeheer · ingelogd" : "Sitebeheer"}</span>`;
 }
 
@@ -226,8 +255,8 @@ function showProduct(id) {
 /* ---------- winkelwagen-dialoog ---------- */
 $("#cartBtn").onclick = showCart;
 function showCart() {
-  const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0), total = sub + SHIPPING;
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)}</span></div></div><div class="cart-total"><span>Totaal</span><b>${money(total)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>Wordt bepaald bij afrekenen</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, selectionsOf(x)) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => itemKey(x.id, selectionsOf(x)) === b.dataset.qty); if (!it) return;
@@ -236,13 +265,13 @@ function showCart() {
   });
   $("#continue")?.addEventListener("click", closeDialog);
   $("#orderNote")?.addEventListener("input", e => state.orderNote = e.target.value);
-  $("#checkout")?.addEventListener("click", () => state.user ? placeOrder() : authForm("login", "Log in met een klantaccount om je bestelling af te ronden."));
+  $("#checkout")?.addEventListener("click", () => state.user ? checkoutChoice() : authForm("login", "Log in met een klantaccount om je bestelling af te ronden."));
 }
 
 /* ---------- klantaccount ---------- */
 function authForm(mode = "login", message = "") {
   const login = mode === "login";
-  openDialog(`<p class="eyebrow">3D PRINTED SHOP ACCOUNT</p><h2>${login ? "Welkom terug" : "Account aanmaken"}</h2><p class="muted">${safe(message)}</p><form id="authForm" class="stack"><label>E-mailadres<input type="email" id="authEmail" required autocomplete="email"></label><label>Wachtwoord<input type="password" id="authPassword" required minlength="${login ? 1 : 8}" autocomplete="${login ? "current-password" : "new-password"}"></label>${login ? "" : `<p class="hint">Minimaal 8 tekens.</p>`}<button class="primary full">${login ? "Inloggen" : "Account aanmaken"}</button></form><p class="switch-auth">${login ? "Nog geen account?" : "Heb je al een account?"} <button id="switchAuth" class="inline-link">${login ? "Account aanmaken" : "Inloggen"}</button></p>`);
+  openDialog(`<p class="eyebrow">3D PRINTED SHOP ACCOUNT</p><h2>${login ? "Welkom terug" : "Account aanmaken"}</h2><p class="muted">${safe(message)}</p><form id="authForm" class="stack">${login ? "" : `<label>Gebruikersnaam<input type="text" id="authUsername" required minlength="3" maxlength="20" pattern="[A-Za-z0-9._-]{3,20}" autocomplete="nickname" placeholder="Bijv. printfan23"></label>`}<label>E-mailadres<input type="email" id="authEmail" required autocomplete="email"></label><label>Wachtwoord<input type="password" id="authPassword" required minlength="${login ? 1 : 8}" autocomplete="${login ? "current-password" : "new-password"}"></label>${login ? "" : `<p class="hint">Minimaal 8 tekens. Je gebruikersnaam is zichtbaar; je e-mailadres niet.</p>`}<button class="primary full">${login ? "Inloggen" : "Account aanmaken"}</button></form><p class="switch-auth">${login ? "Nog geen account?" : "Heb je al een account?"} <button id="switchAuth" class="inline-link">${login ? "Account aanmaken" : "Inloggen"}</button></p>`);
   $("#authForm").onsubmit = async e => {
     e.preventDefault(); if (locked()) return;
     const btn = e.submitter; btn && (btn.disabled = true);
@@ -250,60 +279,95 @@ function authForm(mode = "login", message = "") {
     try {
       const key = await emailKey(email), accRef = ref(db, "accounts/" + key), acc = (await get(accRef)).val();
       if (!login) {
+        const username = $("#authUsername").value.trim();
+        if (!validUsername(username)) return toast("Gebruikersnaam moet 3–20 tekens bevatten.");
         if (acc) return toast("Dit e-mailadres bestaat al.");
         const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
-        await set(accRef, { email, salt, hash: await hashPw(pw, salt), createdAt: Date.now() });
-        setCustomer({ uid: key, email, role: "customer" }); closeDialog(); toast("Account aangemaakt!");
+        const claimed = await claimUsername(key, username);
+        try { await set(accRef, { email, salt, hash: await hashPw(pw, salt), createdAt: Date.now() }); }
+        catch (err) { await set(ref(db, `usernames/${usernameKey(claimed)}`), null); throw err; }
+        setCustomer({ uid: key, email, username: claimed, role: "customer" }); closeDialog(); toast("Account aangemaakt!");
       } else {
         if (!acc || await hashPw(pw, acc.salt) !== acc.hash) return failed();
-        setCustomer({ uid: key, email, role: "customer" }); closeDialog(); toast("Je bent ingelogd");
+        await activateCustomer(key, email);
       }
-    } catch (err) { console.error(err); toast("Accountactie mislukt. Probeer het opnieuw."); }
+    } catch (err) { console.error(err); toast(err.message || "Accountactie mislukt. Probeer het opnieuw."); }
     finally { btn && (btn.disabled = false); }
   };
   $("#switchAuth").onclick = () => authForm(login ? "register" : "login");
 }
 $("#accountBtn").onclick = () => state.user ? accountMenu() : authForm();
 function accountMenu() {
-  openDialog(`<p class="eyebrow">MIJN ACCOUNT</p><h2>${safe(state.user.email)}</h2><div class="stack"><button class="secondary full" id="myOrders">Mijn bestellingen</button><button class="secondary full" id="myChats">Mijn chats</button><button class="secondary full" id="logout">Uitloggen</button></div>`);
+  openDialog(`<p class="eyebrow">MIJN ACCOUNT</p><h2>${safe(state.user.username || "Mijn account")}</h2><p class="muted">Je e-mailadres wordt niet als profielnaam getoond.</p><div class="stack"><button class="secondary full" id="myOrders">Mijn bestellingen</button><button class="secondary full" id="myChats">Mijn chats</button><button class="secondary full" id="editUsername">Gebruikersnaam wijzigen</button><button class="secondary full" id="logout">Uitloggen</button></div>`);
   $("#myOrders").onclick = showMyOrders; $("#myChats").onclick = showMyChats;
+  $("#editUsername").onclick = () => usernamePrompt(state.user.uid, state.user.email, state.user.username || "");
   $("#logout").onclick = logoutCustomer;
 }
 function logoutCustomer() { state.user = null; sessionStorage.removeItem("novashopUser"); refreshNav(); closeDialog(); toast("Je bent uitgelogd"); }
 function logoutAdmin() { state.admin = false; sessionStorage.removeItem("novashopAdmin"); refreshNav(); closeDialog(); toast("Je bent uitgelogd bij Sitebeheer"); }
 
 /* ---------- bestellen ---------- */
-async function placeOrder() {
-  if (!state.cart.length) return;
-  if (!state.loaded) return toast("Producten worden nog geladen, probeer het zo opnieuw.");
-  const bad = state.cart.filter(c => cartIssue(c));
-  if (bad.length) { state.cart = state.cart.filter(c => !cartIssue(c)); saveCart(); toast("Niet meer beschikbaar en uit je winkelwagen gehaald: " + bad.map(b => b.title + (selectionsOf(b).length ? ` (${selectionsOf(b).map(s => s.value).join(", ")})` : "")).join(", ")); return showCart(); }
-  const items = state.cart.map(c => {
-    const p = state.products.find(x => x.id === c.id), selected = selectionsOf(c);
-    const delta = selected.reduce((sum, s) => {
-      const group = optionGroupsOf(p).find(g => g.label === s.label), option = group?.options.find(o => o.name === s.value);
-      return sum + (Number(option?.priceDelta) || 0);
-    }, 0);
-    return { id: c.id, title: p.title, price: Math.max(0, Number(p.price) + delta), qty: c.qty, ...(selected.length ? { selections: selected } : {}) };
-  });
-  const subtotal = items.reduce((n, i) => n + i.price * i.qty, 0), total = subtotal + SHIPPING;
-  const note = (state.orderNote || "").trim().slice(0, 500);
+function checkoutChoice() {
+  if (!state.cart.length) return toast("Je winkelwagen is leeg.");
+  const subtotal = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
+  openDialog(`<p class="eyebrow">AFREKENEN</p><h2>Hoe wil je bestellen?</h2><p class="muted">Kies hoe je je bestelling wilt afronden.</p><div class="checkout-methods"><button class="checkout-method" id="normalCheckout"><b>Online afrekenen</b><small>Vul je Nederlandse adres in of kies ophalen. Daarna ontvang je een persoonlijke Tikkie-link via Mijn bestellingen.</small><strong>${money(subtotal)} + eventuele verzending</strong></button><button class="checkout-method" id="chatCheckout"><b>Verder via chat</b><small>Geen adresgegevens of online betaling nodig. We bespreken de afhandeling in de chat.</small><strong>${money(subtotal)} · geen verzendkosten</strong></button></div>`);
+  $("#normalCheckout").onclick = checkoutForm;
+  $("#chatCheckout").onclick = placeChatOrder;
+}
+function checkoutForm() {
+  const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
+  openDialog(`<p class="eyebrow">GEGEVENS VOOR JE BESTELLING</p><h2>Bezorging of ophalen</h2><form id="shippingForm" class="stack checkout-form">
+    <fieldset class="checkout-pick"><legend>Hoe wil je je bestelling ontvangen?</legend><label><input type="radio" name="fulfillment" value="delivery" checked> Bezorgen <span>+ ${money(SHIPPING)}</span></label><label><input type="radio" name="fulfillment" value="pickup"> Ophalen <span>Gratis</span></label></fieldset>
+    <div id="addressFields"><div class="checkout-two"><label>Voornaam<input name="firstName" required maxlength="60" autocomplete="given-name"></label><label>Achternaam<input name="lastName" required maxlength="80" autocomplete="family-name"></label></div>
+    <div class="checkout-two"><label>Straat<input name="street" required maxlength="100" autocomplete="address-line1"></label><label>Huisnummer<input name="houseNumber" required maxlength="12"></label></div>
+    <label>Toevoeging (optioneel)<input name="addition" maxlength="20" placeholder="Bijv. A"></label>
+    <div class="checkout-two"><label>Postcode<input name="postcode" required maxlength="8" autocomplete="postal-code" placeholder="1234 AB" pattern="[0-9]{4}\s?[A-Za-z]{2}"></label><label>Dorp / stad<input name="city" required maxlength="80" autocomplete="address-level2"></label></div>
+    <label>Land<input value="Nederland" readonly></label></div>
+    <label>Opmerking (optioneel)<textarea name="note" rows="3" maxlength="500">${safe(state.orderNote || "")}</textarea></label>
+    <div class="cart-total"><span>Producten</span><b>${money(sub)}</b></div><p id="checkoutTotal" class="checkout-total">Totaal bij bezorgen: <b>${money(sub + SHIPPING)}</b></p>
+    <button class="primary full" id="payIdeal">Bestelling plaatsen · wachten op Tikkie · ${money(sub + SHIPPING)}</button>
+  </form>`);
+  const form = $("#shippingForm"), addressFields = $("#addressFields"), payBtn = $("#payIdeal"), totalEl = $("#checkoutTotal");
+  const sync = () => { const pickup = form.elements.fulfillment.value === "pickup"; addressFields.hidden = pickup; addressFields.querySelectorAll("input").forEach(el => el.required = !pickup && el.name !== "addition"); const total = sub + (pickup ? 0 : SHIPPING); totalEl.innerHTML = `Totaal: <b>${money(total)}</b>`; payBtn.textContent = `Bestelling plaatsen · wachten op Tikkie · ${money(total)}`; };
+  form.querySelectorAll('input[name="fulfillment"]').forEach(el => el.addEventListener("change", sync)); sync();
+  form.onsubmit = async e => {
+    e.preventDefault(); if (!state.user) return authForm("login");
+    if (!state.loaded) return toast("Producten worden nog geladen.");
+    const data = new FormData(form), pickup = data.get("fulfillment") === "pickup";
+    const address = pickup ? null : { firstName: String(data.get("firstName") || "").trim(), lastName: String(data.get("lastName") || "").trim(), street: String(data.get("street") || "").trim(), houseNumber: String(data.get("houseNumber") || "").trim(), addition: String(data.get("addition") || "").trim(), postcode: String(data.get("postcode") || "").trim().toUpperCase(), city: String(data.get("city") || "").trim(), country: "Nederland" };
+    if (!pickup && !/^[0-9]{4}\s?[A-Z]{2}$/.test(address.postcode)) return toast("Vul een geldige Nederlandse postcode in.");
+    const bad = state.cart.filter(c => cartIssue(c)); if (bad.length) return toast("Controleer je winkelwagen: een product/optie is niet meer beschikbaar.");
+    payBtn.disabled = true; payBtn.textContent = "Bestelling aanmaken…";
+    try {
+      const items = state.cart.map(c => { const product = state.products.find(x => x.id === c.id); const selected = selectionsOf(c); const delta = selected.reduce((sum, choice) => { const group = optionGroupsOf(product).find(g => g.label === choice.label), option = group?.options.find(o => o.name === choice.value); return sum + (Number(option?.priceDelta) || 0); }, 0); return { id: c.id, title: product.title, price: Math.max(0, Number(product.price) + delta), qty: c.qty, ...(selected.length ? { selections: selected } : {}) }; });
+      const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0), shipping = pickup ? 0 : SHIPPING, total = subtotal + shipping;
+      const orderId = push(ref(db, "orders")).key, now = Date.now(), publicToken = randomToken();
+      const order = { userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, items, subtotal, shipping, total, address, fulfillmentMethod: pickup ? "pickup" : "delivery", paymentMethod: "tikkie", paymentStatus: "awaiting_tikkie", status: STATUSES[0], createdAt: now, publicToken, ...(String(data.get("note") || "").trim() ? { note: String(data.get("note") || "").trim().slice(0, 500) } : {}) };
+      await update(ref(db), { [`orders/${orderId}`]: order, [`publicTrack/${publicToken}`]: publicTrackPayload({ ...order, id: orderId }) });
+      state.cart = []; state.orderNote = ""; saveCart();
+      openDialog(`<p class="eyebrow">BESTELLING AANGEMAAKT</p><h2>Wachten op Tikkie</h2><p>Je bestelling <b>#${short(orderId)}</b> is aangemaakt. Zodra de beheerder de Tikkie-link toevoegt, verschijnt die hier bij <b>Mijn bestellingen</b>.</p><p class="muted">Totaal: <b>${money(total)}</b>. Je hoeft nu nog niets te betalen.</p><button class="primary full" id="toMyOrders">Bekijk mijn bestellingen</button>`);
+      $("#toMyOrders").onclick = showMyOrders;
+    } catch (err) { console.error(err); toast("Bestelling aanmaken is niet gelukt. Probeer het opnieuw."); payBtn.disabled = false; sync(); }
+  };
+}
+async function placeChatOrder() {
+  if (!state.cart.length || !state.user) return;
+  if (!state.loaded) return toast("Producten worden nog geladen.");
+  const bad = state.cart.filter(c => cartIssue(c)); if (bad.length) return toast("Controleer je winkelwagen: een product/optie is niet meer beschikbaar.");
+  const items = state.cart.map(c => { const p = state.products.find(x => x.id === c.id); const selected = selectionsOf(c); const delta = selected.reduce((sum, s) => { const group = optionGroupsOf(p).find(g => g.label === s.label), option = group?.options.find(o => o.name === s.value); return sum + (Number(option?.priceDelta) || 0); }, 0); return { id: c.id, title: p.title, price: Math.max(0, Number(p.price) + delta), qty: c.qty, ...(selected.length ? { selections: selected } : {}) }; });
+  const subtotal = items.reduce((n, i) => n + i.price * i.qty, 0), total = subtotal, note = (state.orderNote || "").trim().slice(0, 500);
   const orderKey = push(ref(db, "orders")).key, chatKey = push(ref(db, "chats")).key, msgKey = push(ref(db, `chats/${chatKey}/messages`)).key, now = Date.now(), publicToken = randomToken();
-  const newOrder = { userId: state.user.uid, email: state.user.email, items, subtotal, shipping: SHIPPING, total, status: STATUSES[0], createdAt: now, chatId: chatKey, publicToken, ...(note ? { note } : {}) };
+  const newOrder = { userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, items, subtotal, shipping: 0, total, fulfillmentMethod: "chat", address: null, paymentMethod: "chat", paymentStatus: "not_required", status: STATUSES[0], createdAt: now, chatId: chatKey, publicToken, ...(note ? { note } : {}) };
   try {
-    await update(ref(db), {                         // bestelling, openbare volgkaart en chat samen opslaan
-      ["orders/" + orderKey]: newOrder,
-      ["publicTrack/" + publicToken]: publicTrackPayload({ ...newOrder, id: orderKey }),
-      ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, email: state.user.email, createdAt: now, lastMessage: "Bestelling geplaatst", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is ontvangen. Totaal: ${money(total)} (incl. ${money(SHIPPING)} verzendkosten). Je openbare track & trace-link staat bij Mijn bestellingen.`, createdAt: now } } }
-    });
-    state.cart = []; state.orderNote = ""; saveCart(); toast("Bestelling geplaatst!"); openChat(chatKey);
-  } catch (e) { console.error(e); toast("Bestellen lukte niet. Probeer het opnieuw."); }
+    await update(ref(db), { ["orders/" + orderKey]: newOrder, ["publicTrack/" + publicToken]: publicTrackPayload({ ...newOrder, id: orderKey }), ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, createdAt: now, lastMessage: "Bestelling via chat gestart", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is via chat gestart. Producttotaal: ${money(total)}. Er zijn geen verzendkosten of online betaling toegevoegd. We bespreken de verdere afhandeling hier.`, createdAt: now } } } });
+    state.cart = []; state.orderNote = ""; saveCart(); toast("Chatbestelling aangemaakt"); openChat(chatKey);
+  } catch (e) { console.error(e); toast("Chatbestelling starten lukte niet."); }
 }
 function showMyOrders() {
   openDialog(`<p class="eyebrow">OVERZICHT</p><h2>Mijn bestellingen</h2><div id="ordersBox" class="stack"><p class="muted">Laden…</p></div>`);
   listen(query(ref(db, "orders"), orderByChild("userId"), equalTo(state.user.uid)), snap => {
     const orders = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
-    $("#ordersBox").innerHTML = orders.length ? orders.map(o => `<div class="order-row"><div><b>Bestelling #${short(o.id)}</b><small>${when(o.createdAt)} · ${money(o.total)}</small><span class="status-pill">${safe(o.status)}</span></div><div class="order-actions"><button class="secondary" data-track="${safe(o.id)}">Volgen</button><button class="secondary" data-share="${safe(o.id)}"><i data-lucide="share-2"></i> Deellink</button></div></div>`).join("") : "<p class='muted'>Je hebt nog geen bestellingen.</p>";
+    $("#ordersBox").innerHTML = orders.length ? orders.map(o => `<div class="order-row"><div><b>Bestelling #${short(o.id)}</b><small>${when(o.createdAt)} · ${money(o.total)} · betaling: ${safe(o.paymentStatus === "awaiting_tikkie" ? "Wachten op Tikkie" : o.paymentStatus === "tikkie_link_added" ? "Tikkie-link beschikbaar" : o.paymentStatus || "niet geregistreerd")}</small><span class="status-pill">${safe(o.status)}</span>${o.paymentMethod === "tikkie" ? (o.tikkieLink ? `<p class="order-note"><b>Betaal via Tikkie:</b> <a href="${safe(o.tikkieLink)}" target="_blank" rel="noopener noreferrer">Open jouw Tikkie-betaling</a></p>` : `<p class="order-note">De Tikkie-link wordt nog door de webshopbeheerder toegevoegd.</p>`) : ""}</div><div class="order-actions"><button class="secondary" data-track="${safe(o.id)}">Volgen</button><button class="secondary" data-share="${safe(o.id)}"><i data-lucide="share-2"></i> Deellink</button></div></div>`).join("") : "<p class='muted'>Je hebt nog geen bestellingen.</p>";
     content.querySelectorAll("[data-track]").forEach(b => b.onclick = () => showOrderTracking(b.dataset.track));
     content.querySelectorAll("[data-share]").forEach(b => b.onclick = () => createShareTrack(b.dataset.share));
   });
@@ -457,7 +521,7 @@ function openChat(id, asAdmin = false) {
   get(ref(db, "chats/" + id)).then(s => {
     const c = s.val(); if (!c) return toast("Chat niet gevonden");
     if (!asAdmin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
-    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>Bestelling #${short(c.orderId)}</h2><small class="chat-subtitle">${safe(c.email || "Gesprek met 3D Printed Shop")}</small></div><button class="secondary" id="chatTrack">Bestelling volgen</button></div><div class="chat-notice">Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen.</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
+    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>Bestelling #${short(c.orderId)}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div><button class="secondary" id="chatTrack">Bestelling volgen</button></div><div class="chat-notice">Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen.</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
     $("#chatTrack").onclick = () => c.orderId && showOrderTracking(c.orderId, asAdmin);
     $("#sendMessage").onsubmit = async e => {
       e.preventDefault(); const input = $("#messageText"), text = input.value.trim(); if (!text) return;
@@ -527,7 +591,7 @@ function agendaTab(target, orders) {
   target.innerHTML = `<h3>Agenda · printafspraken inplannen</h3>
   <div class="plan-panel">
     <div class="plan-step"><b>1. Kies een bestelling</b> <small>(oudste bovenaan, nieuwste onderaan)</small>
-      <div class="plan-list">${os.length ? os.map(o => { const p = planInfo(o); return `<button type="button" class="plan-item ${o.id === P.orderId ? "active" : ""}" data-pord="${safe(o.id)}"><b>#${short(o.id)}</b> · ${when(o.createdAt)}<small>${safe(o.email)} · ${p.total} stuks · ${p.ready ? "✓ alles ingepland" : `${p.planned}/${p.total} ingepland`}</small></button>`; }).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}</div></div>
+      <div class="plan-list">${os.length ? os.map(o => { const p = planInfo(o); return `<button type="button" class="plan-item ${o.id === P.orderId ? "active" : ""}" data-pord="${safe(o.id)}"><b>#${short(o.id)}</b> · ${when(o.createdAt)}<small>${safe(o.username || "Klant")} · ${p.total} stuks · ${p.ready ? "✓ alles ingepland" : `${p.planned}/${p.total} ingepland`}</small></button>`; }).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}</div></div>
     ${sel ? `<div class="plan-step"><b>2. Kies een product uit bestelling #${short(sel.id)}</b> <small>(elk stuk apart)</small>
       <div class="plan-list">${units.map(x => { const sl = slotOf(sel, x.key); return `<div class="plan-unit ${x.key === P.key ? "active" : ""}"><button type="button" class="plan-item" data-punit="${x.key}"><b>${safe(unitLabel(x))}</b><small>${sl ? `ingepland: ${whenShort(sl.startTs)} – ${timeStr(new Date(sl.endTs))}` : "nog niet ingepland"}</small></button>${sl ? `<button type="button" class="remove-item" data-pdel="${x.key}">Verwijder</button>` : ""}<div class="stage-btns">${STAGES.map(st => `<button type="button" class="stage-btn st${STAGES.indexOf(st)} ${unitStages(x.item)[x.u] === st ? "on" : ""}" data-pstage="${x.key}|${st}">${STAGE_LABEL[st]}</button>`).join("")}</div></div>`; }).join("")}</div></div>
     <div class="plan-step"><b>3. Datum en tijd</b>
@@ -627,16 +691,18 @@ function adminTab() {
   });
   else if (state.tab === "orders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
-    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.email)}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.innerHTML = `<h3>Bestellingen en status</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.username || "Klant")}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}<p class="order-note"><b>Afhandeling:</b> ${o.fulfillmentMethod === "pickup" ? "Ophalen" : o.fulfillmentMethod === "delivery" ? "Bezorgen" : "Via chat"} · <b>Betaling:</b> ${safe(o.paymentStatus || "Niet geregistreerd")}</p>${o.paymentMethod === "tikkie" ? `<div class="stage-panel"><b>Tikkie-link voor klant</b><input type="url" data-tikkie-input="${safe(o.id)}" value="${safe(o.tikkieLink || "")}" placeholder="https://tikkie.me/pay/..."><div class="admin-actions"><button class="secondary" data-tikkie-save="${safe(o.id)}">Tikkie-link opslaan</button><button class="secondary" data-tikkie-paid="${safe(o.id)}">Markeer als betaald</button></div></div>` : ""}${o.address ? `<p class="order-note"><b>Bezorgadres:</b> ${safe([o.address.firstName, o.address.lastName].filter(Boolean).join(" "))}, ${safe(o.address.street || "")} ${safe(o.address.houseNumber || "")} ${safe(o.address.addition || "")}, ${safe(o.address.postcode || "")} ${safe(o.address.city || "")}, ${safe(o.address.country || "Nederland")}</p>` : ""}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option ${o.status === s ? "selected" : ""}>${s}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-status]").forEach(s => s.onchange = async () => { try { await update(ref(db, "orders/" + s.dataset.status), { status: s.value }); await syncPublicTrack(s.dataset.status); toast("Bestelstatus bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
     target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = async () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; try { await update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }); await syncPublicTrack(o.id); toast("Fase bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
+    target.querySelectorAll("[data-tikkie-save]").forEach(b => b.onclick = async () => { const id = b.dataset.tikkieSave, input = target.querySelector(`[data-tikkie-input="${id}"]`), link = (input?.value || "").trim(); let url; try { url = new URL(link); } catch { return toast("Vul een geldige Tikkie-link in."); } if (url.protocol !== "https:" || !["tikkie.me", "www.tikkie.me", "tikkie.nl", "www.tikkie.nl"].includes(url.hostname)) return toast("Gebruik een geldige https Tikkie-link."); try { await update(ref(db, `orders/${id}`), { tikkieLink: url.href, paymentStatus: "tikkie_link_added" }); toast("Tikkie-link opgeslagen. De klant ziet hem bij Mijn bestellingen."); } catch { toast("Opslaan van Tikkie-link mislukt."); } });
+    target.querySelectorAll("[data-tikkie-paid]").forEach(b => b.onclick = async () => { if (!confirm("Heb je gecontroleerd dat deze Tikkie-betaling binnen is?")) return; try { await update(ref(db, `orders/${b.dataset.tikkiePaid}`), { paymentStatus: "paid", paidAt: Date.now() }); toast("Bestelling als betaald gemarkeerd."); } catch { toast("Bijwerken mislukt."); } });
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
   });
   else if (state.tab === "camera") cameraTab(target);
   else if (state.tab === "agenda") listen(ref(db, "orders"), snap => agendaTab(target, toList(snap)));
   else if (state.tab === "history") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst
-    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.email)}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}${showStage(o, i) ? stageChips(i) : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${planBox(o, true)}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
+    target.innerHTML = `<h3>Alle bestellingen · oudste eerst (${os.length})</h3>${os.length ? os.map(o => `<div class="order-card"><div class="order-card-head"><b>Bestelling #${short(o.id)} · ${safe(o.username || "Klant")}</b><span class="status-pill">${safe(o.status)}</span></div><small class="order-when">Geplaatst op ${when(o.createdAt)}</small><small>${safe(o.username || "Klant")}</small><div class="order-items">${(o.items || []).map(i => `<div>${safe(i.title)}${optText(i)} × ${i.qty} · ${money(i.price * i.qty)}${showStage(o, i) ? stageChips(i) : ""}</div>`).join("")}</div>${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${planBox(o, true)}<p class="order-note"><b>Afhandeling:</b> ${o.fulfillmentMethod === "pickup" ? "Ophalen" : o.fulfillmentMethod === "delivery" ? "Bezorgen" : "Via chat"} · <b>Betaling:</b> ${safe(o.paymentStatus || "Niet geregistreerd")}</p>${o.address ? `<p class="order-note"><b>Bezorgadres:</b> ${safe([o.address.firstName, o.address.lastName].filter(Boolean).join(" "))}, ${safe(o.address.street || "")} ${safe(o.address.houseNumber || "")} ${safe(o.address.addition || "")}, ${safe(o.address.postcode || "")} ${safe(o.address.city || "")}, ${safe(o.address.country || "Nederland")}</p>` : ""}<div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal ?? o.total)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping ?? 0)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div><div class="admin-actions"><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat openen</button><button class="primary" data-finish="${safe(o.id)}">Afronden en verwijderen</button></div></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
     target.querySelectorAll("[data-finish]").forEach(b => b.onclick = async () => {
       const o = os.find(x => x.id === b.dataset.finish); if (!o) return;
@@ -647,7 +713,7 @@ function adminTab() {
   });
   else listen(ref(db, "chats"), snap => {
     const cs = toList(snap).sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
-    target.innerHTML = `<h3>Klantenchats</h3>${cs.length ? cs.map(c => `<button class="chat-list-item" data-achat="${safe(c.id)}"><b>${safe(c.email || "Klant")} · #${short(c.orderId)}</b><small>${safe(c.lastMessage || "Nieuw gesprek")}</small></button>`).join("") : "<p class='muted'>Er zijn nog geen chats.</p>"}`;
+    target.innerHTML = `<h3>Klantenchats</h3>${cs.length ? cs.map(c => `<button class="chat-list-item" data-achat="${safe(c.id)}"><b>${safe(c.username || "Klant")} · #${short(c.orderId)}</b><small>${safe(c.lastMessage || "Nieuw gesprek")}</small></button>`).join("") : "<p class='muted'>Er zijn nog geen chats.</p>"}`;
     target.querySelectorAll("[data-achat]").forEach(b => b.onclick = () => openChat(b.dataset.achat, true));
   });
 }
@@ -737,5 +803,8 @@ async function productEditor(id = null) {
 try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid && s.role === "customer") state.user = s; else if (s?.role === "admin") { sessionStorage.removeItem("novashopUser"); sessionStorage.setItem("novashopAdmin", "1"); } } catch { sessionStorage.removeItem("novashopUser"); }
 if (sessionStorage.getItem("novashopAdmin") === "1") state.admin = true;
 refreshNav(); saveCart();
+if (state.user?.uid) { const cachedUser = state.user; get(ref(db, `profiles/${cachedUser.uid}`)).then(snap => { const profile = snap.val(); if (profile?.username) setCustomer({ ...cachedUser, username: profile.username }); else usernamePrompt(cachedUser.uid, cachedUser.email, cachedUser.username || ""); }).catch(() => {}); }
 const publicTrackToken = new URLSearchParams(location.search).get("track");
 if (publicTrackToken) showPublicTracking(publicTrackToken);
+const returnedOrder = new URLSearchParams(location.search).get("order");
+if (returnedOrder) { toast("Je bent terug van de betaalpagina. De betaalstatus wordt door Mollie bevestigd."); history.replaceState({}, "", location.pathname); }

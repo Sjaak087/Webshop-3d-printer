@@ -41,6 +41,18 @@
         ".read": true,
         ".write": true
       }
+    },
+    "profiles": {
+      "$uid": {
+        ".read": true,
+        ".write": true
+      }
+    },
+    "usernames": {
+      ".read": true,
+      "$username": {
+        ".write": "!data.exists() || newData.val() === data.val()"
+      }
     }
   }
 }

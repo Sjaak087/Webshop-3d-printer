@@ -1,7 +1,8 @@
-// Firebase-configuratie voor 3D Printed Shop (Realtime Database). Firebase Storage is niet meer nodig:
-// productafbeeldingen worden in de browser verkleind en als kleine afbeelding in de database bewaard.
+// Firebase voor 3D Printed Shop.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+import { getFunctions } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
+import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check.js";
 
 export const firebaseConfig = {
   apiKey: "AIzaSyCBLpFJIC0yppKjQAwazMqv9QC0X4MBNaI",
@@ -14,4 +15,17 @@ export const firebaseConfig = {
   measurementId: "G-7YTVRGHRKL"
 };
 
-export const db = getDatabase(initializeApp(firebaseConfig));
+export const app = initializeApp(firebaseConfig);
+
+// Maak in Firebase Console > App Check een reCAPTCHA v3-sitekey aan.
+// De betaalfunctie vereist een geldige App Check-token.
+const APP_CHECK_SITE_KEY = "VUL_HIER_JE_RECAPTCHA_V3_SITE_KEY_IN";
+if (APP_CHECK_SITE_KEY && !APP_CHECK_SITE_KEY.startsWith("VUL_HIER")) {
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider(APP_CHECK_SITE_KEY),
+    isTokenAutoRefreshEnabled: true
+  });
+}
+
+export const db = getDatabase(app);
+export const functions = getFunctions(app, "europe-west1");

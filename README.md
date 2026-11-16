@@ -17,7 +17,7 @@ Upload de bijgewerkte bestanden naar je hosting en publiceer daarna ook de bijge
 - **Afbeeldingen uploaden werkt weer**: de afbeelding wordt in de browser verkleind (max 900 px) en in de database bewaard. Firebase Storage, CORS en `gcloud` zijn niet meer nodig. Bestaande producten met een oude afbeelding blijven werken.
 - **Sitebeheer**: het e-mailadres wordt niet meer vooringevuld en het beheerderswachtwoord staat gehasht (PBKDF2) in `beheer-config.js`. Er is een uitlogknop en een rem op herhaald fout inloggen.
 - **Klantaccounts**: wachtwoorden worden gehasht opgeslagen (voorheen platte tekst) en het wachtwoord zit niet meer in de sessie. Accounts staan nu in `accounts/`; oude testaccounts uit `users/` moet je opnieuw aanmaken (je kunt `users` in Firebase verwijderen).
-- **Verzendkosten**: bij elke bestelling komt automatisch € 3,95 bij het totaal; zichtbaar in winkelwagen, bestelling, track & trace en sitebeheer. Pas `SHIPPING` bovenaan `app.js` aan om het bedrag te wijzigen.
+- **Verzendkosten**: € 3,95 bij bezorgen, € 0 bij ophalen en € 0 bij bestellingen die via chat starten. De betaalfunctie herberekent het bedrag op de server.
 - **Chatlinks**: links met of zonder `https://` (ook `www.` en `tikkie.me/...`) zijn nu klikbaar, ook met & in de link.
 - **Technisch**: bestelling + chat worden in één schrijfactie opgeslagen, klanten laden alleen hun eigen bestellingen/chats (query + index), listeners worden opgeruimd (geen dubbele updates/lekken), winkelwagen blijft bewaard, Escape sluit vensters, prijzen worden bij bestellen opnieuw uit de database genomen.
 
@@ -81,3 +81,45 @@ Een "quick tunnel" (`cloudflared tunnel --url ...`, adres eindigt op `.trycloudf
 - Geeft de lokale test-URL geen beeld, controleer IP-adres, Access Code en LAN Mode Liveview.
 - Werkt lokaal wel maar de HTTPS-URL niet, controleer de tunnel en of die naar poort 1984 verwijst.
 - Controleer of `cameraUrl` exact dezelfde HTTPS-URL bevat.
+
+
+## Nieuw in deze versie: gebruikersnamen, ophalen, adresgegevens en iDEAL | Wero
+
+### Gebruikersnamen
+- Nieuwe accounts vullen bij registratie een gebruikersnaam in (3–20 tekens: letters, cijfers, punt, `_` of `-`).
+- Bestaande accounts zonder gebruikersnaam krijgen na het inloggen een verplichte instel-popup.
+- De gebruikersnaam wordt op profiel-, chat- en bestelschermen getoond in plaats van het e-mailadres.
+- Gebruikersnamen worden in `profiles/` opgeslagen; de unieke naamreservering staat onder `usernames/`.
+- Een gebruiker kan de naam via Mijn account wijzigen. Een eerder gebruikte naam blijft gereserveerd voor hetzelfde account, zodat iemand anders hem niet kan overnemen.
+
+### Bestellen
+Na **Verder naar bestellen** kiest de klant tussen:
+1. **Online afrekenen**: bezorging of ophalen. Bij bezorgen moeten voornaam, achternaam, straat, huisnummer, postcode en dorp/stad ingevuld worden. Land is vast ingesteld op Nederland. Bij ophalen worden adresvelden verborgen en komt er € 0 verzendkosten bij.
+2. **Verder via chat**: er wordt direct een chatbestelling gemaakt, zonder adresformulier, verzendkosten of iDEAL-betaling.
+
+De bezorgkosten staan op € 3,95. Als je dat bedrag aanpast, wijzig dan `SHIPPING` bovenin `app.js`.
+
+### Adres in Sitebeheer
+In Sitebeheer > Track & trace en Sitebeheer > Bestellingen zie je voor bezorgbestellingen de ingevulde naam en het volledige Nederlandse afleveradres, plus de gekozen afhandeling en betaalstatus. Het openbare track & trace-overzicht krijgt geen adresvelden.
+
+### Betalen via Tikkie (handmatig)
+De iDEAL/Mollie-checkout is vervangen door een Tikkie-afhandeling. Er is geen betaalprovider-API-key of bankrekeningnummer in de webshopcode nodig.
+
+1. De klant vult bij normaal afrekenen de gegevens in en kiest bezorgen of gratis ophalen.
+2. Na klikken op **Bestelling plaatsen / wachten op Tikkie** wordt de bestelling opgeslagen met betaalstatus **Wachten op Tikkie**. De klant wordt niet automatisch doorgestuurd naar een betaalpagina.
+3. Open **Sitebeheer > Track & trace**. Bij elke Tikkie-bestelling staat een invoerveld **Tikkie-link voor klant**.
+4. Maak zelf een Tikkie-verzoek aan in de officiële Tikkie-app of omgeving, controleer dat het verzoekbedrag gelijk is aan het totaal van de bestelling en plak de persoonlijke betaallink bij de juiste bestelling.
+5. Klik **Tikkie-link opslaan**. De klant ziet de link direct onder **Mijn account > Mijn bestellingen** en kan daar op **Open jouw Tikkie-betaling** klikken.
+6. Controleer zelf in je bank/Tikkie-omgeving of het geld echt ontvangen is. Klik daarna in Sitebeheer op **Markeer als betaald**. De website controleert Tikkie-betalingen niet automatisch.
+
+**Belangrijk:** maak voor iedere bestelling een eigen Tikkie-betaalverzoek met het exacte bestelbedrag. Gebruik geen algemene herbruikbare betaal-link als het bedrag per bestelling verschilt. Tikkie is een betaalverzoek; de webshop kan de ontvangst niet automatisch verifiëren in deze implementatie.
+
+### Eenmalig opruimen van de oude Mollie-koppeling
+Als je eerder de Mollie-versie hebt gepubliceerd, verwijder dan de oude Cloud Functions zodat de ongebruikte Mollie-endpoints niet blijven bestaan:
+```bash
+firebase functions:delete createIdealCheckout mollieWebhook --region europe-west1
+```
+Bevestig de verwijdering in de Firebase CLI. De nieuwe Tikkie-flow heeft geen Cloud Functions nodig.
+
+### Beveiliging vóór live gebruik
+De huidige webshop heeft nog een eigen accountsysteem en de bestaande Realtime Database-regels bevatten brede lees-/schrijfrechten. Dat betekent dat deze Tikkie-link-velden op dit moment niet afdoende beschermd zijn tegen ongeautoriseerde databasewijzigingen. Zet de webshop niet met echte klantgegevens of betalingen live voordat Firebase Authentication en strikte database-regels zijn ingericht. Een Tikkie-link is persoonlijk betaalmateriaal: deel hem alleen met de bedoelde klant en controleer betaling altijd in je eigen bankomgeving.
