@@ -151,7 +151,7 @@ function renderProducts() {
     const out = isSoldOut(p), groups = optionGroupsOf(p), images = productImages(p), image = images[0];
     return `<article class="product-card ${out ? "sold-out" : ""}">
       <button class="product-open" data-open="${safe(p.id)}" aria-label="Bekijk ${safe(p.title)}">
-        <div class="product-image">${image ? `<img loading="lazy" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
+        <div class="product-image">${image ? `<img loading="lazy" decoding="async" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
         <div class="product-info"><h3>${safe(p.title)}</h3><strong>${money(p.price)}</strong>${groups.length ? `<small class="product-options-hint">${groups.length} ${groups.length === 1 ? "keuze" : "keuzes"} mogelijk</small>` : ""}</div>
       </button>
       ${out ? `<button class="add-small" disabled>Uitverkocht</button>` : groups.length ? `<button class="add-small" data-open="${safe(p.id)}">Stel samen</button>` : `<button class="add-small" data-add="${safe(p.id)}">In winkelwagen</button>`}
