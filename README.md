@@ -127,3 +127,7 @@ De huidige webshop heeft nog een eigen accountsysteem en de bestaande Realtime D
 
 ### Rabobank-betaalverzoeken naast Tikkie
 Sitebeheer accepteert nu zowel HTTPS-links van `tikkie.me` / `tikkie.nl` als Rabobank-betaalverzoeken op `betaalverzoek.rabobank.nl`. In het beheer plak je de link bij de bestelling en kies je **Betaallink opslaan**. De klant ziet vervolgens een algemene knop **Open jouw betaalverzoek** bij Mijn bestellingen. Controleer de betaling zelf in je bankapp voordat je **Markeer als betaald** gebruikt. De webshop verifieert de ontvangst niet automatisch.
+
+
+### Nieuw tabblad Mijn bestellingen
+In Sitebeheer staat nu een apart tabblad **Mijn bestellingen** naast **Track & trace** en **Bestellingen**. Het toont de volledige orderlijst met betaalstatus, betaalverzoekveld, klantadres en bestelvoortgang. In het klantaccount is **Mijn bestellingen** eveneens robuuster gemaakt: bestellingen worden gevonden op account-ID óf op het e-mailadres van het account, zodat oudere bestellingen die alleen een e-mailadres bevatten ook zichtbaar zijn.
