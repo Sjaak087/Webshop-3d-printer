@@ -123,3 +123,7 @@ Bevestig de verwijdering in de Firebase CLI. De nieuwe Tikkie-flow heeft geen Cl
 
 ### Beveiliging vóór live gebruik
 De huidige webshop heeft nog een eigen accountsysteem en de bestaande Realtime Database-regels bevatten brede lees-/schrijfrechten. Dat betekent dat deze Tikkie-link-velden op dit moment niet afdoende beschermd zijn tegen ongeautoriseerde databasewijzigingen. Zet de webshop niet met echte klantgegevens of betalingen live voordat Firebase Authentication en strikte database-regels zijn ingericht. Een Tikkie-link is persoonlijk betaalmateriaal: deel hem alleen met de bedoelde klant en controleer betaling altijd in je eigen bankomgeving.
+
+
+### Rabobank-betaalverzoeken naast Tikkie
+Sitebeheer accepteert nu zowel HTTPS-links van `tikkie.me` / `tikkie.nl` als Rabobank-betaalverzoeken op `betaalverzoek.rabobank.nl`. In het beheer plak je de link bij de bestelling en kies je **Betaallink opslaan**. De klant ziet vervolgens een algemene knop **Open jouw betaalverzoek** bij Mijn bestellingen. Controleer de betaling zelf in je bankapp voordat je **Markeer als betaald** gebruikt. De webshop verifieert de ontvangst niet automatisch.
