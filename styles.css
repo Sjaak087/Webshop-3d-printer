@@ -545,6 +545,7 @@ body.privacy-open{overflow:hidden}
 @keyframes arm-party-right{from{transform:rotate(48deg)}to{transform:rotate(-50deg)}}
 @keyframes leg-party-left{from{transform:rotate(25deg)}to{transform:rotate(-25deg)}}
 @keyframes leg-party-right{from{transform:rotate(-25deg)}to{transform:rotate(25deg)}}
+to{translate:0 -8px;rotate:12deg}}
 /* De expliciete dansloader blijft dansen; dit overschrijft de globale reduced-motion reset alleen voor dit onderdeel. */
 @media(prefers-reduced-motion:reduce){
  .dancing-skeleton .dancer-head{animation:skull-bop .42s ease-in-out infinite alternate!important}
@@ -558,37 +559,50 @@ body.privacy-open{overflow:hidden}
 @media(max-width:620px){.skeleton-image{height:155px;min-height:155px}.dancing-skeleton{width:90px;height:103px}.dancing-loader{min-height:145px}.product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}}
 
 
-/* V8 — realistische Bambu Lab A1 Mini-render, zonder AMS Lite */
-@media(min-width:621px){.skeleton-image{height:232px;min-height:232px}}
-.a1-loader{display:flex;min-height:215px;width:100%;height:100%;align-items:center;justify-content:center;padding:5px;background:#fff!important}
-.a1-loader-scene{position:relative;display:flex;min-height:205px;width:100%;height:100%;flex-direction:column;align-items:center;justify-content:center;gap:0;overflow:hidden;border:1px solid #edf0f3;border-radius:12px;background:#fff!important;box-shadow:0 5px 18px rgba(25,45,70,.055)!important}
-.a1-loader-scene:before,.a1-loader-scene:after{display:none!important}
-.a1-loader-brand{position:relative;z-index:2;display:flex;align-items:center;gap:6px;margin:4px 0 0;color:#627187!important;font-size:9px;font-weight:800;letter-spacing:1.35px}
-.a1-loader-brand b{color:#1b2e47!important;font-weight:900}
-.a1-status-dot{width:6px;height:6px;border-radius:50%;background:#16b99b;box-shadow:0 0 7px rgba(22,185,155,.35);animation:a1-status-pulse 1.5s ease-in-out infinite}
-.a1-printer-art{position:relative;z-index:1;display:block;flex:0 1 auto;width:min(100%,267px);aspect-ratio:3/2;height:auto;overflow:visible}
-.a1-printer-render{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:contain;object-position:center;filter:drop-shadow(0 5px 6px rgba(25,45,70,.10))}
-.a1-screen-live{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:visible;pointer-events:none}
-.a1-screen-percent{font-variant-numeric:tabular-nums;letter-spacing:-.5px}
-.a1-screen-progress-fill{transition:width .09s linear}
-.a1-loader-caption{position:relative;z-index:2;margin-top:-1px;color:#1b2e47!important;font-size:11px;font-weight:850;letter-spacing:.2px;text-shadow:none!important}
-.a1-loader-subline{position:relative;z-index:2;margin:2px 0 5px;color:#8290a3!important;font-size:8px;font-weight:650;letter-spacing:.35px}
-.product-image-loader{z-index:7;border:1px solid #edf0f3;background:#fff!important;border-radius:13px}
+/* V5 — professionele Bambu Lab A1 mini printanimatie per productkaart */
+.product-image-loader{background:#101b2d!important;border-radius:13px;z-index:7}
+.skeleton-image{background:#101b2d!important;border:1px solid #273852}
+.a1-loader{display:flex;width:100%;height:100%;min-height:185px;align-items:center;justify-content:center;padding:9px;}
+.a1-loader-scene{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:100%;height:100%;min-height:165px;overflow:hidden;border:1px solid rgba(149,178,211,.16);border-radius:12px;background:radial-gradient(ellipse at 50% 52%,#243b59 0%,#17283f 48%,#101b2d 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 22px rgba(7,17,35,.18)}
+.a1-loader-scene:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(190,212,239,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(190,212,239,.045) 1px,transparent 1px);background-size:22px 22px;mask-image:linear-gradient(to bottom,transparent,#000 28%,#000 75%,transparent);pointer-events:none}
+.a1-loader-scene:after{content:"";position:absolute;width:155px;height:155px;border:1px solid rgba(89,220,212,.09);border-radius:50%;box-shadow:0 0 0 17px rgba(89,220,212,.025),0 0 0 36px rgba(89,220,212,.02);pointer-events:none}
+.a1-loader-brand{z-index:1;display:flex;align-items:center;gap:6px;margin-top:5px;color:#c4d2e4;font-size:9px;font-weight:800;letter-spacing:1.5px}
+.a1-loader-brand b{color:#fff;font-weight:900}
+.a1-status-dot{width:6px;height:6px;border-radius:50%;background:#58dfbb;box-shadow:0 0 10px #58dfbb;animation:a1-status-pulse 1.4s ease-in-out infinite}
+.a1-mini-printer-svg{position:relative;z-index:1;display:block;width:min(100%,232px);height:132px;overflow:visible;filter:drop-shadow(0 7px 8px rgba(0,0,0,.2))}
+.a1-printer-head{transform-box:fill-box;transform-origin:center;animation:a1-head-sweep 1.65s cubic-bezier(.45,0,.55,1) infinite}
+.a1-printer-bed{transform-box:fill-box;transform-origin:center;animation:a1-bed-shift 1.65s ease-in-out infinite}
+.a1-printed-object{transform-box:fill-box;transform-origin:center bottom;animation:a1-layer-build 3.2s ease-in-out infinite}
+.a1-nozzle-glow{animation:a1-nozzle-pulse .65s ease-in-out infinite alternate}
+.a1-loader-caption{position:relative;z-index:1;margin-top:-2px;color:#fff;font-size:11px;font-weight:850;letter-spacing:.25px;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+.a1-loader-subline{position:relative;z-index:1;margin:3px 0 8px;color:#93a9c3;font-size:8px;font-weight:650;letter-spacing:.45px}
 .product-image-loader .a1-loader{min-height:100%;padding:0}
-.product-image-loader .a1-loader-scene{min-height:100%;border:0;border-radius:13px;box-shadow:none!important}
-.product-image-loader .a1-printer-art{width:min(100%,252px)}
-.product-image-loader .a1-loader-brand{margin-top:6px}
+.product-image-loader .a1-loader-scene{min-height:100%;border:0;border-radius:13px}
+.product-image-loader .a1-mini-printer-svg{width:min(100%,230px);height:135px}
+.product-image-loader .a1-loader-brand{margin-top:7px}
 .product-image-loader .a1-loader-caption{font-size:10px}
+@keyframes a1-head-sweep{0%,100%{transform:translateX(-13px)}50%{transform:translateX(14px)}}
+@keyframes a1-bed-shift{0%,100%{transform:translateX(-2px)}50%{transform:translateX(3px)}}
+@keyframes a1-layer-build{0%{transform:scaleY(.35);opacity:.76}72%,100%{transform:scaleY(1);opacity:1}}
+@keyframes a1-nozzle-pulse{from{opacity:.45;filter:drop-shadow(0 0 1px #f5a942)}to{opacity:1;filter:drop-shadow(0 0 5px #f5a942)}}
+@keyframes a1-status-pulse{0%,100%{opacity:.65;box-shadow:0 0 3px #58dfbb}50%{opacity:1;box-shadow:0 0 12px #58dfbb}}
+@media(max-width:620px){.a1-loader{min-height:145px;padding:6px}.a1-loader-scene{min-height:132px}.a1-mini-printer-svg{height:104px;width:min(100%,195px)}.a1-loader-brand{font-size:8px;letter-spacing:1px}.a1-loader-subline{font-size:7px}.product-image-loader .a1-mini-printer-svg{height:105px;width:min(100%,195px)}}
+@media(prefers-reduced-motion:reduce){.a1-printer-head,.a1-printer-bed,.a1-printed-object,.a1-nozzle-glow,.a1-status-dot{animation:none!important}}
+
+
+/* V6 — schone witte laadachtergrond en live percentage op het printersdisplay */
+.product-image-loader{background:#fff!important;border:1px solid #edf0f3;border-radius:13px}
+.skeleton-image{background:#fff!important;border:1px solid #edf0f3!important}
+.a1-loader{background:#fff!important}
+.a1-loader-scene{background:#fff!important;border:1px solid #edf0f3!important;box-shadow:0 5px 18px rgba(25,45,70,.055)!important}
+.a1-loader-scene:before,.a1-loader-scene:after{display:none!important}
+.a1-loader-brand{color:#627187!important}
+.a1-loader-brand b{color:#1b2e47!important}
+.a1-loader-caption{color:#1b2e47!important;text-shadow:none!important}
+.a1-loader-subline{color:#8290a3!important}
+.a1-mini-printer-svg{filter:drop-shadow(0 5px 6px rgba(25,45,70,.10))!important}
+.a1-screen-percent{font-variant-numeric:tabular-nums;letter-spacing:-.1px}
+.a1-screen-progress-fill{transition:width .09s linear}
 .product-image-loader.is-finishing{opacity:0;transition:opacity .22s ease}
 .product-image-loader.is-error{background:#fff!important}
-@keyframes a1-status-pulse{0%,100%{opacity:.65;box-shadow:0 0 3px rgba(22,185,155,.25)}50%{opacity:1;box-shadow:0 0 9px rgba(22,185,155,.5)}}
-@media(max-width:620px){
-  .skeleton-image{height:190px;min-height:190px}
-  .a1-loader{min-height:180px;padding:3px}
-  .a1-loader-scene{min-height:172px}
-  .a1-printer-art,.product-image-loader .a1-printer-art{width:min(100%,205px)}
-  .a1-loader-brand{font-size:8px;letter-spacing:.9px;margin-top:3px}
-  .a1-loader-caption,.product-image-loader .a1-loader-caption{font-size:10px}
-  .a1-loader-subline{font-size:7px;margin-bottom:4px}
-}
-@media(prefers-reduced-motion:reduce){.a1-status-dot{animation:none!important}}
+@media(max-width:620px){.a1-loader-scene{min-height:132px}.a1-loader-brand{color:#627187!important}.a1-loader-caption{font-size:10px!important}.a1-loader-subline{font-size:7px!important}}
