@@ -147,12 +147,12 @@ Er staat nu een aparte knop **Mijn bestellingen** direct naast **Mijn chats** in
 De productloader gebruikt nu een opvallender dansend skelet per laadkaart en per productafbeelding. De CSS- en JavaScript-URL hebben een versietag om oude browsercache te omzeilen. Na uploaden kan de browser nog één keer hard vernieuwd worden (Ctrl+Shift+R).
 
 
-## Update 17 november 2026 — printerloader v7
+## Update 17 november 2026 — printerloader v8
 
-- De productloader toont nu een grotere A1 mini-illustratie met een open AMS Lite-module en vier kleurspoelen.
-- Vier filamentleidingen lopen zichtbaar van de AMS Lite naar de printkop.
-- De printkop, het printbed, het geprinte object, de filamentleidingen en de spoelen hebben subtiele animaties.
-- De witte achtergrond en de oplopende percentage-indicator op het printerdisplay zijn behouden.
-- De cacheversies van `styles.css` en `app.js` zijn verhoogd naar `v7-a1mini-ams-lite`.
+- De AMS Lite is volledig uit de loader verwijderd.
+- De eerdere schematische SVG is vervangen door een gedetailleerde, transparante studio-render van een Bambu Lab A1 Mini zonder AMS.
+- Op het kleine printersdisplay wordt een dynamisch percentage en een voortgangsbalk weergegeven.
+- De witte achtergrond en vier seconden minimale eerste productlaadtijd zijn behouden.
+- De cacheversies van `styles.css` en `app.js` zijn verhoogd naar `v8-a1mini-realistic`.
 
 De loader is een visuele webanimatie; het percentage is geen uitlezing van een fysieke printer.
