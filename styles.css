@@ -400,3 +400,7 @@ body.public-tracking-mode .public-track-head{padding-bottom:7px}
 .checkout-total{display:flex;justify-content:space-between;border:1px solid #dce8fa;border-radius:10px;background:#f4f8ff;padding:12px;font-size:13px;color:var(--muted)}
 .checkout-total b{font-size:17px;color:var(--navy)}
 @media(max-width:520px){.checkout-two{grid-template-columns:1fr;gap:0}}
+
+/* Footer privacyrechten */
+.footer-privacy{flex-basis:100%;max-width:900px;margin:18px auto 0;padding-top:16px;border-top:1px solid rgba(255,255,255,.14);color:inherit;font-size:13px;line-height:1.65;opacity:.82}
+.footer-privacy p{margin:6px 0 0}
