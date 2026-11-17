@@ -606,3 +606,31 @@ to{translate:0 -8px;rotate:12deg}}
 .product-image-loader.is-finishing{opacity:0;transition:opacity .22s ease}
 .product-image-loader.is-error{background:#fff!important}
 @media(max-width:620px){.a1-loader-scene{min-height:132px}.a1-loader-brand{color:#627187!important}.a1-loader-caption{font-size:10px!important}.a1-loader-subline{font-size:7px!important}}
+
+
+/* V7 — grotere, gedetailleerdere A1 mini Combo-loader met AMS Lite */
+@media(min-width:621px){.skeleton-image{height:225px;min-height:225px}}
+.a1-loader{min-height:215px;padding:7px}
+.a1-loader-scene{min-height:205px;gap:0}
+.a1-mini-printer-svg{width:min(100%,410px);height:auto;max-height:185px;overflow:visible;filter:drop-shadow(0 7px 7px rgba(25,45,70,.13))!important}
+.product-image-loader .a1-mini-printer-svg{width:min(100%,410px);height:auto;max-height:185px}
+.a1-printer-head{transform-box:fill-box;transform-origin:center;animation:a1-head-sweep 1.65s cubic-bezier(.45,0,.55,1) infinite}
+.a1-printer-bed{transform-box:fill-box;transform-origin:center;animation:a1-bed-shift 1.65s ease-in-out infinite}
+.a1-printed-object{transform-box:fill-box;transform-origin:center bottom;animation:a1-layer-build 3.2s ease-in-out infinite}
+.a1-ams-spool{transform-box:fill-box;animation:a1-spool-rock 3.8s ease-in-out infinite alternate}
+.a1-ams-spool:nth-child(2){animation-delay:-.45s}
+.a1-ams-spool:nth-child(3){animation-delay:-.9s}
+.a1-ams-spool:nth-child(4){animation-delay:-1.35s}
+.a1-filament-lines{stroke-dasharray:5 5;animation:a1-filament-feed 1.4s linear infinite}
+@keyframes a1-spool-rock{from{transform:rotate(-2deg)}to{transform:rotate(2deg)}}
+@keyframes a1-filament-feed{to{stroke-dashoffset:-20}}
+@media(max-width:620px){
+  .skeleton-image{height:190px;min-height:190px}
+  .a1-loader{min-height:180px;padding:4px}
+  .a1-loader-scene{min-height:172px}
+  .a1-mini-printer-svg,.product-image-loader .a1-mini-printer-svg{width:100%;height:auto;max-height:118px}
+  .a1-loader-brand{font-size:8px;letter-spacing:.9px;margin-top:3px}
+  .a1-loader-caption{font-size:10px}
+  .a1-loader-subline{font-size:7px;margin-bottom:4px}
+}
+@media(prefers-reduced-motion:reduce){.a1-ams-spool,.a1-filament-lines{animation:none!important}}

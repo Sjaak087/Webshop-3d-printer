@@ -32,55 +32,125 @@ $("#year").textContent = new Date().getFullYear();
 /* ---------- helpers ---------- */
 const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function a1MiniPrinterMarkup() {
-  return `<svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
-    <ellipse cx="128" cy="174" rx="91" ry="8" fill="#08152c" opacity=".28"/>
-    <!-- Compacte basis en touchscreen -->
-    <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/>
-    <path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/>
-    <path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/>
-    <rect x="168" y="146" width="31" height="19" rx="3" fill="#172a40" stroke="#60728a" stroke-width="1.1"/>
-    <rect x="171" y="149" width="25" height="13" rx="1.5" fill="#eaf6f5"/>
-    <text class="a1-screen-percent" x="173" y="155" fill="#18354a" font-size="5.6" font-family="Arial,sans-serif" font-weight="700">0%</text>
-    <rect x="173" y="157.5" width="21" height="2.8" rx="1.2" fill="#c6d7d7"/>
-    <rect class="a1-screen-progress-fill" x="173" y="157.5" width="0" height="2.8" rx="1.2" fill="#0da69c"/>
-    <!-- Rechter staander en bovenrail: A1 mini cantilever-frame -->
-    <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/>
-    <path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc" opacity=".95"/>
-    <path d="M51 39 208 39 216 45 59 45Z" fill="#f7f9fc" stroke="#8995a5" stroke-width="1.5"/>
-    <path d="M59 45 216 45 216 57 59 57Z" fill="#b7c1ce" stroke="#718096" stroke-width="1.3"/>
-    <path d="M64 48 208 48 208 52 64 52Z" fill="#26364d"/>
-    <rect x="62" y="36" width="10" height="13" rx="2" fill="#e8edf4" stroke="#8592a3"/>
-    <!-- Filamentrol en gebogen toevoerbuis -->
-    <circle cx="231" cy="30" r="15" fill="#25364d" stroke="#d8e1ec" stroke-width="3"/>
-    <circle cx="231" cy="30" r="8.5" fill="#8d9caf" stroke="#f8fafc" stroke-width="2"/>
-    <circle cx="231" cy="30" r="3" fill="#26364d"/>
-    <path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#f5a942" stroke-width="4" stroke-linecap="round"/>
-    <path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#ffe0a8" stroke-width="1.2" stroke-linecap="round" opacity=".9"/>
-    <!-- Bewegende printkop op de horizontale rail -->
+  return `<svg class="a1-mini-printer-svg" viewBox="0 0 430 205" role="presentation" focusable="false" aria-hidden="true">
+    <!-- Subtiele contactschaduwen -->
+    <ellipse cx="125" cy="195" rx="104" ry="6" fill="#536579" opacity=".12"/>
+    <ellipse cx="332" cy="195" rx="86" ry="5" fill="#536579" opacity=".11"/>
+    <!-- Vier PTFE-filamentleidingen vanuit AMS Lite -->
+    <g class="a1-filament-lines" fill="none" stroke-linecap="round">
+      <path d="M265 91 C260 47 210 16 139 35 S116 42 116 52" stroke="#18a6a1" stroke-width="2.7"/>
+      <path d="M305 91 C296 45 231 11 145 29 S127 39 127 52" stroke="#e89a42" stroke-width="2.7"/>
+      <path d="M346 91 C327 40 254 7 151 24 S138 37 138 52" stroke="#8b78c9" stroke-width="2.7"/>
+      <path d="M386 91 C367 35 275 4 159 21 S149 36 149 52" stroke="#4b8fc7" stroke-width="2.7"/>
+      <path d="M265 91 C260 47 210 16 139 35 S116 42 116 52" stroke="#ffffff" stroke-width=".65" opacity=".72"/>
+      <path d="M305 91 C296 45 231 11 145 29 S127 39 127 52" stroke="#ffffff" stroke-width=".65" opacity=".72"/>
+      <path d="M346 91 C327 40 254 7 151 24 S138 37 138 52" stroke="#ffffff" stroke-width=".65" opacity=".72"/>
+      <path d="M386 91 C367 35 275 4 159 21 S149 36 149 52" stroke="#ffffff" stroke-width=".65" opacity=".72"/>
+    </g>
+    <!-- A1 mini: metalen frame, Z-kolom en X-rail -->
+    <g class="a1-printer-frame" stroke-linejoin="round">
+      <path d="M192 43 211 48 211 181 194 177Z" fill="#dce3eb" stroke="#8997a7" stroke-width="1.5"/>
+      <path d="M198 50 204 52 204 168 198 166Z" fill="#ffffff" opacity=".75"/>
+      <path d="M35 39 202 39 214 46 47 46Z" fill="#f9fbfd" stroke="#9aa6b4" stroke-width="1.4"/>
+      <path d="M47 46 214 46 214 59 47 59Z" fill="#dce3eb" stroke="#8996a6" stroke-width="1.4"/>
+      <path d="M54 49 207 49 207 53 54 53Z" fill="#4b5a6d"/>
+      <path d="M44 40 53 32 67 32 70 40Z" fill="#e7edf3" stroke="#94a1b0" stroke-width="1.2"/>
+      <rect x="197" y="59" width="8" height="9" rx="2" fill="#6a7a8e"/>
+      <path d="M193 70 202 70 202 177 193 177Z" fill="#c1cad5" stroke="#8391a2" stroke-width="1"/>
+      <path d="M191 74 194 74 194 171 191 171Z" fill="#ffffff" opacity=".8"/>
+      <!-- Verbinding aan de achterzijde -->
+      <path d="M186 58 194 61 194 178 186 176Z" fill="#d9e0e8" stroke="#9ba7b5" stroke-width="1"/>
+    </g>
+    <!-- A1 mini printkop met zichtbare frontcover, ventilatie en nozzle -->
     <g class="a1-printer-head">
-      <rect x="105" y="48" width="44" height="31" rx="6" fill="#f8fafc" stroke="#78879a" stroke-width="1.7"/>
-      <path d="M109 52h36v5h-36Z" fill="#d6dee8"/>
-      <rect x="115" y="59" width="24" height="13" rx="3" fill="#25364d"/>
-      <circle cx="127" cy="65.5" r="3.1" fill="#62d7d0"/>
-      <path d="M116 78h22l-3 12h-16Z" fill="#aeb9c8" stroke="#657386" stroke-width="1.2"/>
-      <path d="M122 89h10l-3 9h-4Z" fill="#25364d"/>
-      <path d="M127 97v5" stroke="#f5a942" stroke-width="2.8" stroke-linecap="round" class="a1-nozzle-glow"/>
-      <path d="M121 79h12" stroke="#fff" stroke-width="1.4" opacity=".9"/>
+      <rect x="101" y="48" width="48" height="45" rx="7" fill="#dce3eb" stroke="#7f8c9b" stroke-width="1.6"/>
+      <path d="M106 53h38v7h-38Z" fill="#fdfefe" stroke="#c2ccd7" stroke-width=".8"/>
+      <rect x="109" y="63" width="32" height="19" rx="4" fill="#34455b"/>
+      <circle cx="125" cy="72.5" r="5.3" fill="#162638" stroke="#69798d" stroke-width="1"/>
+      <circle cx="125" cy="72.5" r="2.1" fill="#6fe0d4"/>
+      <path d="M112 86 140 86 136 99 116 99Z" fill="#9eabb9" stroke="#6d7b8c" stroke-width="1.2"/>
+      <path d="M120 98h12l-3 11h-6Z" fill="#25364a" stroke="#6f7d8e" stroke-width=".8"/>
+      <path d="M126 108v5" stroke="#e5a44c" stroke-width="3" stroke-linecap="round" class="a1-nozzle-glow"/>
+      <path d="M106 57h38" stroke="#ffffff" stroke-width="1.2" opacity=".85"/>
     </g>
-    <!-- Printbed en mat -->
+    <!-- Printbed en Y-geleiding -->
     <g class="a1-printer-bed">
-      <path d="M50 124 173 124 194 134 69 134Z" fill="#26364d" stroke="#718096" stroke-width="1.3"/>
-      <path d="M69 134 194 134 194 139 69 139Z" fill="#8a98aa"/>
-      <path d="M83 126 168 126 183 132 98 132Z" fill="#43536a"/>
+      <path d="M40 148 171 148 190 158 58 158Z" fill="#2b3b50" stroke="#738195" stroke-width="1.2"/>
+      <path d="M58 158 190 158 190 164 58 164Z" fill="#9ba8b7" stroke="#718095" stroke-width=".9"/>
+      <path d="M52 165 180 165 190 171 61 171Z" fill="#d7dee6" stroke="#98a5b4" stroke-width="1"/>
+      <path d="M65 151 165 151 180 157 80 157Z" fill="#63758a" opacity=".72"/>
     </g>
-    <!-- Klein printobject waarvan de lagen opbouwen -->
+    <!-- Laag voor laag opgebouwd printobject -->
     <g class="a1-printed-object">
-      <path d="M105 123 105 108 114 102 142 102 151 108 151 123Z" fill="#17a6a1" stroke="#087d80" stroke-width="1.2"/>
-      <path d="M105 108 114 102 142 102 151 108 141 113 115 113Z" fill="#56d8ca" stroke="#087d80" stroke-width="1.1"/>
-      <path d="M111 116h34M110 120h37M113 112h32" fill="none" stroke="#a5fff0" stroke-width="1.1" opacity=".8"/>
-      <path d="M115 104 115 122M121 103 121 123M127 103 127 123M133 103 133 123M139 103 139 122" stroke="#087d80" stroke-width=".7" opacity=".55"/>
+      <path d="M105 147 105 127 115 120 145 120 155 127 155 147Z" fill="#149f9b" stroke="#087a78" stroke-width="1.1"/>
+      <path d="M105 127 115 120 145 120 155 127 145 133 115 133Z" fill="#57d7ca" stroke="#087a78" stroke-width="1.1"/>
+      <path d="M111 137h39M109 142h43M114 132h34" fill="none" stroke="#a9fff0" stroke-width="1.1" opacity=".85"/>
+      <path d="M116 123 116 147M122 121 122 147M128 121 128 147M134 121 134 147M140 121 140 147M146 124 146 147" stroke="#087a78" stroke-width=".65" opacity=".58"/>
     </g>
-    <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
+    <!-- Printerbehuizing met echt frontdisplay -->
+    <g class="a1-printer-base">
+      <path d="M25 173 190 173 216 183 51 187Z" fill="#c7d0da" stroke="#8794a4" stroke-width="1.3"/>
+      <path d="M25 173 190 173 190 194 51 199 25 189Z" fill="#dce3eb" stroke="#929eac" stroke-width="1.3"/>
+      <path d="M190 173 216 183 216 194 190 194Z" fill="#aeb9c6" stroke="#8491a1" stroke-width="1.1"/>
+      <path d="M35 180 178 180 178 184 35 184Z" fill="#ffffff" opacity=".8"/>
+      <rect x="177" y="177" width="33" height="25" rx="3.7" fill="#253449" stroke="#6f7f92" stroke-width="1.1"/>
+      <rect x="180" y="180" width="27" height="19" rx="2" fill="#e9f7f5"/>
+      <text class="a1-screen-percent" x="183" y="188" fill="#17384a" font-size="7.4" font-family="Arial,sans-serif" font-weight="800">0%</text>
+      <rect x="183" y="191" width="21" height="3.3" rx="1.4" fill="#c3d9d7"/>
+      <rect class="a1-screen-progress-fill" x="183" y="191" width="0" height="3.3" rx="1.4" fill="#0da69c"/>
+      <circle cx="42" cy="189" r="2" fill="#8a98a8"/><circle cx="51" cy="190" r="2" fill="#8a98a8"/>
+    </g>
+    <!-- AMS Lite open frame en vrijstaande standaard -->
+    <g class="a1-ams-frame" stroke-linejoin="round">
+      <path d="M246 194 257 184 405 184 419 195 405 200 260 200Z" fill="#aab5c2" stroke="#7f8d9d" stroke-width="1.3"/>
+      <path d="M258 191 402 191 409 195 264 196Z" fill="#eef2f6"/>
+      <path d="M319 184 333 114 348 114 363 184Z" fill="#dce3eb" stroke="#8997a6" stroke-width="1.4"/>
+      <path d="M330 178 339 123 346 123 355 178Z" fill="#f7f9fc" stroke="#a4afbc" stroke-width=".9"/>
+      <path d="M252 98 Q329 67 405 98" fill="none" stroke="#9daab8" stroke-width="7" stroke-linecap="round"/>
+      <path d="M252 98 Q329 67 405 98" fill="none" stroke="#f9fbfd" stroke-width="2" stroke-linecap="round"/>
+      <path d="M263 104 404 104" stroke="#aab5c1" stroke-width="5" stroke-linecap="round"/>
+      <text x="333" y="74" fill="#778596" font-size="8" font-family="Arial,sans-serif" font-weight="800" text-anchor="middle" letter-spacing="1.1">AMS LITE</text>
+    </g>
+    <!-- Vier herkenbare filamentspoelen met transparante flenzen en gekleurde filamentwindingen -->
+    <g class="a1-ams-spools">
+      <g class="a1-ams-spool spool-teal">
+        <ellipse cx="270" cy="140" rx="18" ry="28" fill="#159e9a" opacity=".2"/>
+        <ellipse cx="270" cy="139" rx="17" ry="27" fill="#e8edf3" stroke="#8998a9" stroke-width="1.5"/>
+        <ellipse cx="270" cy="139" rx="12.8" ry="22" fill="#19a6a1" opacity=".73"/>
+        <path d="M270 118v42M260 121 280 157M258 139h24M260 157 280 121" stroke="#d1fff9" stroke-width="1" opacity=".65"/>
+        <ellipse cx="270" cy="139" rx="6.4" ry="10" fill="#e8edf2" stroke="#78899b" stroke-width="1.2"/><ellipse cx="270" cy="139" rx="2.7" ry="4.5" fill="#506176"/>
+      </g>
+      <g class="a1-ams-spool spool-orange">
+        <ellipse cx="309" cy="140" rx="18" ry="28" fill="#d68c3c" opacity=".2"/>
+        <ellipse cx="309" cy="139" rx="17" ry="27" fill="#e8edf3" stroke="#8998a9" stroke-width="1.5"/>
+        <ellipse cx="309" cy="139" rx="12.8" ry="22" fill="#df9445" opacity=".78"/>
+        <path d="M309 118v42M299 121 319 157M297 139h24M299 157 319 121" stroke="#fff0d8" stroke-width="1" opacity=".7"/>
+        <ellipse cx="309" cy="139" rx="6.4" ry="10" fill="#e8edf2" stroke="#78899b" stroke-width="1.2"/><ellipse cx="309" cy="139" rx="2.7" ry="4.5" fill="#506176"/>
+      </g>
+      <g class="a1-ams-spool spool-purple">
+        <ellipse cx="348" cy="140" rx="18" ry="28" fill="#8a72c3" opacity=".2"/>
+        <ellipse cx="348" cy="139" rx="17" ry="27" fill="#e8edf3" stroke="#8998a9" stroke-width="1.5"/>
+        <ellipse cx="348" cy="139" rx="12.8" ry="22" fill="#8a72c3" opacity=".78"/>
+        <path d="M348 118v42M338 121 358 157M336 139h24M338 157 358 121" stroke="#f0eaff" stroke-width="1" opacity=".7"/>
+        <ellipse cx="348" cy="139" rx="6.4" ry="10" fill="#e8edf2" stroke="#78899b" stroke-width="1.2"/><ellipse cx="348" cy="139" rx="2.7" ry="4.5" fill="#506176"/>
+      </g>
+      <g class="a1-ams-spool spool-blue">
+        <ellipse cx="387" cy="140" rx="18" ry="28" fill="#4b8fc7" opacity=".2"/>
+        <ellipse cx="387" cy="139" rx="17" ry="27" fill="#e8edf3" stroke="#8998a9" stroke-width="1.5"/>
+        <ellipse cx="387" cy="139" rx="12.8" ry="22" fill="#4b8fc7" opacity=".78"/>
+        <path d="M387 118v42M377 121 397 157M375 139h24M377 157 397 121" stroke="#e4f4ff" stroke-width="1" opacity=".7"/>
+        <ellipse cx="387" cy="139" rx="6.4" ry="10" fill="#e8edf2" stroke="#78899b" stroke-width="1.2"/><ellipse cx="387" cy="139" rx="2.7" ry="4.5" fill="#506176"/>
+      </g>
+    </g>
+    <!-- Vier AMS Lite-feederunits boven de spoelen -->
+    <g class="a1-ams-feeders">
+      <g fill="#34455b" stroke="#65758a" stroke-width="1">
+        <rect x="261" y="94" width="18" height="13" rx="5"/><rect x="300" y="94" width="18" height="13" rx="5"/><rect x="339" y="94" width="18" height="13" rx="5"/><rect x="378" y="94" width="18" height="13" rx="5"/>
+      </g>
+      <g fill="#dfe7ef"><circle cx="270" cy="100" r="2.3"/><circle cx="309" cy="100" r="2.3"/><circle cx="348" cy="100" r="2.3"/><circle cx="387" cy="100" r="2.3"/></g>
+      <g fill="none" stroke-width="1.8" stroke-linecap="round"><path d="M270 94v-6" stroke="#18a6a1"/><path d="M309 94v-6" stroke="#e89a42"/><path d="M348 94v-6" stroke="#8b78c9"/><path d="M387 94v-6" stroke="#4b8fc7"/></g>
+    </g>
+    <path d="M232 202h190" stroke="#e8edf2" stroke-width="1"/>
   </svg>`;
 }
 const A1_LOADER_PROGRESS_MS = 4000;
