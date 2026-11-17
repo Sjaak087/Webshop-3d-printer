@@ -537,9 +537,6 @@ body.privacy-open{overflow:hidden}
 .dancing-skeleton .dancer-leg-left{transform-box:view-box;transform-origin:45px 70px;animation:leg-party-left .45s ease-in-out infinite alternate}
 .dancing-skeleton .dancer-leg-right{transform-box:view-box;transform-origin:55px 70px;animation:leg-party-right .45s ease-in-out infinite alternate}
 .dancing-loader-caption{display:block;margin-top:-1px;padding:5px 12px;border-radius:999px;background:#172554;color:#fff;font-size:12px;font-weight:900;letter-spacing:.35px;box-shadow:0 4px 12px #17255430}
-.loader-note{position:absolute;z-index:2;color:#7c3aed;font-size:23px;font-weight:900;line-height:1;animation:note-float .7s ease-in-out infinite alternate}
-.loader-note-left{top:22%;left:25%;transform:rotate(-12deg)}
-.loader-note-right{top:34%;right:22%;animation-delay:-.35s;transform:rotate(14deg)}
 .product-image-loader .dancing-loader{min-height:100%;padding:5px}
 .product-image-loader .dancing-skeleton{width:92px;height:104px}
 @keyframes skull-bop{from{transform:rotate(-16deg) translateY(3px)}to{transform:rotate(16deg) translateY(-5px)}}
@@ -548,7 +545,7 @@ body.privacy-open{overflow:hidden}
 @keyframes arm-party-right{from{transform:rotate(48deg)}to{transform:rotate(-50deg)}}
 @keyframes leg-party-left{from{transform:rotate(25deg)}to{transform:rotate(-25deg)}}
 @keyframes leg-party-right{from{transform:rotate(-25deg)}to{transform:rotate(25deg)}}
-@keyframes note-float{from{translate:0 8px;rotate:-12deg}to{translate:0 -8px;rotate:12deg}}
+to{translate:0 -8px;rotate:12deg}}
 /* De expliciete dansloader blijft dansen; dit overschrijft de globale reduced-motion reset alleen voor dit onderdeel. */
 @media(prefers-reduced-motion:reduce){
  .dancing-skeleton .dancer-head{animation:skull-bop .42s ease-in-out infinite alternate!important}
@@ -557,7 +554,37 @@ body.privacy-open{overflow:hidden}
  .dancing-skeleton .dancer-arm-right{animation:arm-party-right .38s ease-in-out infinite alternate!important}
  .dancing-skeleton .dancer-leg-left{animation:leg-party-left .45s ease-in-out infinite alternate!important}
  .dancing-skeleton .dancer-leg-right{animation:leg-party-right .45s ease-in-out infinite alternate!important}
- .loader-note{animation:note-float .7s ease-in-out infinite alternate!important}
 }
 @media(max-width:800px){.product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.skeleton-image{height:155px;min-height:155px}.dancing-skeleton{width:90px;height:103px}.dancing-loader{min-height:145px}.product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}}
+
+
+/* V5 — professionele Bambu Lab A1 mini printanimatie per productkaart */
+.product-image-loader{background:#101b2d!important;border-radius:13px;z-index:7}
+.skeleton-image{background:#101b2d!important;border:1px solid #273852}
+.a1-loader{display:flex;width:100%;height:100%;min-height:185px;align-items:center;justify-content:center;padding:9px;}
+.a1-loader-scene{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:100%;height:100%;min-height:165px;overflow:hidden;border:1px solid rgba(149,178,211,.16);border-radius:12px;background:radial-gradient(ellipse at 50% 52%,#243b59 0%,#17283f 48%,#101b2d 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.07),0 8px 22px rgba(7,17,35,.18)}
+.a1-loader-scene:before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(190,212,239,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(190,212,239,.045) 1px,transparent 1px);background-size:22px 22px;mask-image:linear-gradient(to bottom,transparent,#000 28%,#000 75%,transparent);pointer-events:none}
+.a1-loader-scene:after{content:"";position:absolute;width:155px;height:155px;border:1px solid rgba(89,220,212,.09);border-radius:50%;box-shadow:0 0 0 17px rgba(89,220,212,.025),0 0 0 36px rgba(89,220,212,.02);pointer-events:none}
+.a1-loader-brand{z-index:1;display:flex;align-items:center;gap:6px;margin-top:5px;color:#c4d2e4;font-size:9px;font-weight:800;letter-spacing:1.5px}
+.a1-loader-brand b{color:#fff;font-weight:900}
+.a1-status-dot{width:6px;height:6px;border-radius:50%;background:#58dfbb;box-shadow:0 0 10px #58dfbb;animation:a1-status-pulse 1.4s ease-in-out infinite}
+.a1-mini-printer-svg{position:relative;z-index:1;display:block;width:min(100%,232px);height:132px;overflow:visible;filter:drop-shadow(0 7px 8px rgba(0,0,0,.2))}
+.a1-printer-head{transform-box:fill-box;transform-origin:center;animation:a1-head-sweep 1.65s cubic-bezier(.45,0,.55,1) infinite}
+.a1-printer-bed{transform-box:fill-box;transform-origin:center;animation:a1-bed-shift 1.65s ease-in-out infinite}
+.a1-printed-object{transform-box:fill-box;transform-origin:center bottom;animation:a1-layer-build 3.2s ease-in-out infinite}
+.a1-nozzle-glow{animation:a1-nozzle-pulse .65s ease-in-out infinite alternate}
+.a1-loader-caption{position:relative;z-index:1;margin-top:-2px;color:#fff;font-size:11px;font-weight:850;letter-spacing:.25px;text-shadow:0 1px 2px rgba(0,0,0,.3)}
+.a1-loader-subline{position:relative;z-index:1;margin:3px 0 8px;color:#93a9c3;font-size:8px;font-weight:650;letter-spacing:.45px}
+.product-image-loader .a1-loader{min-height:100%;padding:0}
+.product-image-loader .a1-loader-scene{min-height:100%;border:0;border-radius:13px}
+.product-image-loader .a1-mini-printer-svg{width:min(100%,230px);height:135px}
+.product-image-loader .a1-loader-brand{margin-top:7px}
+.product-image-loader .a1-loader-caption{font-size:10px}
+@keyframes a1-head-sweep{0%,100%{transform:translateX(-13px)}50%{transform:translateX(14px)}}
+@keyframes a1-bed-shift{0%,100%{transform:translateX(-2px)}50%{transform:translateX(3px)}}
+@keyframes a1-layer-build{0%{transform:scaleY(.35);opacity:.76}72%,100%{transform:scaleY(1);opacity:1}}
+@keyframes a1-nozzle-pulse{from{opacity:.45;filter:drop-shadow(0 0 1px #f5a942)}to{opacity:1;filter:drop-shadow(0 0 5px #f5a942)}}
+@keyframes a1-status-pulse{0%,100%{opacity:.65;box-shadow:0 0 3px #58dfbb}50%{opacity:1;box-shadow:0 0 12px #58dfbb}}
+@media(max-width:620px){.a1-loader{min-height:145px;padding:6px}.a1-loader-scene{min-height:132px}.a1-mini-printer-svg{height:104px;width:min(100%,195px)}.a1-loader-brand{font-size:8px;letter-spacing:1px}.a1-loader-subline{font-size:7px}.product-image-loader .a1-mini-printer-svg{height:105px;width:min(100%,195px)}}
+@media(prefers-reduced-motion:reduce){.a1-printer-head,.a1-printer-bed,.a1-printed-object,.a1-nozzle-glow,.a1-status-dot{animation:none!important}}

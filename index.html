@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111827"><meta name="description" content="Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen."><title>3D Printed Shop</title>
-  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=4-dancing-skeleton"><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
+  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=5-a1-mini-printer"><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <header class="topbar">
@@ -18,96 +18,66 @@
     <div class="hero-art"><div class="orb"></div><div class="hero-card">✦<strong>3D prints</strong><small>Nieuwe favorieten<br>ontdekken</small></div><div class="hero-spark">✳</div></div>
   </section>
   <section id="producten" class="products-section"><div class="section-head"><div><p class="eyebrow">ONS ASSORTIMENT</p><h2>Populaire producten</h2></div><span id="productTotal" class="muted"></span></div><div id="products" class="product-grid" aria-live="polite" aria-busy="true">
-      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="dancing-loader"><svg class="dancing-skeleton" viewBox="0 0 100 120" role="presentation" focusable="false" aria-hidden="true">
-  <g class="dancer-head">
-    <circle class="skull" cx="50" cy="18" r="12"/>
-    <circle class="eye" cx="45" cy="16" r="2.5"/><circle class="eye" cx="55" cy="16" r="2.5"/>
-    <path class="face-detail" d="M50 19l-2 4 4 0M43 25q7 5 14 0M46 25v3m4-2v3m4-3v2"/>
-  </g>
-  <g class="dancer-body">
-    <path d="M50 31v35M42 33q8 5 16 0M39 38q11 5 22 0M38 44q12 5 24 0M39 50q11 5 22 0M41 56q9 5 18 0M43 62q7 4 14 0"/>
-    <path d="M42 66q8 7 16 0M45 67l-3 5m13-5 3 5"/>
-  </g>
-  <g class="dancer-arm dancer-arm-left"><path d="M41 35 29 48 20 38"/><circle cx="29" cy="48" r="3.2"/><circle cx="20" cy="38" r="2.8"/><path d="m20 38-5-7m5 7-8-1m8 1-2 7"/></g>
-  <g class="dancer-arm dancer-arm-right"><path d="M59 35 71 48 80 35"/><circle cx="71" cy="48" r="3.2"/><circle cx="80" cy="35" r="2.8"/><path d="m80 35 5-7m-5 7 8 0m-8 0 2 7"/></g>
-  <g class="dancer-leg dancer-leg-left"><path d="M45 70 37 88 25 100"/><circle cx="37" cy="88" r="3.5"/><circle cx="25" cy="100" r="3"/><path d="m25 100-11 2 1 3 13-1"/></g>
-  <g class="dancer-leg dancer-leg-right"><path d="M55 70 63 87 76 96"/><circle cx="63" cy="87" r="3.5"/><circle cx="76" cy="96" r="3"/><path d="m76 96 11-5 1 3-11 6"/></g>
-</svg><span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
-      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="dancing-loader"><svg class="dancing-skeleton" viewBox="0 0 100 120" role="presentation" focusable="false" aria-hidden="true">
-  <g class="dancer-head">
-    <circle class="skull" cx="50" cy="18" r="12"/>
-    <circle class="eye" cx="45" cy="16" r="2.5"/><circle class="eye" cx="55" cy="16" r="2.5"/>
-    <path class="face-detail" d="M50 19l-2 4 4 0M43 25q7 5 14 0M46 25v3m4-2v3m4-3v2"/>
-  </g>
-  <g class="dancer-body">
-    <path d="M50 31v35M42 33q8 5 16 0M39 38q11 5 22 0M38 44q12 5 24 0M39 50q11 5 22 0M41 56q9 5 18 0M43 62q7 4 14 0"/>
-    <path d="M42 66q8 7 16 0M45 67l-3 5m13-5 3 5"/>
-  </g>
-  <g class="dancer-arm dancer-arm-left"><path d="M41 35 29 48 20 38"/><circle cx="29" cy="48" r="3.2"/><circle cx="20" cy="38" r="2.8"/><path d="m20 38-5-7m5 7-8-1m8 1-2 7"/></g>
-  <g class="dancer-arm dancer-arm-right"><path d="M59 35 71 48 80 35"/><circle cx="71" cy="48" r="3.2"/><circle cx="80" cy="35" r="2.8"/><path d="m80 35 5-7m-5 7 8 0m-8 0 2 7"/></g>
-  <g class="dancer-leg dancer-leg-left"><path d="M45 70 37 88 25 100"/><circle cx="37" cy="88" r="3.5"/><circle cx="25" cy="100" r="3"/><path d="m25 100-11 2 1 3 13-1"/></g>
-  <g class="dancer-leg dancer-leg-right"><path d="M55 70 63 87 76 96"/><circle cx="63" cy="87" r="3.5"/><circle cx="76" cy="96" r="3"/><path d="m76 96 11-5 1 3-11 6"/></g>
-</svg><span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
-      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="dancing-loader"><svg class="dancing-skeleton" viewBox="0 0 100 120" role="presentation" focusable="false" aria-hidden="true">
-  <g class="dancer-head">
-    <circle class="skull" cx="50" cy="18" r="12"/>
-    <circle class="eye" cx="45" cy="16" r="2.5"/><circle class="eye" cx="55" cy="16" r="2.5"/>
-    <path class="face-detail" d="M50 19l-2 4 4 0M43 25q7 5 14 0M46 25v3m4-2v3m4-3v2"/>
-  </g>
-  <g class="dancer-body">
-    <path d="M50 31v35M42 33q8 5 16 0M39 38q11 5 22 0M38 44q12 5 24 0M39 50q11 5 22 0M41 56q9 5 18 0M43 62q7 4 14 0"/>
-    <path d="M42 66q8 7 16 0M45 67l-3 5m13-5 3 5"/>
-  </g>
-  <g class="dancer-arm dancer-arm-left"><path d="M41 35 29 48 20 38"/><circle cx="29" cy="48" r="3.2"/><circle cx="20" cy="38" r="2.8"/><path d="m20 38-5-7m5 7-8-1m8 1-2 7"/></g>
-  <g class="dancer-arm dancer-arm-right"><path d="M59 35 71 48 80 35"/><circle cx="71" cy="48" r="3.2"/><circle cx="80" cy="35" r="2.8"/><path d="m80 35 5-7m-5 7 8 0m-8 0 2 7"/></g>
-  <g class="dancer-leg dancer-leg-left"><path d="M45 70 37 88 25 100"/><circle cx="37" cy="88" r="3.5"/><circle cx="25" cy="100" r="3"/><path d="m25 100-11 2 1 3 13-1"/></g>
-  <g class="dancer-leg dancer-leg-right"><path d="M55 70 63 87 76 96"/><circle cx="63" cy="87" r="3.5"/><circle cx="76" cy="96" r="3"/><path d="m76 96 11-5 1 3-11 6"/></g>
-</svg><span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
-      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="dancing-loader"><svg class="dancing-skeleton" viewBox="0 0 100 120" role="presentation" focusable="false" aria-hidden="true">
-  <g class="dancer-head">
-    <circle class="skull" cx="50" cy="18" r="12"/>
-    <circle class="eye" cx="45" cy="16" r="2.5"/><circle class="eye" cx="55" cy="16" r="2.5"/>
-    <path class="face-detail" d="M50 19l-2 4 4 0M43 25q7 5 14 0M46 25v3m4-2v3m4-3v2"/>
-  </g>
-  <g class="dancer-body">
-    <path d="M50 31v35M42 33q8 5 16 0M39 38q11 5 22 0M38 44q12 5 24 0M39 50q11 5 22 0M41 56q9 5 18 0M43 62q7 4 14 0"/>
-    <path d="M42 66q8 7 16 0M45 67l-3 5m13-5 3 5"/>
-  </g>
-  <g class="dancer-arm dancer-arm-left"><path d="M41 35 29 48 20 38"/><circle cx="29" cy="48" r="3.2"/><circle cx="20" cy="38" r="2.8"/><path d="m20 38-5-7m5 7-8-1m8 1-2 7"/></g>
-  <g class="dancer-arm dancer-arm-right"><path d="M59 35 71 48 80 35"/><circle cx="71" cy="48" r="3.2"/><circle cx="80" cy="35" r="2.8"/><path d="m80 35 5-7m-5 7 8 0m-8 0 2 7"/></g>
-  <g class="dancer-leg dancer-leg-left"><path d="M45 70 37 88 25 100"/><circle cx="37" cy="88" r="3.5"/><circle cx="25" cy="100" r="3"/><path d="m25 100-11 2 1 3 13-1"/></g>
-  <g class="dancer-leg dancer-leg-right"><path d="M55 70 63 87 76 96"/><circle cx="63" cy="87" r="3.5"/><circle cx="76" cy="96" r="3"/><path d="m76 96 11-5 1 3-11 6"/></g>
-</svg><span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
-      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="dancing-loader"><svg class="dancing-skeleton" viewBox="0 0 100 120" role="presentation" focusable="false" aria-hidden="true">
-  <g class="dancer-head">
-    <circle class="skull" cx="50" cy="18" r="12"/>
-    <circle class="eye" cx="45" cy="16" r="2.5"/><circle class="eye" cx="55" cy="16" r="2.5"/>
-    <path class="face-detail" d="M50 19l-2 4 4 0M43 25q7 5 14 0M46 25v3m4-2v3m4-3v2"/>
-  </g>
-  <g class="dancer-body">
-    <path d="M50 31v35M42 33q8 5 16 0M39 38q11 5 22 0M38 44q12 5 24 0M39 50q11 5 22 0M41 56q9 5 18 0M43 62q7 4 14 0"/>
-    <path d="M42 66q8 7 16 0M45 67l-3 5m13-5 3 5"/>
-  </g>
-  <g class="dancer-arm dancer-arm-left"><path d="M41 35 29 48 20 38"/><circle cx="29" cy="48" r="3.2"/><circle cx="20" cy="38" r="2.8"/><path d="m20 38-5-7m5 7-8-1m8 1-2 7"/></g>
-  <g class="dancer-arm dancer-arm-right"><path d="M59 35 71 48 80 35"/><circle cx="71" cy="48" r="3.2"/><circle cx="80" cy="35" r="2.8"/><path d="m80 35 5-7m-5 7 8 0m-8 0 2 7"/></g>
-  <g class="dancer-leg dancer-leg-left"><path d="M45 70 37 88 25 100"/><circle cx="37" cy="88" r="3.5"/><circle cx="25" cy="100" r="3"/><path d="m25 100-11 2 1 3 13-1"/></g>
-  <g class="dancer-leg dancer-leg-right"><path d="M55 70 63 87 76 96"/><circle cx="63" cy="87" r="3.5"/><circle cx="76" cy="96" r="3"/><path d="m76 96 11-5 1 3-11 6"/></g>
-</svg><span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
-      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="dancing-loader"><svg class="dancing-skeleton" viewBox="0 0 100 120" role="presentation" focusable="false" aria-hidden="true">
-  <g class="dancer-head">
-    <circle class="skull" cx="50" cy="18" r="12"/>
-    <circle class="eye" cx="45" cy="16" r="2.5"/><circle class="eye" cx="55" cy="16" r="2.5"/>
-    <path class="face-detail" d="M50 19l-2 4 4 0M43 25q7 5 14 0M46 25v3m4-2v3m4-3v2"/>
-  </g>
-  <g class="dancer-body">
-    <path d="M50 31v35M42 33q8 5 16 0M39 38q11 5 22 0M38 44q12 5 24 0M39 50q11 5 22 0M41 56q9 5 18 0M43 62q7 4 14 0"/>
-    <path d="M42 66q8 7 16 0M45 67l-3 5m13-5 3 5"/>
-  </g>
-  <g class="dancer-arm dancer-arm-left"><path d="M41 35 29 48 20 38"/><circle cx="29" cy="48" r="3.2"/><circle cx="20" cy="38" r="2.8"/><path d="m20 38-5-7m5 7-8-1m8 1-2 7"/></g>
-  <g class="dancer-arm dancer-arm-right"><path d="M59 35 71 48 80 35"/><circle cx="71" cy="48" r="3.2"/><circle cx="80" cy="35" r="2.8"/><path d="m80 35 5-7m-5 7 8 0m-8 0 2 7"/></g>
-  <g class="dancer-leg dancer-leg-left"><path d="M45 70 37 88 25 100"/><circle cx="37" cy="88" r="3.5"/><circle cx="25" cy="100" r="3"/><path d="m25 100-11 2 1 3 13-1"/></g>
-  <g class="dancer-leg dancer-leg-right"><path d="M55 70 63 87 76 96"/><circle cx="63" cy="87" r="3.5"/><circle cx="76" cy="96" r="3"/><path d="m76 96 11-5 1 3-11 6"/></g>
-</svg><span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div><svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
+    <ellipse cx="128" cy="174" rx="91" ry="8" fill="#08152c" opacity=".28"/>
+    <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/><path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/><path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/><rect x="179" y="151" width="19" height="12" rx="2.5" fill="#18263b"/><rect x="182" y="153" width="13" height="8" rx="1.5" fill="#65d6d0"/>
+    <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/><path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc"/><path d="M51 39 208 39 216 45 59 45Z" fill="#f7f9fc" stroke="#8995a5" stroke-width="1.5"/><path d="M59 45 216 45 216 57 59 57Z" fill="#b7c1ce" stroke="#718096" stroke-width="1.3"/><path d="M64 48 208 48 208 52 64 52Z" fill="#26364d"/>
+    <circle cx="231" cy="30" r="15" fill="#25364d" stroke="#d8e1ec" stroke-width="3"/><circle cx="231" cy="30" r="8.5" fill="#8d9caf" stroke="#f8fafc" stroke-width="2"/><circle cx="231" cy="30" r="3" fill="#26364d"/><path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#f5a942" stroke-width="4" stroke-linecap="round"/>
+    <g class="a1-printer-head"><rect x="105" y="48" width="44" height="31" rx="6" fill="#f8fafc" stroke="#78879a" stroke-width="1.7"/><path d="M109 52h36v5h-36Z" fill="#d6dee8"/><rect x="115" y="59" width="24" height="13" rx="3" fill="#25364d"/><circle cx="127" cy="65.5" r="3.1" fill="#62d7d0"/><path d="M116 78h22l-3 12h-16Z" fill="#aeb9c8" stroke="#657386" stroke-width="1.2"/><path d="M122 89h10l-3 9h-4Z" fill="#25364d"/><path d="M127 97v5" stroke="#f5a942" stroke-width="2.8" stroke-linecap="round" class="a1-nozzle-glow"/></g>
+    <g class="a1-printer-bed"><path d="M50 124 173 124 194 134 69 134Z" fill="#26364d" stroke="#718096" stroke-width="1.3"/><path d="M69 134 194 134 194 139 69 139Z" fill="#8a98aa"/><path d="M83 126 168 126 183 132 98 132Z" fill="#43536a"/></g>
+    <g class="a1-printed-object"><path d="M105 123 105 108 114 102 142 102 151 108 151 123Z" fill="#17a6a1" stroke="#087d80" stroke-width="1.2"/><path d="M105 108 114 102 142 102 151 108 141 113 115 113Z" fill="#56d8ca" stroke="#087d80" stroke-width="1.1"/><path d="M111 116h34M110 120h37M113 112h32" fill="none" stroke="#a5fff0" stroke-width="1.1" opacity=".8"/><path d="M115 104 115 122M121 103 121 123M127 103 127 123M133 103 133 123M139 103 139 122" stroke="#087d80" stroke-width=".7" opacity=".55"/></g>
+    <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
+  </svg><span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div><svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
+    <ellipse cx="128" cy="174" rx="91" ry="8" fill="#08152c" opacity=".28"/>
+    <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/><path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/><path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/><rect x="179" y="151" width="19" height="12" rx="2.5" fill="#18263b"/><rect x="182" y="153" width="13" height="8" rx="1.5" fill="#65d6d0"/>
+    <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/><path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc"/><path d="M51 39 208 39 216 45 59 45Z" fill="#f7f9fc" stroke="#8995a5" stroke-width="1.5"/><path d="M59 45 216 45 216 57 59 57Z" fill="#b7c1ce" stroke="#718096" stroke-width="1.3"/><path d="M64 48 208 48 208 52 64 52Z" fill="#26364d"/>
+    <circle cx="231" cy="30" r="15" fill="#25364d" stroke="#d8e1ec" stroke-width="3"/><circle cx="231" cy="30" r="8.5" fill="#8d9caf" stroke="#f8fafc" stroke-width="2"/><circle cx="231" cy="30" r="3" fill="#26364d"/><path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#f5a942" stroke-width="4" stroke-linecap="round"/>
+    <g class="a1-printer-head"><rect x="105" y="48" width="44" height="31" rx="6" fill="#f8fafc" stroke="#78879a" stroke-width="1.7"/><path d="M109 52h36v5h-36Z" fill="#d6dee8"/><rect x="115" y="59" width="24" height="13" rx="3" fill="#25364d"/><circle cx="127" cy="65.5" r="3.1" fill="#62d7d0"/><path d="M116 78h22l-3 12h-16Z" fill="#aeb9c8" stroke="#657386" stroke-width="1.2"/><path d="M122 89h10l-3 9h-4Z" fill="#25364d"/><path d="M127 97v5" stroke="#f5a942" stroke-width="2.8" stroke-linecap="round" class="a1-nozzle-glow"/></g>
+    <g class="a1-printer-bed"><path d="M50 124 173 124 194 134 69 134Z" fill="#26364d" stroke="#718096" stroke-width="1.3"/><path d="M69 134 194 134 194 139 69 139Z" fill="#8a98aa"/><path d="M83 126 168 126 183 132 98 132Z" fill="#43536a"/></g>
+    <g class="a1-printed-object"><path d="M105 123 105 108 114 102 142 102 151 108 151 123Z" fill="#17a6a1" stroke="#087d80" stroke-width="1.2"/><path d="M105 108 114 102 142 102 151 108 141 113 115 113Z" fill="#56d8ca" stroke="#087d80" stroke-width="1.1"/><path d="M111 116h34M110 120h37M113 112h32" fill="none" stroke="#a5fff0" stroke-width="1.1" opacity=".8"/><path d="M115 104 115 122M121 103 121 123M127 103 127 123M133 103 133 123M139 103 139 122" stroke="#087d80" stroke-width=".7" opacity=".55"/></g>
+    <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
+  </svg><span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div><svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
+    <ellipse cx="128" cy="174" rx="91" ry="8" fill="#08152c" opacity=".28"/>
+    <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/><path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/><path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/><rect x="179" y="151" width="19" height="12" rx="2.5" fill="#18263b"/><rect x="182" y="153" width="13" height="8" rx="1.5" fill="#65d6d0"/>
+    <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/><path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc"/><path d="M51 39 208 39 216 45 59 45Z" fill="#f7f9fc" stroke="#8995a5" stroke-width="1.5"/><path d="M59 45 216 45 216 57 59 57Z" fill="#b7c1ce" stroke="#718096" stroke-width="1.3"/><path d="M64 48 208 48 208 52 64 52Z" fill="#26364d"/>
+    <circle cx="231" cy="30" r="15" fill="#25364d" stroke="#d8e1ec" stroke-width="3"/><circle cx="231" cy="30" r="8.5" fill="#8d9caf" stroke="#f8fafc" stroke-width="2"/><circle cx="231" cy="30" r="3" fill="#26364d"/><path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#f5a942" stroke-width="4" stroke-linecap="round"/>
+    <g class="a1-printer-head"><rect x="105" y="48" width="44" height="31" rx="6" fill="#f8fafc" stroke="#78879a" stroke-width="1.7"/><path d="M109 52h36v5h-36Z" fill="#d6dee8"/><rect x="115" y="59" width="24" height="13" rx="3" fill="#25364d"/><circle cx="127" cy="65.5" r="3.1" fill="#62d7d0"/><path d="M116 78h22l-3 12h-16Z" fill="#aeb9c8" stroke="#657386" stroke-width="1.2"/><path d="M122 89h10l-3 9h-4Z" fill="#25364d"/><path d="M127 97v5" stroke="#f5a942" stroke-width="2.8" stroke-linecap="round" class="a1-nozzle-glow"/></g>
+    <g class="a1-printer-bed"><path d="M50 124 173 124 194 134 69 134Z" fill="#26364d" stroke="#718096" stroke-width="1.3"/><path d="M69 134 194 134 194 139 69 139Z" fill="#8a98aa"/><path d="M83 126 168 126 183 132 98 132Z" fill="#43536a"/></g>
+    <g class="a1-printed-object"><path d="M105 123 105 108 114 102 142 102 151 108 151 123Z" fill="#17a6a1" stroke="#087d80" stroke-width="1.2"/><path d="M105 108 114 102 142 102 151 108 141 113 115 113Z" fill="#56d8ca" stroke="#087d80" stroke-width="1.1"/><path d="M111 116h34M110 120h37M113 112h32" fill="none" stroke="#a5fff0" stroke-width="1.1" opacity=".8"/><path d="M115 104 115 122M121 103 121 123M127 103 127 123M133 103 133 123M139 103 139 122" stroke="#087d80" stroke-width=".7" opacity=".55"/></g>
+    <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
+  </svg><span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div><svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
+    <ellipse cx="128" cy="174" rx="91" ry="8" fill="#08152c" opacity=".28"/>
+    <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/><path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/><path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/><rect x="179" y="151" width="19" height="12" rx="2.5" fill="#18263b"/><rect x="182" y="153" width="13" height="8" rx="1.5" fill="#65d6d0"/>
+    <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/><path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc"/><path d="M51 39 208 39 216 45 59 45Z" fill="#f7f9fc" stroke="#8995a5" stroke-width="1.5"/><path d="M59 45 216 45 216 57 59 57Z" fill="#b7c1ce" stroke="#718096" stroke-width="1.3"/><path d="M64 48 208 48 208 52 64 52Z" fill="#26364d"/>
+    <circle cx="231" cy="30" r="15" fill="#25364d" stroke="#d8e1ec" stroke-width="3"/><circle cx="231" cy="30" r="8.5" fill="#8d9caf" stroke="#f8fafc" stroke-width="2"/><circle cx="231" cy="30" r="3" fill="#26364d"/><path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#f5a942" stroke-width="4" stroke-linecap="round"/>
+    <g class="a1-printer-head"><rect x="105" y="48" width="44" height="31" rx="6" fill="#f8fafc" stroke="#78879a" stroke-width="1.7"/><path d="M109 52h36v5h-36Z" fill="#d6dee8"/><rect x="115" y="59" width="24" height="13" rx="3" fill="#25364d"/><circle cx="127" cy="65.5" r="3.1" fill="#62d7d0"/><path d="M116 78h22l-3 12h-16Z" fill="#aeb9c8" stroke="#657386" stroke-width="1.2"/><path d="M122 89h10l-3 9h-4Z" fill="#25364d"/><path d="M127 97v5" stroke="#f5a942" stroke-width="2.8" stroke-linecap="round" class="a1-nozzle-glow"/></g>
+    <g class="a1-printer-bed"><path d="M50 124 173 124 194 134 69 134Z" fill="#26364d" stroke="#718096" stroke-width="1.3"/><path d="M69 134 194 134 194 139 69 139Z" fill="#8a98aa"/><path d="M83 126 168 126 183 132 98 132Z" fill="#43536a"/></g>
+    <g class="a1-printed-object"><path d="M105 123 105 108 114 102 142 102 151 108 151 123Z" fill="#17a6a1" stroke="#087d80" stroke-width="1.2"/><path d="M105 108 114 102 142 102 151 108 141 113 115 113Z" fill="#56d8ca" stroke="#087d80" stroke-width="1.1"/><path d="M111 116h34M110 120h37M113 112h32" fill="none" stroke="#a5fff0" stroke-width="1.1" opacity=".8"/><path d="M115 104 115 122M121 103 121 123M127 103 127 123M133 103 133 123M139 103 139 122" stroke="#087d80" stroke-width=".7" opacity=".55"/></g>
+    <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
+  </svg><span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div><svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
+    <ellipse cx="128" cy="174" rx="91" ry="8" fill="#08152c" opacity=".28"/>
+    <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/><path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/><path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/><rect x="179" y="151" width="19" height="12" rx="2.5" fill="#18263b"/><rect x="182" y="153" width="13" height="8" rx="1.5" fill="#65d6d0"/>
+    <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/><path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc"/><path d="M51 39 208 39 216 45 59 45Z" fill="#f7f9fc" stroke="#8995a5" stroke-width="1.5"/><path d="M59 45 216 45 216 57 59 57Z" fill="#b7c1ce" stroke="#718096" stroke-width="1.3"/><path d="M64 48 208 48 208 52 64 52Z" fill="#26364d"/>
+    <circle cx="231" cy="30" r="15" fill="#25364d" stroke="#d8e1ec" stroke-width="3"/><circle cx="231" cy="30" r="8.5" fill="#8d9caf" stroke="#f8fafc" stroke-width="2"/><circle cx="231" cy="30" r="3" fill="#26364d"/><path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#f5a942" stroke-width="4" stroke-linecap="round"/>
+    <g class="a1-printer-head"><rect x="105" y="48" width="44" height="31" rx="6" fill="#f8fafc" stroke="#78879a" stroke-width="1.7"/><path d="M109 52h36v5h-36Z" fill="#d6dee8"/><rect x="115" y="59" width="24" height="13" rx="3" fill="#25364d"/><circle cx="127" cy="65.5" r="3.1" fill="#62d7d0"/><path d="M116 78h22l-3 12h-16Z" fill="#aeb9c8" stroke="#657386" stroke-width="1.2"/><path d="M122 89h10l-3 9h-4Z" fill="#25364d"/><path d="M127 97v5" stroke="#f5a942" stroke-width="2.8" stroke-linecap="round" class="a1-nozzle-glow"/></g>
+    <g class="a1-printer-bed"><path d="M50 124 173 124 194 134 69 134Z" fill="#26364d" stroke="#718096" stroke-width="1.3"/><path d="M69 134 194 134 194 139 69 139Z" fill="#8a98aa"/><path d="M83 126 168 126 183 132 98 132Z" fill="#43536a"/></g>
+    <g class="a1-printed-object"><path d="M105 123 105 108 114 102 142 102 151 108 151 123Z" fill="#17a6a1" stroke="#087d80" stroke-width="1.2"/><path d="M105 108 114 102 142 102 151 108 141 113 115 113Z" fill="#56d8ca" stroke="#087d80" stroke-width="1.1"/><path d="M111 116h34M110 120h37M113 112h32" fill="none" stroke="#a5fff0" stroke-width="1.1" opacity=".8"/><path d="M115 104 115 122M121 103 121 123M127 103 127 123M133 103 133 123M139 103 139 122" stroke="#087d80" stroke-width=".7" opacity=".55"/></g>
+    <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
+  </svg><span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div><svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
+    <ellipse cx="128" cy="174" rx="91" ry="8" fill="#08152c" opacity=".28"/>
+    <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/><path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/><path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/><rect x="179" y="151" width="19" height="12" rx="2.5" fill="#18263b"/><rect x="182" y="153" width="13" height="8" rx="1.5" fill="#65d6d0"/>
+    <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/><path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc"/><path d="M51 39 208 39 216 45 59 45Z" fill="#f7f9fc" stroke="#8995a5" stroke-width="1.5"/><path d="M59 45 216 45 216 57 59 57Z" fill="#b7c1ce" stroke="#718096" stroke-width="1.3"/><path d="M64 48 208 48 208 52 64 52Z" fill="#26364d"/>
+    <circle cx="231" cy="30" r="15" fill="#25364d" stroke="#d8e1ec" stroke-width="3"/><circle cx="231" cy="30" r="8.5" fill="#8d9caf" stroke="#f8fafc" stroke-width="2"/><circle cx="231" cy="30" r="3" fill="#26364d"/><path d="M220 20 C204 5 186 10 171 23 S145 39 132 47" fill="none" stroke="#f5a942" stroke-width="4" stroke-linecap="round"/>
+    <g class="a1-printer-head"><rect x="105" y="48" width="44" height="31" rx="6" fill="#f8fafc" stroke="#78879a" stroke-width="1.7"/><path d="M109 52h36v5h-36Z" fill="#d6dee8"/><rect x="115" y="59" width="24" height="13" rx="3" fill="#25364d"/><circle cx="127" cy="65.5" r="3.1" fill="#62d7d0"/><path d="M116 78h22l-3 12h-16Z" fill="#aeb9c8" stroke="#657386" stroke-width="1.2"/><path d="M122 89h10l-3 9h-4Z" fill="#25364d"/><path d="M127 97v5" stroke="#f5a942" stroke-width="2.8" stroke-linecap="round" class="a1-nozzle-glow"/></g>
+    <g class="a1-printer-bed"><path d="M50 124 173 124 194 134 69 134Z" fill="#26364d" stroke="#718096" stroke-width="1.3"/><path d="M69 134 194 134 194 139 69 139Z" fill="#8a98aa"/><path d="M83 126 168 126 183 132 98 132Z" fill="#43536a"/></g>
+    <g class="a1-printed-object"><path d="M105 123 105 108 114 102 142 102 151 108 151 123Z" fill="#17a6a1" stroke="#087d80" stroke-width="1.2"/><path d="M105 108 114 102 142 102 151 108 141 113 115 113Z" fill="#56d8ca" stroke="#087d80" stroke-width="1.1"/><path d="M111 116h34M110 120h37M113 112h32" fill="none" stroke="#a5fff0" stroke-width="1.1" opacity=".8"/><path d="M115 104 115 122M121 103 121 123M127 103 127 123M133 103 133 123M139 103 139 122" stroke="#087d80" stroke-width=".7" opacity=".55"/></g>
+    <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
+  </svg><span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
     </div></section>
   <section class="service-strip"><div>📦 <b>Volg je bestelling</b><small>Bekijk de status via je account</small></div><div>💬 <b>Persoonlijke hulp</b><small>Chat rechtstreeks met ons team</small></div><div>🔒 <b>Veilig bestellen</b><small>Je gegevens zijn beschermd</small></div></section>
   <p class="shipping-note">Verzendkosten: <strong>€ 3,95</strong> bij bezorgen · Ophalen is gratis.</p>
@@ -194,5 +164,5 @@
  <section class="dialog"><button class="close" id="closeDialog" aria-label="Sluiten">×</button><div id="dialogContent"></div></section>
 </div>
 <div id="toast" class="toast"></div>
-<script type="module" src="./app.js?v=4-dancing-skeleton"></script>
+<script type="module" src="./app.js?v=5-a1-mini-printer"></script>
 </body></html>
