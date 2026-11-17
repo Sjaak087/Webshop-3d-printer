@@ -5,7 +5,7 @@ import { ref, onValue, get, push, set, update, remove, query, orderByChild, equa
 
 const $ = s => document.querySelector(s);
 const SHIPPING = 3.95;   // verzendkosten bij bezorgen; ophalen en chat zijn gratis
-const PRODUCT_LOADING_MIN_MS = 5000; // tijdelijke test: eerste productlading minimaal 5 seconden zichtbaar
+const PRODUCT_LOADING_MIN_MS = 4000; // tijdelijke test: eerste productlading minimaal 4 seconden zichtbaar
 const STATUSES = ["ontvangen", "verwerkt", "in de maak", "gemaakt", "klaar voor bezorging", "bezorgd"];
 const STAGES = ["in wachtrij", "in bereiding", "gemaakt"];   // fase per product zolang de bestelling "in de maak" is
 const stageOf = i => STAGES.includes(i.stage) ? i.stage : STAGES[0];
@@ -32,8 +32,8 @@ $("#year").textContent = new Date().getFullYear();
 /* ---------- helpers ---------- */
 const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function productSkeletonMarkup(count = 6) {
-  const cards = Array.from({ length: count }, () => `<article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
-  return `<div class="product-loading-state"><div class="product-loading-status"><span class="product-loading-spinner" aria-hidden="true"></span><span>Producten laden…</span></div><div class="product-skeleton-grid">${cards}</div></div>`;
+  const cards = Array.from({ length: count }, (_, i) => `<article class="skeleton-card" aria-label="Product laden"><div class="skeleton-image"><span class="dancing-skeleton" style="--dance-delay:${i * -0.13}s" aria-hidden="true">💀</span><span class="skeleton-loading-label">Product laden</span></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
+  return `<div class="product-loading-state" role="status" aria-live="polite"><div class="product-loading-status"><span class="product-loading-spinner" aria-hidden="true"></span><span>Onze producten komen eraan…</span></div><div class="product-skeleton-grid">${cards}</div></div>`;
 }
 function firebaseLoadingMarkup(label = "Gegevens laden…") {
   return `<div class="firebase-loading" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><span>${safe(label)}</span><div class="firebase-loading-lines"><i></i><i></i><i></i></div></div>`;
