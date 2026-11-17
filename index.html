@@ -17,13 +17,23 @@
     <div><p class="eyebrow">ONTDEK JOUW FAVORIETEN</p><h1>Goed gekozen.<br><em>Goed geregeld.</em></h1><p>Bekijk onze producten en bestel eenvoudig online.</p><a href="#producten" class="primary-link">Bekijk producten <i data-lucide="arrow-right"></i></a></div>
     <div class="hero-art"><div class="orb"></div><div class="hero-card">✦<strong>3D prints</strong><small>Nieuwe favorieten<br>ontdekken</small></div><div class="hero-spark">✳</div></div>
   </section>
-  <section id="producten" class="products-section"><div class="section-head"><div><p class="eyebrow">ONS ASSORTIMENT</p><h2>Populaire producten</h2></div><span id="productTotal" class="muted"></span></div><div id="products" class="product-grid"><div class="loading">Producten laden…</div></div></section>
+  <section id="producten" class="products-section"><div class="section-head"><div><p class="eyebrow">ONS ASSORTIMENT</p><h2>Populaire producten</h2></div><span id="productTotal" class="muted"></span></div><div id="products" class="product-grid" aria-live="polite" aria-busy="true">
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+      <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>
+    </div></section>
   <section class="service-strip"><div>📦 <b>Volg je bestelling</b><small>Bekijk de status via je account</small></div><div>💬 <b>Persoonlijke hulp</b><small>Chat rechtstreeks met ons team</small></div><div>🔒 <b>Veilig bestellen</b><small>Je gegevens zijn beschermd</small></div></section>
+  <p class="shipping-note">Verzendkosten: <strong>€ 3,95</strong> bij bezorgen · Ophalen is gratis.</p>
 </main>
 <footer>
   <a class="brand" href="#"><span class="brand-mark">3D</span> printed<span>shop</span></a>
   <span>© <span id="year"></span> 3D Printed Shop</span>
   <div class="footer-legal-links">
+    <button type="button" id="openTerms">Algemene voorwaarden</button>
+    <button type="button" id="openContact">Contact</button>
     <button type="button" id="openPrivacy">Privacyverklaring &amp; privacyrechten</button>
     <button type="button" id="openCookieSettings">Cookie-instellingen</button>
   </div>
@@ -49,7 +59,7 @@
     <p class="privacy-updated">Laatst bijgewerkt: 17 november 2026</p>
     <div class="privacy-content">
       <h3>1. Wie is verantwoordelijk?</h3>
-      <p>De verantwoordelijke voor de verwerking van persoonsgegevens via deze webshop is de exploitant van 3D Printed Shop. Vul vóór publicatie de officiële handelsnaam, het vestigingsadres en een bereikbaar e-mailadres in: <strong>[vul bedrijfsnaam, adres en e-mailadres in]</strong>. Gebruik de chat in de webshop alleen als aanvullend contactkanaal.</p>
+      <p>De verantwoordelijke voor de verwerking van persoonsgegevens via deze webshop is de exploitant van 3D Printed Shop. De naam, het adres en het e-mailadres staan op de contactpagina: <strong id="privacyControllerDetails">[vul naam, adres en e-mailadres in]</strong>. Gebruik de chat in de webshop alleen als aanvullend contactkanaal.</p>
       <h3>2. Welke gegevens verwerken wij?</h3>
       <p>Afhankelijk van wat je doet, kunnen wij je naam, e-mailadres, bezorg- of afhaalgegevens, bestelgegevens, gekozen productopties, berichten aan onze klantenservice en gegevens over betalingen of betaalstatus verwerken. Wij vragen je geen gegevens te delen die niet nodig zijn voor je bestelling.</p>
       <h3>3. Waarvoor gebruiken wij je gegevens?</h3>
@@ -87,7 +97,7 @@
       <p>Deze webshop is niet bedoeld om bewust gegevens te verzamelen van kinderen die daarvoor volgens de wet toestemming van een ouder of voogd nodig hebben. Denk je dat toch gegevens van een kind zijn verzameld? Neem dan contact met ons op.</p>
       <h3>11. Wijzigingen</h3>
       <p>Wij kunnen deze verklaring aanpassen wanneer de webshop of de wetgeving verandert. De meest recente versie staat altijd op deze pagina. Controleer de verklaring regelmatig.</p>
-      <p class="privacy-placeholder-note"><strong>Belangrijk voor publicatie:</strong> vervang de invulvelden bij de verantwoordelijke en vul de werkelijk gebruikte betaal-/bezorgdiensten in. Controleer ook of de genoemde verwerkingen overeenkomen met je eigen werkwijze.</p>
+      <p class="privacy-placeholder-note"><strong>Belangrijk voor publicatie:</strong> vul op de contactpagina je naam, adres en contactgegevens in. Vul ook de werkelijk gebruikte betaal-/bezorgdiensten in en controleer of de genoemde verwerkingen overeenkomen met je eigen werkwijze.</p>
     </div>
     <div class="privacy-footer-actions">
       <button type="button" class="secondary" id="privacyCookieSettings">Cookievoorkeuren aanpassen</button>

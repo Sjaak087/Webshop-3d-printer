@@ -20,14 +20,22 @@ const showStage = (o, i) => o.status === "in de maak" || hasStage(i);   // ook z
 async function setStage(o, n, u, st) { const it = (o.items || [])[n]; if (!it) return; const arr = unitStages(it); arr[u] = st; await update(ref(db, `orders/${o.id}/items/${n}`), { stages: arr }); await syncPublicTrack(o.id); }
 const stageChips = i => { const u = unitStages(i); return u.length === 1 ? ` ${stageChip(u[0])}` : `<span class="unit-stages">${u.map((st, n) => `<span class="unit-chip">Stuk ${n + 1} ${stageChip(st)}</span>`).join("")}</span>`; };
 const CAMERA_STATUSES = [...STATUSES];   // camera tonen bij alle bestelstatussen
-const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, orderNote: "", plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
+const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, productsError: false, orderNote: "", plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
+const DEFAULT_CONTACT = { title: "Neem contact met ons op", intro: "Heb je een vraag over een product of bestelling? Neem gerust contact met ons op.", name: "", address: "", email: "", phone: "", hours: "", extra: "" };
+let contactSettings = { ...DEFAULT_CONTACT };
 let unsubs = [];                       // listeners van het open dialoogvenster
 let lockDialog = false;
 $("#year").textContent = new Date().getFullYear();
 
 /* ---------- helpers ---------- */
 const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function productSkeletonMarkup(count = 6) {
+  return Array.from({ length: count }, () => `<article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
+}
+function firebaseLoadingMarkup(label = "Gegevens laden…") {
+  return `<div class="firebase-loading" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><span>${safe(label)}</span><div class="firebase-loading-lines"><i></i><i></i><i></i></div></div>`;
+}
 const money = n => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(Number(n) || 0);
 const short = id => String(id || "").slice(-6);
 const when = t => t ? new Date(t).toLocaleString("nl-NL") : "";
@@ -174,8 +182,13 @@ function addCart(id, selections = []) {
 }
 
 /* ---------- producten ---------- */
-onValue(ref(db, "products"), snap => { state.products = toList(snap).filter(p => p.active !== false); state.loaded = true; renderProducts(); });
+onValue(ref(db, "products"), snap => { state.products = toList(snap).filter(p => p.active !== false); state.productsError = false; state.loaded = true; renderProducts(); }, error => { console.error("Firebase product load failed", error); state.productsError = true; state.loaded = true; renderProducts(); });
+onValue(ref(db, "settings/contact"), snap => { contactSettings = { ...DEFAULT_CONTACT, ...(snap.val() || {}) }; updatePrivacyContactDetails(); const page = $("#contactPageContent"); if (page) page.innerHTML = contactPageMarkup(); }, error => console.error("Firebase contact settings load failed", error));
 function renderProducts() {
+  const productsEl = $("#products");
+  if (!state.loaded) { productsEl.setAttribute("aria-busy", "true"); productsEl.innerHTML = productSkeletonMarkup(); return; }
+  productsEl.setAttribute("aria-busy", "false");
+  if (state.productsError) { $("#productTotal").textContent = ""; productsEl.innerHTML = `<div class="empty-state">Producten konden niet worden geladen.<br><small>Controleer je verbinding en probeer de pagina opnieuw te laden.</small></div>`; return; }
   const q = ($("#search").value || "").toLowerCase();
   const list = state.products.filter(p => (p.title + " " + (p.description || "")).toLowerCase().includes(q));
   $("#productTotal").textContent = `${list.length} producten`;
@@ -259,7 +272,7 @@ function showProduct(id) {
 $("#cartBtn").onclick = showCart;
 function showCart() {
   const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>Wordt bepaald bij afrekenen</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)} bij bezorgen · ophalen gratis</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, selectionsOf(x)) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => itemKey(x.id, selectionsOf(x)) === b.dataset.qty); if (!it) return;
@@ -367,7 +380,7 @@ async function placeChatOrder() {
   } catch (e) { console.error(e); toast("Chatbestelling starten lukte niet."); }
 }
 function showMyOrders() {
-  openDialog(`<p class="eyebrow">OVERZICHT</p><h2>Mijn bestellingen</h2><div id="ordersBox" class="stack"><p class="muted">Laden…</p></div>`);
+  openDialog(`<p class="eyebrow">OVERZICHT</p><h2>Mijn bestellingen</h2><div id="ordersBox" class="stack">${firebaseLoadingMarkup("Bestellingen laden…")}</div>`);
   // Lees alle bestellingen en filter op account-ID of e-mailadres.
   // Zo blijven oudere bestellingen zichtbaar die alleen een e-mailadres opsloegen.
   listen(ref(db, "orders"), snap => {
@@ -484,7 +497,7 @@ function showPublicTracking(token) {
     openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Ongeldige volg-link</h2><p class="muted">Controleer of je de volledige link hebt ontvangen.</p>`);
     return;
   }
-  openDialog(`<div class="public-track-head"><div><p class="eyebrow">3D PRINTED SHOP · TRACK & TRACE</p><h2>Bestelling volgen</h2><p class="public-track-note">Dit is een alleen-lezen overzicht. Inloggen is niet nodig.</p></div><span class="status-pill">Link actief</span></div><div id="publicTrackBox" class="stack"><p class="muted">Bestelling laden…</p></div>`);
+  openDialog(`<div class="public-track-head"><div><p class="eyebrow">3D PRINTED SHOP · TRACK & TRACE</p><h2>Bestelling volgen</h2><p class="public-track-note">Dit is een alleen-lezen overzicht. Inloggen is niet nodig.</p></div><span class="status-pill">Link actief</span></div><div id="publicTrackBox" class="stack">${firebaseLoadingMarkup("Bestelling laden…")}</div>`);
   listen(ref(db, `publicTrack/${token}`), snap => {
     const o = snap.val(), box = $("#publicTrackBox");
     if (!box) return;
@@ -507,7 +520,7 @@ function showPublicTracking(token) {
 }
 function showMyChats() {
   if (!state.user) return authForm();
-  openDialog(`<p class="eyebrow">SERVICE</p><h2>Mijn chats</h2><div id="chatsBox" class="stack"><p class="muted">Laden…</p></div>`);
+  openDialog(`<p class="eyebrow">SERVICE</p><h2>Mijn chats</h2><div id="chatsBox" class="stack">${firebaseLoadingMarkup("Chats laden…")}</div>`);
   listen(query(ref(db, "chats"), orderByChild("userId"), equalTo(state.user.uid)), snap => {
     const chats = toList(snap).sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
     $("#chatsBox").innerHTML = chats.length ? chats.map(c => `<button class="chat-list-item" data-chat="${safe(c.id)}"><b>Bestelling #${short(c.orderId)}</b><small>${safe(c.lastMessage || "Chat openen")}</small></button>`).join("") : "<p class='muted'>Je hebt nog geen chats. Na een bestelling verschijnt hier je gesprek.</p>";
@@ -680,12 +693,13 @@ function openAdminLogin() {
 }
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="camera">Camera</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
 }
 function cameraTab(target) {
+  target.innerHTML = firebaseLoadingMarkup("Cameragegevens laden…");
   const save = data => update(ref(db, "settings/camera"), { ...data, updatedAt: Date.now() }).catch(() => toast("Opslaan mislukt. Zijn de Firebase-regels (database.rules.json) al gepubliceerd?"));
   listen(ref(db, "settings/camera"), snap => {
     const c = snap.val() || {}; camCfg = c;
@@ -700,9 +714,40 @@ function cameraTab(target) {
     };
   });
 }
+function contactAdminTab(target) {
+  listen(ref(db, "settings/contact"), snap => {
+    const c = { ...DEFAULT_CONTACT, ...(snap.val() || {}) };
+    target.innerHTML = `<h3>Contactpagina beheren</h3><p class="muted">Pas hier de inhoud aan die bezoekers via de link Contact onderaan de webshop zien. Gebruik bij Naam en Adres de gegevens die je openbaar wilt tonen.</p>
+      <form id="contactSettingsForm" class="stack contact-admin-form">
+        <label>Paginatitel<input name="title" maxlength="90" value="${safe(c.title)}" placeholder="Neem contact met ons op"></label>
+        <label>Introtekst<textarea name="intro" rows="3" maxlength="700">${safe(c.intro)}</textarea></label>
+        <label>Naam<input name="name" maxlength="120" value="${safe(c.name)}" placeholder="Naam"></label>
+        <label>Adres<textarea name="address" rows="2" maxlength="240" placeholder="Straat, huisnummer, postcode en plaats">${safe(c.address)}</textarea></label>
+        <label>E-mailadres<input name="email" type="email" maxlength="160" value="${safe(c.email)}" placeholder="info@voorbeeld.nl"></label>
+        <label>Telefoonnummer<input name="phone" type="tel" maxlength="40" value="${safe(c.phone)}" placeholder="06 12345678"></label>
+        <label>Openingstijden<textarea name="hours" rows="2" maxlength="300">${safe(c.hours)}</textarea></label>
+        <label>Extra informatie<textarea name="extra" rows="4" maxlength="1200">${safe(c.extra)}</textarea></label>
+        <button class="primary full" type="submit">Contactpagina opslaan</button>
+      </form>`;
+    $("#contactSettingsForm").onsubmit = async e => {
+      e.preventDefault();
+      const form = new FormData(e.currentTarget);
+      const data = Object.fromEntries(["title", "intro", "name", "address", "email", "phone", "hours", "extra"].map(key => [key, String(form.get(key) || "").trim()]));
+      try {
+        await update(ref(db, "settings/contact"), { ...data, updatedAt: Date.now() });
+        toast("Contactpagina opgeslagen");
+      } catch (error) {
+        console.error("Contact settings save failed", error);
+        toast("Opslaan mislukt. Controleer de Firebase-regels.");
+      }
+    };
+  });
+}
+
 function adminTab() {
   content.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab === state.tab));
   cleanup(); const target = $("#adminContent"); if (!target) return;
+  target.innerHTML = firebaseLoadingMarkup("Firebase-gegevens laden…");
   if (state.tab === "products") listen(ref(db, "products"), snap => {
     const ps = toList(snap);
     target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = optionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${p.soldOut ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}<small>${money(p.price)}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
@@ -723,6 +768,7 @@ function adminTab() {
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
   });
   else if (state.tab === "camera") cameraTab(target);
+  else if (state.tab === "contact") contactAdminTab(target);
   else if (state.tab === "agenda") listen(ref(db, "orders"), snap => agendaTab(target, toList(snap)));
   else if (state.tab === "history") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst
@@ -752,6 +798,7 @@ async function shrinkImage(file, max = 900, limit = 300000) {
   throw new Error("Afbeelding is te groot, kies een kleinere.");
 }
 async function productEditor(id = null) {
+  if (id) openDialog(firebaseLoadingMarkup("Productgegevens laden…"));
   const p = id ? ((await get(ref(db, "products/" + id))).val() || {}) : {};
   let images = productImages(p);
   let groups = optionGroupsOf(p).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
@@ -842,6 +889,61 @@ function saveCookiePreferences(optionalAllowed) {
   $("#cookieBanner").hidden = true;
   toast(optionalAllowed ? "Je cookievoorkeur is opgeslagen." : "Alleen noodzakelijke opslag is toegestaan.");
 }
+function contactPageMarkup() {
+  const c = contactSettings;
+  const rows = [];
+  if (String(c.name || "").trim()) rows.push(`<div class="contact-detail"><span>Naam</span><strong>${safe(c.name)}</strong></div>`);
+  if (String(c.address || "").trim()) rows.push(`<div class="contact-detail"><span>Adres</span><strong>${safe(c.address).replace(/\n/g, "<br>")}</strong></div>`);
+  if (String(c.email || "").trim()) {
+    const email = String(c.email).trim();
+    const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    rows.push(`<div class="contact-detail"><span>E-mailadres</span><strong>${validEmail ? `<a href="mailto:${safe(email)}">${safe(email)}</a>` : safe(email)}</strong></div>`);
+  }
+  if (String(c.phone || "").trim()) {
+    const phone = String(c.phone).trim(), dial = phone.replace(/[^0-9+]/g, "");
+    rows.push(`<div class="contact-detail"><span>Telefoon</span><strong><a href="tel:${safe(dial)}">${safe(phone)}</a></strong></div>`);
+  }
+  if (String(c.hours || "").trim()) rows.push(`<div class="contact-detail"><span>Openingstijden</span><strong>${safe(c.hours).replace(/\n/g, "<br>")}</strong></div>`);
+  return `<p class="eyebrow">3D PRINTED SHOP</p><h2>${safe(c.title || "Contact")}</h2><p class="legal-page-intro">${safe(c.intro || "Heb je een vraag? Neem gerust contact met ons op.").replace(/\n/g, "<br>")}</p><div class="contact-details">${rows.length ? rows.join("") : `<p class="muted">De contactgegevens worden binnenkort toegevoegd.</p>`}</div>${String(c.extra || "").trim() ? `<div class="contact-extra">${safe(c.extra).replace(/\n/g, "<br>")}</div>` : ""}<p class="shipping-note contact-shipping-note">Verzendkosten: <strong>${money(SHIPPING)}</strong> bij bezorgen · Ophalen is gratis.</p>`;
+}
+function openContactPage() {
+  openDialog(`<div id="contactPageContent" class="legal-page contact-page">${contactPageMarkup()}</div>`);
+}
+function updatePrivacyContactDetails() {
+  const el = $("#privacyControllerDetails");
+  if (!el) return;
+  const details = [
+    contactSettings.name && `Naam: ${contactSettings.name}`,
+    contactSettings.address && `Adres: ${contactSettings.address}`,
+    contactSettings.email && `E-mail: ${contactSettings.email}`
+  ].filter(Boolean);
+  el.innerHTML = details.length ? details.map(safe).join("<br>") : "[vul naam, adres en e-mailadres in]";
+}
+function openTermsPage() {
+  const c = contactSettings;
+  const identity = [
+    c.name ? `<p><strong>Naam:</strong> ${safe(c.name)}</p>` : "",
+    c.address ? `<p><strong>Adres:</strong> ${safe(c.address).replace(/\n/g, "<br>")}</p>` : "",
+    c.email ? `<p><strong>E-mailadres:</strong> ${safe(c.email)}</p>` : "",
+    c.phone ? `<p><strong>Telefoon:</strong> ${safe(c.phone)}</p>` : ""
+  ].filter(Boolean).join("") || `<p>De gegevens van de aanbieder worden op de contactpagina gepubliceerd.</p>`;
+  openDialog(`<div class="legal-page"><p class="eyebrow">3D PRINTED SHOP</p><h2>Algemene voorwaarden</h2><p class="privacy-updated">Laatst bijgewerkt: 17 november 2026</p>
+    <div class="legal-content">
+      <h3>1. Gegevens van de aanbieder</h3>${identity}
+      <h3>2. Toepasselijkheid</h3><p>Deze algemene voorwaarden zijn van toepassing op het gebruik van deze webshop en op bestellingen die via de webshop worden geplaatst. Door een bestelling te plaatsen, ga je akkoord met deze voorwaarden. Dwingende wettelijke consumentenrechten blijven altijd gelden.</p>
+      <h3>3. Aanbod en prijzen</h3><p>Producten, afbeeldingen, omschrijvingen en prijzen worden zo zorgvuldig mogelijk weergegeven. Een afbeelding kan kleine verschillen vertonen met het uiteindelijke 3D-geprinte product. De prijs en gekozen productopties worden vóór het plaatsen van de bestelling getoond. Eventuele duidelijke vergissingen of typefouten zijn niet bindend.</p>
+      <h3>4. Bestellen</h3><p>Om online te bestellen heb je een klantaccount nodig. Controleer je gekozen producten, opties en gegevens voordat je de bestelling plaatst. Na het plaatsen wordt de bestelling geregistreerd en kun je de voortgang via Mijn bestellingen volgen. Bij een bestelling via chat worden de verdere afspraken in de chat gemaakt.</p>
+      <h3>5. Betaling</h3><p>Bij online bestellingen ontvang je na het plaatsen van de bestelling een persoonlijk betaalverzoek via Tikkie of een andere in de webshop aangegeven betaalmethode. De bestelling wordt verder afgehandeld volgens de betaalinstructies bij dat verzoek. Bij bestellingen via chat worden betaalafspraken rechtstreeks besproken.</p>
+      <h3>6. Bezorgen en ophalen</h3><p>Bezorgen is op dit moment beschikbaar voor adressen in Nederland. De verzendkosten bedragen <strong>${money(SHIPPING)}</strong> per bezorgbestelling. Ophalen is gratis. De gekozen bezorg- of ophaalmethode en de bijbehorende kosten worden tijdens het bestellen getoond. De voortgang en eventuele planning zijn zichtbaar via Mijn bestellingen.</p>
+      <h3>7. Producten op maat en herroeping</h3><p>Sommige producten kunnen worden samengesteld met keuzes zoals kleur, formaat of afwerking. Voor producten die volgens persoonlijke specificaties worden gemaakt, kan een wettelijke uitzondering op het herroepingsrecht gelden. Of zo'n uitzondering van toepassing is, hangt af van het product en de bestelling. Wettelijke consumentenrechten die niet uitgesloten mogen worden, blijven behouden. Je kunt via Mijn bestellingen binnen 14 dagen na bezorging een retourverzoek indienen; dit verzoek wordt beoordeeld aan de hand van de toepasselijke regels en de omstandigheden.</p>
+      <h3>8. Klachten en contact</h3><p>Heb je een vraag, klacht of probleem met je bestelling? Neem dan contact op via de contactpagina of de chat in je account. Vermeld bij vragen over een bestelling het bestelnummer, zodat we je goed kunnen helpen.</p>
+      <h3>9. Aansprakelijkheid</h3><p>De aanbieder is niet aansprakelijk voor schade voor zover die aansprakelijkheid wettelijk mag worden uitgesloten. Dit beperkt geen aansprakelijkheid die op grond van dwingend recht niet mag worden uitgesloten, waaronder aansprakelijkheid voor opzet of bewuste roekeloosheid.</p>
+      <h3>10. Privacy</h3><p>Persoonsgegevens worden verwerkt zoals beschreven in de privacyverklaring onderaan de webshop.</p>
+      <h3>11. Wijzigingen en toepasselijk recht</h3><p>De meest recente versie van deze voorwaarden is op de webshop te vinden. Op bestellingen is het toepasselijke Nederlandse recht van toepassing, met behoud van de bescherming die dwingend consumentenrecht biedt.</p>
+      <p class="legal-draft-note"><strong>Controleer vóór publicatie:</strong> dit is een basisversie. Controleer of de voorwaarden passen bij je eigen werkwijze, assortiment, retourbeleid en bedrijfsgegevens. Laat de tekst zo nodig juridisch nakijken.</p>
+    </div></div>`);
+}
+
 function openPrivacyNotice() {
   $("#privacyModal").hidden = false;
   document.body.classList.add("privacy-open");
@@ -860,6 +962,8 @@ const cookiePreferences = readCookiePreferences();
 if (!cookiePreferences) $("#cookieBanner").hidden = false;
 $("#acceptAllCookies").onclick = () => saveCookiePreferences(true);
 $("#rejectOptionalCookies").onclick = () => saveCookiePreferences(false);
+$("#openTerms").onclick = openTermsPage;
+$("#openContact").onclick = openContactPage;
 $("#openPrivacy").onclick = openPrivacyNotice;
 $("#cookiePrivacyLink").onclick = openPrivacyNotice;
 $("#closePrivacy").onclick = closePrivacyNotice;

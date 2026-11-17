@@ -2,6 +2,12 @@
 
 ## Nieuwe webshop-update
 
+- **Skeleton loaders bij Firebase**: tijdens het ophalen van producten, bestellingen, chats, track & trace en Sitebeheer verschijnt een shimmer-/laadanimatie in plaats van een leeg vlak.
+- **Algemene voorwaarden en contactpagina**: beide pagina's zijn bereikbaar via links onderaan de webshop. De algemene voorwaarden zijn als basisversie toegevoegd; controleer de tekst op je eigen werkwijze voordat je publiceert.
+- **Contactpagina beheren**: open Sitebeheer > Contactpagina om de paginatitel, introtekst, naam, adres, e-mailadres, telefoon, openingstijden en extra informatie te wijzigen. Deze inhoud wordt opgeslagen in `settings/contact` in Firebase en wordt getoond via de footerlink Contact.
+- **Naam- en adreslabels**: de contact- en privacy-informatie gebruikt de eenvoudige labels **Naam** en **Adres**.
+- **Verzendkosten duidelijk zichtbaar**: € 3,95 bij bezorgen en gratis bij ophalen wordt op de homepage, in de winkelwagen, tijdens het afrekenen en op de algemene-voorwaardenpagina getoond.
+
 - **Vernieuwd Tailwind-ontwerp**: strakkere productkaarten met drie producten per rij op desktop, moderne knoppen, voordelenbalk, Lucide-iconen en vloeiende hover-/vensteranimaties.
 - **Productdetail met galerij**: per product maximaal drie afbeeldingen. De eerste afbeelding is de hoofdafbeelding.
 - **Meerdere productopties**: voeg in Sitebeheer > Producten > Bewerken meerdere optiegroepen toe, zoals *Kleur*, *Formaat* en *Afwerking*. Elke optiegroep vormt één stap in de configurator (bijvoorbeeld **Stap 1 / 3**).
