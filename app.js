@@ -5,7 +5,7 @@ import { ref, onValue, get, push, set, update, remove, query, orderByChild, equa
 
 const $ = s => document.querySelector(s);
 const SHIPPING = 3.95;   // verzendkosten bij bezorgen; ophalen en chat zijn gratis
-const PRODUCT_LOADING_MIN_MS = 4000; // tijdelijke test: eerste productlading minimaal 4 seconden zichtbaar
+const PRODUCT_LOADING_MIN_MS = 4000; // eerste productlading minimaal 4 seconden zichtbaar
 const STATUSES = ["ontvangen", "verwerkt", "in de maak", "gemaakt", "klaar voor bezorging", "bezorgd"];
 const STAGES = ["in wachtrij", "in bereiding", "gemaakt"];   // fase per product zolang de bestelling "in de maak" is
 const stageOf = i => STAGES.includes(i.stage) ? i.stage : STAGES[0];
@@ -31,9 +31,26 @@ $("#year").textContent = new Date().getFullYear();
 
 /* ---------- helpers ---------- */
 const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+function dancingSkeletonMarkup() {
+  return `<svg class="dancing-skeleton" viewBox="0 0 100 120" role="presentation" focusable="false" aria-hidden="true">
+  <g class="dancer-head">
+    <circle class="skull" cx="50" cy="18" r="12"/>
+    <circle class="eye" cx="45" cy="16" r="2.5"/><circle class="eye" cx="55" cy="16" r="2.5"/>
+    <path class="face-detail" d="M50 19l-2 4 4 0M43 25q7 5 14 0M46 25v3m4-2v3m4-3v2"/>
+  </g>
+  <g class="dancer-body">
+    <path d="M50 31v35M42 33q8 5 16 0M39 38q11 5 22 0M38 44q12 5 24 0M39 50q11 5 22 0M41 56q9 5 18 0M43 62q7 4 14 0"/>
+    <path d="M42 66q8 7 16 0M45 67l-3 5m13-5 3 5"/>
+  </g>
+  <g class="dancer-arm dancer-arm-left"><path d="M41 35 29 48 20 38"/><circle cx="29" cy="48" r="3.2"/><circle cx="20" cy="38" r="2.8"/><path d="m20 38-5-7m5 7-8-1m8 1-2 7"/></g>
+  <g class="dancer-arm dancer-arm-right"><path d="M59 35 71 48 80 35"/><circle cx="71" cy="48" r="3.2"/><circle cx="80" cy="35" r="2.8"/><path d="m80 35 5-7m-5 7 8 0m-8 0 2 7"/></g>
+  <g class="dancer-leg dancer-leg-left"><path d="M45 70 37 88 25 100"/><circle cx="37" cy="88" r="3.5"/><circle cx="25" cy="100" r="3"/><path d="m25 100-11 2 1 3 13-1"/></g>
+  <g class="dancer-leg dancer-leg-right"><path d="M55 70 63 87 76 96"/><circle cx="63" cy="87" r="3.5"/><circle cx="76" cy="96" r="3"/><path d="m76 96 11-5 1 3-11 6"/></g>
+</svg>`;
+}
 function productSkeletonMarkup(count = 6) {
-  const cards = Array.from({ length: count }, (_, i) => `<article class="skeleton-card" aria-label="Product laden"><div class="skeleton-image"><span class="dancing-skeleton" style="--dance-delay:${i * -0.13}s" aria-hidden="true">💀</span><span class="skeleton-loading-label">Product laden</span></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
-  return `<div class="product-loading-state" role="status" aria-live="polite"><div class="product-loading-status"><span class="product-loading-spinner" aria-hidden="true"></span><span>Onze producten komen eraan…</span></div><div class="product-skeleton-grid">${cards}</div></div>`;
+  const cards = Array.from({ length: count }, () => `<article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="dancing-loader">${dancingSkeletonMarkup()}<span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
+  return `<div class="product-loading-state"><div class="product-loading-status"><span class="product-loading-spinner" aria-hidden="true"></span><span>Ons assortiment komt eraan…</span></div><div class="product-skeleton-grid">${cards}</div></div>`;
 }
 function firebaseLoadingMarkup(label = "Gegevens laden…") {
   return `<div class="firebase-loading" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><span>${safe(label)}</span><div class="firebase-loading-lines"><i></i><i></i><i></i></div></div>`;
@@ -205,6 +222,7 @@ onValue(ref(db, "products"), snap => {
     pendingProductSnapshot = products;
     pendingProductError = false;
     productSnapshotReceived = true;
+    renderProducts(); // Toon voor ieder afzonderlijk product een eigen loader.
     completeInitialProductLoad();
     return;
   }
@@ -226,7 +244,7 @@ onValue(ref(db, "products"), snap => {
 onValue(ref(db, "settings/contact"), snap => { contactSettings = { ...DEFAULT_CONTACT, ...(snap.val() || {}) }; updatePrivacyContactDetails(); const page = $("#contactPageContent"); if (page) page.innerHTML = contactPageMarkup(); }, error => console.error("Firebase contact settings load failed", error));
 function renderProducts() {
   const productsEl = $("#products");
-  if (!state.loaded) { productsEl.setAttribute("aria-busy", "true"); productsEl.innerHTML = productSkeletonMarkup(); return; }
+  if (!state.loaded) { productsEl.setAttribute("aria-busy", "true"); productsEl.innerHTML = productSkeletonMarkup(pendingProductSnapshot.length || 6); return; }
   productsEl.setAttribute("aria-busy", "false");
   if (state.productsError) { $("#productTotal").textContent = ""; productsEl.innerHTML = `<div class="empty-state">Producten konden niet worden geladen.<br><small>Controleer je verbinding en probeer de pagina opnieuw te laden.</small></div>`; return; }
   const q = ($("#search").value || "").toLowerCase();
@@ -236,12 +254,35 @@ function renderProducts() {
     const out = isSoldOut(p), groups = optionGroupsOf(p), images = productImages(p), image = images[0];
     return `<article class="product-card ${out ? "sold-out" : ""}">
       <button class="product-open" data-open="${safe(p.id)}" aria-label="Bekijk ${safe(p.title)}">
-        <div class="product-image">${image ? `<img loading="lazy" decoding="async" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
+        <div class="product-image">${image ? `<div class="product-image-loader" role="status" aria-label="Product laden"><div class="dancing-loader">${dancingSkeletonMarkup()}<span class="loader-note loader-note-left">♫</span><span class="loader-note loader-note-right">♪</span><span class="dancing-loader-caption">Product laden…</span></div></div><img class="product-image-source" loading="lazy" decoding="async" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
         <div class="product-info"><h3>${safe(p.title)}</h3><strong>${money(p.price)}</strong>${groups.length ? `<small class="product-options-hint">${groups.length} ${groups.length === 1 ? "keuze" : "keuzes"} mogelijk</small>` : ""}</div>
       </button>
       ${out ? `<button class="add-small" disabled>Uitverkocht</button>` : groups.length ? `<button class="add-small" data-open="${safe(p.id)}">Stel samen</button>` : `<button class="add-small" data-add="${safe(p.id)}">In winkelwagen</button>`}
     </article>`;
   }).join("") : `<div class="empty-state">Geen producten gevonden.<br><small>Pas je zoekopdracht aan of bekijk later nog eens ons assortiment.</small></div>`;
+  bindProductImageLoaders();
+}
+function finishProductImageLoad(img, succeeded) {
+  const imageBox = img.closest(".product-image");
+  const loader = imageBox?.querySelector(".product-image-loader");
+  if (succeeded) {
+    img.classList.add("is-loaded");
+    loader?.remove();
+  } else {
+    img.remove();
+    if (loader) {
+      loader.classList.add("is-error");
+      loader.innerHTML = `<span class="product-image-error">Afbeelding niet beschikbaar</span>`;
+      loader.setAttribute("aria-label", "Afbeelding niet beschikbaar");
+    }
+  }
+}
+function bindProductImageLoaders() {
+  $("#products").querySelectorAll("img.product-image-source").forEach(img => {
+    img.addEventListener("load", () => finishProductImageLoad(img, true), { once: true });
+    img.addEventListener("error", () => finishProductImageLoad(img, false), { once: true });
+    if (img.complete && img.naturalWidth > 0) finishProductImageLoad(img, true);
+  });
 }
 $("#searchBtn").onclick = renderProducts; $("#search").addEventListener("input", renderProducts);
 $("#products").addEventListener("click", e => {

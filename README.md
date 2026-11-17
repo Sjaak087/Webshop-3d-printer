@@ -141,3 +141,7 @@ In Sitebeheer staat nu een apart tabblad **Mijn bestellingen** naast **Track & t
 
 ### Mijn bestellingen-knop in de hoofdnavigatie
 Er staat nu een aparte knop **Mijn bestellingen** direct naast **Mijn chats** in de navigatie bovenaan de webshop. Klanten die zijn ingelogd openen hiermee direct hun orders en betaallinks. Bezoekers die nog niet zijn ingelogd krijgen eerst het inlogscherm. Op kleine schermen blijft de knop zichtbaar als een pakket/check-icoon met de toegankelijke naam “Mijn bestellingen”.
+
+
+## Loader-update v4
+De productloader gebruikt nu een opvallender dansend skelet per laadkaart en per productafbeelding. De CSS- en JavaScript-URL hebben een versietag om oude browsercache te omzeilen. Na uploaden kan de browser nog één keer hard vernieuwd worden (Ctrl+Shift+R).

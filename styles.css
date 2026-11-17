@@ -442,31 +442,50 @@ body.privacy-open{overflow:hidden}
  .privacy-dialog{max-height:94vh;padding:22px 18px;border-radius:16px}
 }
 
-/* Firebase-laadstatussen: zichtbare productloader en skeletkaarten */
+/* Productloaders: een eigen dansend skeletje per productkaart en per afbeelding */
 .product-loading-state{grid-column:1/-1;min-width:0;width:100%}
-.product-loading-status{display:flex;align-items:center;justify-content:center;gap:11px;margin:0 0 16px;padding:6px;color:var(--muted);font-size:14px;font-weight:700}
-.product-loading-spinner{width:25px;height:25px;flex:0 0 25px;border:3px solid #dce5f2;border-top-color:var(--blue);border-right-color:#78a9f6;border-radius:50%;animation:firebase-spin .7s linear infinite}
+.product-loading-status{display:flex;align-items:center;justify-content:center;gap:11px;margin:0 0 16px;padding:8px;color:var(--navy);font-size:14px;font-weight:800;letter-spacing:.2px}
+.product-loading-spinner{width:23px;height:23px;flex:0 0 23px;border:3px solid #dce8fb;border-top-color:var(--blue);border-right-color:#8b5cf6;border-radius:50%;animation:firebase-spin .65s linear infinite}
 .product-skeleton-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-.skeleton-card{border:1px solid var(--line);border-radius:16px;padding:12px;background:#fff;overflow:hidden}
-.skeleton-image,.skeleton-line,.firebase-loading-lines i{display:block;position:relative;overflow:hidden;background:#edf1f7;border-radius:9px}
-.skeleton-image{height:190px;margin-bottom:15px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;background:linear-gradient(145deg,#f2f0ff,#e8edff)}
-.dancing-skeleton{display:inline-block;font-size:58px;line-height:1;transform-origin:50% 85%;filter:drop-shadow(0 5px 3px rgba(38,48,100,.14));animation:skeleton-dance .62s ease-in-out infinite alternate;animation-delay:var(--dance-delay,0s)}
-.skeleton-loading-label{display:block;color:#5b58a8;font-size:12px;font-weight:800;letter-spacing:.02em;animation:label-pulse .9s ease-in-out infinite alternate}
-@keyframes skeleton-dance{0%{transform:translateY(3px) rotate(-19deg) scale(.96)}25%{transform:translateY(-7px) rotate(17deg) scale(1.04)}50%{transform:translateY(1px) rotate(-12deg) scale(.98)}75%{transform:translateY(-8px) rotate(20deg) scale(1.05)}100%{transform:translateY(2px) rotate(-16deg) scale(.97)}}
-@keyframes label-pulse{from{opacity:.58}to{opacity:1}}
-.skeleton-line{height:12px;margin:10px 3px}
-.skeleton-title{width:72%;height:14px}
-.skeleton-price{width:35%;height:17px}
-.skeleton-button{height:36px;margin-top:16px}
-.skeleton-image:after,.skeleton-line:after,.firebase-loading-lines i:after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.78),transparent);animation:skeleton-shimmer 1.35s infinite}
+.skeleton-card{border:1px solid #dfe8f5;border-radius:18px;padding:12px;background:#fff;overflow:hidden;box-shadow:0 8px 24px #244b7810}
+.skeleton-image{height:190px;margin-bottom:15px;border-radius:12px;background:radial-gradient(circle at 50% 35%,#f5f8ff 0,#e9f1ff 58%,#e5ebff 100%);display:grid;place-items:center;overflow:hidden}
+.skeleton-line{display:block;position:relative;overflow:hidden;background:#edf1f7;border-radius:9px;height:12px;margin:10px 3px}
+.skeleton-title{width:72%;height:14px}.skeleton-price{width:35%;height:17px}.skeleton-button{height:36px;margin-top:16px}
+.skeleton-line:after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.9),transparent);animation:skeleton-shimmer 1.15s infinite}
+.dancing-loader{height:100%;width:100%;min-height:155px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;color:#315fbd;font-size:12px;font-weight:800;letter-spacing:.25px}
+.dancing-skeleton{width:76px;height:91px;overflow:visible;stroke:#315fbd;stroke-width:3.5;stroke-linecap:round;stroke-linejoin:round;fill:none;filter:drop-shadow(0 5px 5px #315fbd22)}
+.dancing-skeleton circle{fill:#eaf1ff;stroke:#315fbd;stroke-width:3}
+.dancer-head{transform-box:view-box;transform-origin:50px 18px;animation:dancer-head-bop .48s ease-in-out infinite alternate}
+.dancer-body{transform-box:view-box;transform-origin:50px 48px;animation:dancer-sway .55s ease-in-out infinite alternate}
+.dancer-arm{transform-box:view-box;stroke:#315fbd}
+.dancer-arm-left{transform-origin:40px 37px;animation:dancer-left-arm .48s ease-in-out infinite alternate}
+.dancer-arm-right{transform-origin:60px 37px;animation:dancer-right-arm .48s ease-in-out infinite alternate}
+.dancer-leg-left{transform-box:view-box;transform-origin:45px 69px;animation:dancer-left-leg .5s ease-in-out infinite alternate}
+.dancer-leg-right{transform-box:view-box;transform-origin:55px 69px;animation:dancer-right-leg .5s ease-in-out infinite alternate}
+@keyframes dancer-head-bop{from{transform:rotate(-10deg) translateY(1px)}to{transform:rotate(11deg) translateY(-3px)}}
+@keyframes dancer-sway{from{transform:rotate(-7deg) translateY(2px)}to{transform:rotate(7deg) translateY(-2px)}}
+@keyframes dancer-left-arm{from{transform:rotate(-30deg)}to{transform:rotate(30deg)}}
+@keyframes dancer-right-arm{from{transform:rotate(30deg)}to{transform:rotate(-30deg)}}
+@keyframes dancer-left-leg{from{transform:rotate(19deg)}to{transform:rotate(-18deg)}}
+@keyframes dancer-right-leg{from{transform:rotate(-18deg)}to{transform:rotate(19deg)}}
 @keyframes skeleton-shimmer{100%{transform:translateX(100%)}}
+.product-image-loader{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 35%,#f5f8ff 0,#e9f1ff 62%,#e5ebff 100%);border-radius:11px}
+.product-image-loader .dancing-loader{min-height:100%;gap:0}
+.product-image-loader .dancing-skeleton{width:69px;height:84px}
+.product-image-loader.is-error{background:#f4f7fb;color:#718096;font-size:11px;font-weight:700}
+.product-image-error{padding:10px;text-align:center}
+.product-image-source{opacity:0;transition:opacity .22s ease}
+.product-image-source.is-loaded{opacity:1}
 .firebase-loading{display:grid;grid-template-columns:24px 1fr;align-items:center;gap:12px;padding:22px 16px;border:1px solid var(--line);border-radius:14px;background:#fff;color:var(--muted);font-size:13px}
 .loading-spinner{width:20px;height:20px;border:2px solid #dce5f2;border-top-color:var(--blue);border-radius:50%;animation:firebase-spin .8s linear infinite}
 @keyframes firebase-spin{to{transform:rotate(360deg)}}
 .firebase-loading-lines{grid-column:1/-1;display:grid;gap:8px;margin-top:5px}
-.firebase-loading-lines i{height:10px;width:100%}
-.firebase-loading-lines i:nth-child(2){width:82%}
-.firebase-loading-lines i:nth-child(3){width:58%}
+.firebase-loading-lines i{display:block;position:relative;overflow:hidden;background:#edf1f7;border-radius:9px;height:10px}
+.firebase-loading-lines i:nth-child(2){width:82%}.firebase-loading-lines i:nth-child(3){width:58%}
+.firebase-loading-lines i:after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.78),transparent);animation:skeleton-shimmer 1.35s infinite}
+@media(max-width:800px){.product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.skeleton-image{height:155px}.dancing-loader{min-height:130px}.skeleton-card{padding:9px}}
+@media(prefers-reduced-motion:reduce){.dancer-head,.dancer-body,.dancer-arm,.dancer-leg,.skeleton-line:after,.firebase-loading-lines i:after{animation:none!important}.product-loading-spinner,.loading-spinner{animation-duration:2s}}
 .shipping-note{max-width:1180px;margin:-32px auto 48px;text-align:center;color:var(--muted);font-size:13px}
 .shipping-note strong{color:var(--navy)}
 .legal-page{color:var(--ink)}
@@ -496,3 +515,49 @@ body.privacy-open{overflow:hidden}
 @media(prefers-reduced-motion:reduce){
  .skeleton-image:after,.skeleton-line:after,.firebase-loading-lines i:after,.loading-spinner{animation:none}
 }
+
+
+/* V4: loader moet onmiskenbaar zichtbaar blijven, ook na een browsercache-update. */
+.product-image{position:relative;isolation:isolate}
+.product-image-loader{position:absolute;inset:0;z-index:6;display:grid;place-items:center;overflow:hidden;background:radial-gradient(circle at 50% 30%,#fff7d6 0,#f1eaff 55%,#dfe8ff 100%);border-radius:11px}
+.product-loading-state{display:block!important;width:100%;grid-column:1/-1}
+.product-skeleton-grid{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+.skeleton-card{display:block!important;visibility:visible!important;opacity:1!important;min-width:0}
+.skeleton-image{display:grid!important;place-items:center!important;min-height:185px;background:radial-gradient(circle at 50% 30%,#fff7d6 0,#f1eaff 55%,#dfe8ff 100%)}
+.dancing-loader{position:relative;isolation:isolate;display:flex!important;visibility:visible!important;opacity:1!important;width:100%;height:100%;min-height:155px;flex-direction:column;align-items:center;justify-content:center;gap:0;color:#172554;font-size:14px;font-weight:900;overflow:visible}
+.dancing-skeleton{display:block!important;visibility:visible!important;opacity:1!important;width:100px;height:112px;overflow:visible;stroke:#172554;stroke-width:3.6;stroke-linecap:round;stroke-linejoin:round;fill:none;filter:drop-shadow(0 5px 4px #312e8150)}
+.dancing-skeleton .skull{fill:#fff!important;stroke:#172554;stroke-width:3.4}
+.dancing-skeleton .eye{fill:#172554!important;stroke:#172554;stroke-width:1}
+.dancing-skeleton .face-detail{fill:none;stroke:#172554;stroke-width:2}
+.dancing-skeleton .dancer-head{transform-box:view-box;transform-origin:50px 18px;animation:skull-bop .42s ease-in-out infinite alternate}
+.dancing-skeleton .dancer-body{transform-box:view-box;transform-origin:50px 49px;animation:rib-sway .5s ease-in-out infinite alternate}
+.dancing-skeleton .dancer-arm{transform-box:view-box}
+.dancing-skeleton .dancer-arm-left{transform-origin:41px 35px;animation:arm-party-left .38s ease-in-out infinite alternate}
+.dancing-skeleton .dancer-arm-right{transform-origin:59px 35px;animation:arm-party-right .38s ease-in-out infinite alternate}
+.dancing-skeleton .dancer-leg-left{transform-box:view-box;transform-origin:45px 70px;animation:leg-party-left .45s ease-in-out infinite alternate}
+.dancing-skeleton .dancer-leg-right{transform-box:view-box;transform-origin:55px 70px;animation:leg-party-right .45s ease-in-out infinite alternate}
+.dancing-loader-caption{display:block;margin-top:-1px;padding:5px 12px;border-radius:999px;background:#172554;color:#fff;font-size:12px;font-weight:900;letter-spacing:.35px;box-shadow:0 4px 12px #17255430}
+.loader-note{position:absolute;z-index:2;color:#7c3aed;font-size:23px;font-weight:900;line-height:1;animation:note-float .7s ease-in-out infinite alternate}
+.loader-note-left{top:22%;left:25%;transform:rotate(-12deg)}
+.loader-note-right{top:34%;right:22%;animation-delay:-.35s;transform:rotate(14deg)}
+.product-image-loader .dancing-loader{min-height:100%;padding:5px}
+.product-image-loader .dancing-skeleton{width:92px;height:104px}
+@keyframes skull-bop{from{transform:rotate(-16deg) translateY(3px)}to{transform:rotate(16deg) translateY(-5px)}}
+@keyframes rib-sway{from{transform:rotate(-9deg) translateY(2px)}to{transform:rotate(9deg) translateY(-2px)}}
+@keyframes arm-party-left{from{transform:rotate(-50deg)}to{transform:rotate(48deg)}}
+@keyframes arm-party-right{from{transform:rotate(48deg)}to{transform:rotate(-50deg)}}
+@keyframes leg-party-left{from{transform:rotate(25deg)}to{transform:rotate(-25deg)}}
+@keyframes leg-party-right{from{transform:rotate(-25deg)}to{transform:rotate(25deg)}}
+@keyframes note-float{from{translate:0 8px;rotate:-12deg}to{translate:0 -8px;rotate:12deg}}
+/* De expliciete dansloader blijft dansen; dit overschrijft de globale reduced-motion reset alleen voor dit onderdeel. */
+@media(prefers-reduced-motion:reduce){
+ .dancing-skeleton .dancer-head{animation:skull-bop .42s ease-in-out infinite alternate!important}
+ .dancing-skeleton .dancer-body{animation:rib-sway .5s ease-in-out infinite alternate!important}
+ .dancing-skeleton .dancer-arm-left{animation:arm-party-left .38s ease-in-out infinite alternate!important}
+ .dancing-skeleton .dancer-arm-right{animation:arm-party-right .38s ease-in-out infinite alternate!important}
+ .dancing-skeleton .dancer-leg-left{animation:leg-party-left .45s ease-in-out infinite alternate!important}
+ .dancing-skeleton .dancer-leg-right{animation:leg-party-right .45s ease-in-out infinite alternate!important}
+ .loader-note{animation:note-float .7s ease-in-out infinite alternate!important}
+}
+@media(max-width:800px){.product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){.skeleton-image{height:155px;min-height:155px}.dancing-skeleton{width:90px;height:103px}.dancing-loader{min-height:145px}.product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}}
