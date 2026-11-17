@@ -5,6 +5,7 @@ import { ref, onValue, get, push, set, update, remove, query, orderByChild, equa
 
 const $ = s => document.querySelector(s);
 const SHIPPING = 3.95;   // verzendkosten bij bezorgen; ophalen en chat zijn gratis
+const PRODUCT_LOADING_MIN_MS = 5000; // tijdelijke test: eerste productlading minimaal 5 seconden zichtbaar
 const STATUSES = ["ontvangen", "verwerkt", "in de maak", "gemaakt", "klaar voor bezorging", "bezorgd"];
 const STAGES = ["in wachtrij", "in bereiding", "gemaakt"];   // fase per product zolang de bestelling "in de maak" is
 const stageOf = i => STAGES.includes(i.stage) ? i.stage : STAGES[0];
@@ -31,7 +32,8 @@ $("#year").textContent = new Date().getFullYear();
 /* ---------- helpers ---------- */
 const safe = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 function productSkeletonMarkup(count = 6) {
-  return Array.from({ length: count }, () => `<article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
+  const cards = Array.from({ length: count }, () => `<article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
+  return `<div class="product-loading-state"><div class="product-loading-status"><span class="product-loading-spinner" aria-hidden="true"></span><span>Producten laden…</span></div><div class="product-skeleton-grid">${cards}</div></div>`;
 }
 function firebaseLoadingMarkup(label = "Gegevens laden…") {
   return `<div class="firebase-loading" role="status" aria-live="polite"><span class="loading-spinner" aria-hidden="true"></span><span>${safe(label)}</span><div class="firebase-loading-lines"><i></i><i></i><i></i></div></div>`;
@@ -182,7 +184,45 @@ function addCart(id, selections = []) {
 }
 
 /* ---------- producten ---------- */
-onValue(ref(db, "products"), snap => { state.products = toList(snap).filter(p => p.active !== false); state.productsError = false; state.loaded = true; renderProducts(); }, error => { console.error("Firebase product load failed", error); state.productsError = true; state.loaded = true; renderProducts(); });
+const productLoadingStartedAt = Date.now();
+let productLoadTimer = null;
+let pendingProductSnapshot = [];
+let productSnapshotReceived = false;
+let pendingProductError = false;
+function completeInitialProductLoad() {
+  if (state.loaded || !productSnapshotReceived || productLoadTimer !== null) return;
+  const remaining = Math.max(0, PRODUCT_LOADING_MIN_MS - (Date.now() - productLoadingStartedAt));
+  productLoadTimer = setTimeout(() => {
+    state.products = pendingProductSnapshot;
+    state.productsError = pendingProductError;
+    state.loaded = true;
+    renderProducts();
+  }, remaining);
+}
+onValue(ref(db, "products"), snap => {
+  const products = toList(snap).filter(p => p.active !== false);
+  if (!state.loaded) {
+    pendingProductSnapshot = products;
+    pendingProductError = false;
+    productSnapshotReceived = true;
+    completeInitialProductLoad();
+    return;
+  }
+  state.products = products;
+  state.productsError = false;
+  renderProducts();
+}, error => {
+  console.error("Firebase product load failed", error);
+  if (!state.loaded) {
+    pendingProductSnapshot = [];
+    pendingProductError = true;
+    productSnapshotReceived = true;
+    completeInitialProductLoad();
+    return;
+  }
+  state.productsError = true;
+  renderProducts();
+});
 onValue(ref(db, "settings/contact"), snap => { contactSettings = { ...DEFAULT_CONTACT, ...(snap.val() || {}) }; updatePrivacyContactDetails(); const page = $("#contactPageContent"); if (page) page.innerHTML = contactPageMarkup(); }, error => console.error("Firebase contact settings load failed", error));
 function renderProducts() {
   const productsEl = $("#products");

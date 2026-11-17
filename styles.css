@@ -442,7 +442,11 @@ body.privacy-open{overflow:hidden}
  .privacy-dialog{max-height:94vh;padding:22px 18px;border-radius:16px}
 }
 
-/* Firebase-laadstatussen: skeletkaarten en subtiele laadanimatie */
+/* Firebase-laadstatussen: zichtbare productloader en skeletkaarten */
+.product-loading-state{grid-column:1/-1;min-width:0;width:100%}
+.product-loading-status{display:flex;align-items:center;justify-content:center;gap:11px;margin:0 0 16px;padding:6px;color:var(--muted);font-size:14px;font-weight:700}
+.product-loading-spinner{width:25px;height:25px;flex:0 0 25px;border:3px solid #dce5f2;border-top-color:var(--blue);border-right-color:#78a9f6;border-radius:50%;animation:firebase-spin .7s linear infinite}
+.product-skeleton-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
 .skeleton-card{border:1px solid var(--line);border-radius:16px;padding:12px;background:#fff;overflow:hidden}
 .skeleton-image,.skeleton-line,.firebase-loading-lines i{display:block;position:relative;overflow:hidden;background:#edf1f7;border-radius:9px}
 .skeleton-image{height:190px;margin-bottom:15px}
@@ -479,6 +483,8 @@ body.privacy-open{overflow:hidden}
 .tabs{flex-wrap:wrap}
 @media(max-width:620px){
  .skeleton-image{height:145px}
+ .product-skeleton-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+ .product-loading-status{font-size:13px}
  .shipping-note{margin:-30px 18px 38px;line-height:1.6}
  .contact-details{grid-template-columns:1fr}
  .firebase-loading{padding:18px 13px}
