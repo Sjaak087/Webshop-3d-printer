@@ -404,3 +404,40 @@ body.public-tracking-mode .public-track-head{padding-bottom:7px}
 /* Footer privacyrechten */
 .footer-privacy{flex-basis:100%;max-width:900px;margin:18px auto 0;padding-top:16px;border-top:1px solid rgba(255,255,255,.14);color:inherit;font-size:13px;line-height:1.65;opacity:.82}
 .footer-privacy p{margin:6px 0 0}
+
+
+/* Privacyverklaring en cookievoorkeuren */
+.footer-legal-links{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;flex-basis:100%;margin-top:8px}
+.footer-legal-links button,.text-link{border:0;background:none;color:inherit;text-decoration:underline;text-underline-offset:3px;font:inherit;cursor:pointer;padding:4px 2px}
+.footer-legal-links button{font-size:13px;opacity:.88}
+.cookie-banner{position:fixed;z-index:1200;left:18px;right:18px;bottom:18px;max-width:1040px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 22px;background:#fff;border:1px solid #e1e7f0;border-radius:18px;box-shadow:0 18px 60px rgba(15,23,42,.24);color:#172033}
+.cookie-banner[hidden],.privacy-modal[hidden]{display:none}
+.cookie-banner-copy{max-width:680px}
+.cookie-banner-copy strong{font-size:16px;color:#101b31}
+.cookie-banner-copy p{font-size:13px;line-height:1.6;color:#586579;margin:6px 0 0}
+.text-link{color:#2459a6;padding:0}
+.cookie-actions{display:flex;gap:9px;flex-shrink:0;flex-wrap:wrap}
+.cookie-actions button,.privacy-footer-actions button{min-height:42px}
+.privacy-modal{position:fixed;inset:0;z-index:1300;display:grid;place-items:center;padding:20px}
+.privacy-backdrop{position:absolute;inset:0;background:rgba(7,14,29,.72);backdrop-filter:blur(4px)}
+.privacy-dialog{position:relative;width:min(820px,100%);max-height:min(88vh,900px);overflow:auto;background:#fff;color:#172033;border-radius:20px;padding:32px;box-shadow:0 24px 80px rgba(0,0,0,.32)}
+.privacy-close{position:sticky;float:right;top:0;border:0;background:#f1f4f8;color:#24334a;width:36px;height:36px;border-radius:50%;font-size:25px;line-height:1;cursor:pointer}
+.privacy-dialog .eyebrow{color:#5c78a4;font-size:11px;font-weight:800;letter-spacing:.15em;margin:0 0 8px}
+.privacy-dialog h2{font-size:clamp(23px,4vw,32px);line-height:1.15;margin:0 42px 6px 0;color:#111d33}
+.privacy-updated{font-size:12px;color:#758197;margin:0 0 22px}
+.privacy-content{font-size:14px;line-height:1.75;color:#46546a}
+.privacy-content h3{font-size:15px;color:#182944;margin:22px 0 5px}
+.privacy-content p{margin:6px 0 10px}
+.privacy-content ul{padding-left:22px;margin:7px 0 12px}
+.privacy-content li{padding-left:3px;margin:3px 0}
+.privacy-content a{color:#2459a6;text-decoration:underline}
+.privacy-placeholder-note{padding:13px 15px;border-radius:10px;background:#fff7e8;color:#80551a!important;margin-top:22px!important}
+.privacy-footer-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap;border-top:1px solid #e8edf3;padding-top:18px;margin-top:24px}
+body.privacy-open{overflow:hidden}
+@media(max-width:680px){
+ .cookie-banner{left:10px;right:10px;bottom:10px;display:block;padding:17px;border-radius:15px}
+ .cookie-actions{margin-top:14px;display:grid;grid-template-columns:1fr 1fr}
+ .cookie-actions button{padding:9px 10px;font-size:12px}
+ .privacy-modal{padding:8px}
+ .privacy-dialog{max-height:94vh;padding:22px 18px;border-radius:16px}
+}

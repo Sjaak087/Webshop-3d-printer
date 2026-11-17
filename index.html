@@ -20,7 +20,81 @@
   <section id="producten" class="products-section"><div class="section-head"><div><p class="eyebrow">ONS ASSORTIMENT</p><h2>Populaire producten</h2></div><span id="productTotal" class="muted"></span></div><div id="products" class="product-grid"><div class="loading">Producten laden…</div></div></section>
   <section class="service-strip"><div>📦 <b>Volg je bestelling</b><small>Bekijk de status via je account</small></div><div>💬 <b>Persoonlijke hulp</b><small>Chat rechtstreeks met ons team</small></div><div>🔒 <b>Veilig bestellen</b><small>Je gegevens zijn beschermd</small></div></section>
 </main>
-<footer><a class="brand" href="#"><span class="brand-mark">3D</span> printed<span>shop</span></a><span>© <span id="year"></span> 3D Printed Shop</span><div class="footer-privacy"><b>Privacyrechten</b><p>Je hebt het recht om je persoonsgegevens in te zien, te laten corrigeren of te laten verwijderen. Je kunt ook bezwaar maken tegen het gebruik van je gegevens. Neem hiervoor contact op via de chat in deze webshop. We gebruiken je gegevens alleen voor het verwerken en afhandelen van je bestelling en om je hierover te informeren.</p><p>Bewaartermijnen kunnen wettelijk verplicht zijn. Persoonsgegevens worden niet langer bewaard dan noodzakelijk.</p></div></footer>
+<footer>
+  <a class="brand" href="#"><span class="brand-mark">3D</span> printed<span>shop</span></a>
+  <span>© <span id="year"></span> 3D Printed Shop</span>
+  <div class="footer-legal-links">
+    <button type="button" id="openPrivacy">Privacyverklaring &amp; privacyrechten</button>
+    <button type="button" id="openCookieSettings">Cookie-instellingen</button>
+  </div>
+</footer>
+
+<section class="cookie-banner" id="cookieBanner" aria-label="Cookievoorkeuren" hidden>
+  <div class="cookie-banner-copy">
+    <strong>Jouw privacy is belangrijk</strong>
+    <p>Deze webshop gebruikt noodzakelijke browseropslag om bijvoorbeeld je winkelwagen en sessie te laten werken. Optionele cookies voor statistieken of marketing worden alleen geplaatst als je daarvoor kiest. Lees de <button type="button" class="text-link" id="cookiePrivacyLink">privacyverklaring</button>.</p>
+  </div>
+  <div class="cookie-actions">
+    <button type="button" class="secondary" id="rejectOptionalCookies">Alleen noodzakelijk</button>
+    <button type="button" class="primary" id="acceptAllCookies">Alles accepteren</button>
+  </div>
+</section>
+
+<div class="privacy-modal" id="privacyModal" hidden>
+  <div class="privacy-backdrop" data-close-privacy></div>
+  <section class="privacy-dialog" role="dialog" aria-modal="true" aria-labelledby="privacyTitle">
+    <button type="button" class="privacy-close" id="closePrivacy" aria-label="Sluiten">×</button>
+    <p class="eyebrow">3D PRINTED SHOP</p>
+    <h2 id="privacyTitle">Privacyverklaring &amp; jouw privacyrechten</h2>
+    <p class="privacy-updated">Laatst bijgewerkt: 17 november 2026</p>
+    <div class="privacy-content">
+      <h3>1. Wie is verantwoordelijk?</h3>
+      <p>De verantwoordelijke voor de verwerking van persoonsgegevens via deze webshop is de exploitant van 3D Printed Shop. Vul vóór publicatie de officiële handelsnaam, het vestigingsadres en een bereikbaar e-mailadres in: <strong>[vul bedrijfsnaam, adres en e-mailadres in]</strong>. Gebruik de chat in de webshop alleen als aanvullend contactkanaal.</p>
+      <h3>2. Welke gegevens verwerken wij?</h3>
+      <p>Afhankelijk van wat je doet, kunnen wij je naam, e-mailadres, bezorg- of afhaalgegevens, bestelgegevens, gekozen productopties, berichten aan onze klantenservice en gegevens over betalingen of betaalstatus verwerken. Wij vragen je geen gegevens te delen die niet nodig zijn voor je bestelling.</p>
+      <h3>3. Waarvoor gebruiken wij je gegevens?</h3>
+      <ul>
+        <li>Om je account en bestellingen aan te maken en te beheren.</li>
+        <li>Om bestellingen te betalen, te maken, te bezorgen of klaar te zetten.</li>
+        <li>Om vragen, klachten, retouraanvragen en serviceverzoeken af te handelen.</li>
+        <li>Om te voldoen aan wettelijke verplichtingen, zoals fiscale administratie.</li>
+        <li>Om de webshop te beveiligen en misbruik of fraude te helpen voorkomen.</li>
+      </ul>
+      <h3>4. Op welke grondslagen?</h3>
+      <p>Wij verwerken gegevens wanneer dat nodig is om je bestelling uit te voeren, om aan wettelijke verplichtingen te voldoen, vanwege een gerechtvaardigd belang zoals beveiliging en klantenservice, of op basis van jouw toestemming wanneer die wettelijk vereist is. Als een verwerking op toestemming berust, kun je die toestemming later intrekken.</p>
+      <h3>5. Met wie delen wij gegevens?</h3>
+      <p>Wij delen gegevens alleen wanneer dat nodig is voor de webshop of wettelijk verplicht is. De webshop gebruikt Firebase-diensten van Google voor onder meer database- en applicatiefuncties. Als je via een externe betaalmethode betaalt, ontvangt de betreffende betaaldienstverlener de gegevens die nodig zijn om de betaling af te handelen. Vul hier vóór publicatie de daadwerkelijk gebruikte betaal- en bezorgdiensten en links naar hun privacyverklaringen in. Wij verkopen je persoonsgegevens niet.</p>
+      <h3>6. Bewaartermijnen</h3>
+      <p>Wij bewaren persoonsgegevens niet langer dan noodzakelijk voor het doel waarvoor ze zijn verzameld. Bestel- en administratiegegevens kunnen langer worden bewaard wanneer de wet dat vereist. Account-, chat- en servicegegevens worden verwijderd of geanonimiseerd zodra ze niet meer nodig zijn, tenzij een wettelijke verplichting of een geschil een langere bewaring noodzakelijk maakt.</p>
+      <h3>7. Beveiliging</h3>
+      <p>Wij nemen passende technische en organisatorische maatregelen om persoonsgegevens te beschermen. Geen enkele internetverbinding of opslagmethode kan echter volledige veiligheid garanderen. Deel nooit je wachtwoord of betaalgegevens via een chatbericht.</p>
+      <h3>8. Jouw privacyrechten</h3>
+      <p>Je kunt, voor zover de privacywetgeving daarin voorziet:</p>
+      <ul>
+        <li><strong>Inzage vragen:</strong> opvragen welke persoonsgegevens wij van je verwerken.</li>
+        <li><strong>Correctie vragen:</strong> onjuiste of onvolledige gegevens laten aanpassen.</li>
+        <li><strong>Verwijdering vragen:</strong> verzoeken je persoonsgegevens te verwijderen.</li>
+        <li><strong>Beperking vragen:</strong> verzoeken de verwerking tijdelijk te beperken.</li>
+        <li><strong>Bezwaar maken:</strong> bezwaar maken tegen verwerkingen die op een gerechtvaardigd belang zijn gebaseerd.</li>
+        <li><strong>Gegevensoverdraagbaarheid:</strong> bepaalde gegevens in een gangbaar, digitaal formaat ontvangen.</li>
+        <li><strong>Toestemming intrekken:</strong> toestemming op ieder moment intrekken. Dit heeft geen terugwerkende kracht.</li>
+      </ul>
+      <p>Stuur je verzoek via de chat in de webshop en vermeld hoe wij je bestelling of account kunnen terugvinden. Wij kunnen je vragen je identiteit te bevestigen om te voorkomen dat gegevens aan de verkeerde persoon worden verstrekt. Wij reageren in principe binnen één maand. In bepaalde gevallen mag deze termijn wettelijk worden verlengd.</p>
+      <p>Ben je niet tevreden over onze afhandeling? Dan kun je een klacht indienen bij de Autoriteit Persoonsgegevens via <a href="https://autoriteitpersoonsgegevens.nl/" target="_blank" rel="noopener noreferrer">autoriteitpersoonsgegevens.nl</a>.</p>
+      <h3>9. Cookies en vergelijkbare opslag</h3>
+      <p>De webshop gebruikt noodzakelijke browseropslag voor functies die je zelf gebruikt, zoals het onthouden van je winkelwagen en je aanmeldsessie. Dit kan bestaan uit lokale opslag of sessieopslag in je browser en is nodig om de gevraagde functionaliteit te leveren. In deze versie zijn geen optionele statistiek- of marketingcookies geconfigureerd. Als zulke technieken later worden toegevoegd, vragen wij waar nodig vooraf toestemming. Je kunt je keuze aanpassen via ‘Cookie-instellingen’ onderaan de website.</p>
+      <h3>10. Minderjarigen</h3>
+      <p>Deze webshop is niet bedoeld om bewust gegevens te verzamelen van kinderen die daarvoor volgens de wet toestemming van een ouder of voogd nodig hebben. Denk je dat toch gegevens van een kind zijn verzameld? Neem dan contact met ons op.</p>
+      <h3>11. Wijzigingen</h3>
+      <p>Wij kunnen deze verklaring aanpassen wanneer de webshop of de wetgeving verandert. De meest recente versie staat altijd op deze pagina. Controleer de verklaring regelmatig.</p>
+      <p class="privacy-placeholder-note"><strong>Belangrijk voor publicatie:</strong> vervang de invulvelden bij de verantwoordelijke en vul de werkelijk gebruikte betaal-/bezorgdiensten in. Controleer ook of de genoemde verwerkingen overeenkomen met je eigen werkwijze.</p>
+    </div>
+    <div class="privacy-footer-actions">
+      <button type="button" class="secondary" id="privacyCookieSettings">Cookievoorkeuren aanpassen</button>
+      <button type="button" class="primary" id="privacyDone">Sluiten</button>
+    </div>
+  </section>
+</div>
 
 <div id="overlay" class="overlay hidden">
  <section class="dialog"><button class="close" id="closeDialog" aria-label="Sluiten">×</button><div id="dialogContent"></div></section>

@@ -823,6 +823,52 @@ async function productEditor(id = null) {
   };
 }
 
+
+/* ---------- privacy- en cookievoorkeuren ---------- */
+const COOKIE_PREF_KEY = "3dPrintedShopCookiePreferences";
+const readCookiePreferences = () => {
+  try { return JSON.parse(localStorage.getItem(COOKIE_PREF_KEY) || "null"); }
+  catch { return null; }
+};
+function saveCookiePreferences(optionalAllowed) {
+  const preferences = {
+    necessary: true,
+    analytics: !!optionalAllowed,
+    marketing: !!optionalAllowed,
+    savedAt: new Date().toISOString(),
+    version: 1
+  };
+  try { localStorage.setItem(COOKIE_PREF_KEY, JSON.stringify(preferences)); } catch {}
+  $("#cookieBanner").hidden = true;
+  toast(optionalAllowed ? "Je cookievoorkeur is opgeslagen." : "Alleen noodzakelijke opslag is toegestaan.");
+}
+function openPrivacyNotice() {
+  $("#privacyModal").hidden = false;
+  document.body.classList.add("privacy-open");
+  $("#closePrivacy").focus();
+}
+function closePrivacyNotice() {
+  $("#privacyModal").hidden = true;
+  document.body.classList.remove("privacy-open");
+}
+function openCookiePreferences() {
+  closePrivacyNotice();
+  $("#cookieBanner").hidden = false;
+  $("#cookieBanner").scrollIntoView({ behavior: "smooth", block: "end" });
+}
+const cookiePreferences = readCookiePreferences();
+if (!cookiePreferences) $("#cookieBanner").hidden = false;
+$("#acceptAllCookies").onclick = () => saveCookiePreferences(true);
+$("#rejectOptionalCookies").onclick = () => saveCookiePreferences(false);
+$("#openPrivacy").onclick = openPrivacyNotice;
+$("#cookiePrivacyLink").onclick = openPrivacyNotice;
+$("#closePrivacy").onclick = closePrivacyNotice;
+$("#privacyDone").onclick = closePrivacyNotice;
+$("#openCookieSettings").onclick = openCookiePreferences;
+$("#privacyCookieSettings").onclick = openCookiePreferences;
+$("#privacyModal").querySelector("[data-close-privacy]").onclick = closePrivacyNotice;
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#privacyModal").hidden) closePrivacyNotice(); });
+
 /* ---------- start ---------- */
 try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid && s.role === "customer") state.user = s; else if (s?.role === "admin") { sessionStorage.removeItem("novashopUser"); sessionStorage.setItem("novashopAdmin", "1"); } } catch { sessionStorage.removeItem("novashopUser"); }
 if (sessionStorage.getItem("novashopAdmin") === "1") state.admin = true;
