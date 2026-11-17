@@ -588,3 +588,21 @@ to{translate:0 -8px;rotate:12deg}}
 @keyframes a1-status-pulse{0%,100%{opacity:.65;box-shadow:0 0 3px #58dfbb}50%{opacity:1;box-shadow:0 0 12px #58dfbb}}
 @media(max-width:620px){.a1-loader{min-height:145px;padding:6px}.a1-loader-scene{min-height:132px}.a1-mini-printer-svg{height:104px;width:min(100%,195px)}.a1-loader-brand{font-size:8px;letter-spacing:1px}.a1-loader-subline{font-size:7px}.product-image-loader .a1-mini-printer-svg{height:105px;width:min(100%,195px)}}
 @media(prefers-reduced-motion:reduce){.a1-printer-head,.a1-printer-bed,.a1-printed-object,.a1-nozzle-glow,.a1-status-dot{animation:none!important}}
+
+
+/* V6 — schone witte laadachtergrond en live percentage op het printersdisplay */
+.product-image-loader{background:#fff!important;border:1px solid #edf0f3;border-radius:13px}
+.skeleton-image{background:#fff!important;border:1px solid #edf0f3!important}
+.a1-loader{background:#fff!important}
+.a1-loader-scene{background:#fff!important;border:1px solid #edf0f3!important;box-shadow:0 5px 18px rgba(25,45,70,.055)!important}
+.a1-loader-scene:before,.a1-loader-scene:after{display:none!important}
+.a1-loader-brand{color:#627187!important}
+.a1-loader-brand b{color:#1b2e47!important}
+.a1-loader-caption{color:#1b2e47!important;text-shadow:none!important}
+.a1-loader-subline{color:#8290a3!important}
+.a1-mini-printer-svg{filter:drop-shadow(0 5px 6px rgba(25,45,70,.10))!important}
+.a1-screen-percent{font-variant-numeric:tabular-nums;letter-spacing:-.1px}
+.a1-screen-progress-fill{transition:width .09s linear}
+.product-image-loader.is-finishing{opacity:0;transition:opacity .22s ease}
+.product-image-loader.is-error{background:#fff!important}
+@media(max-width:620px){.a1-loader-scene{min-height:132px}.a1-loader-brand{color:#627187!important}.a1-loader-caption{font-size:10px!important}.a1-loader-subline{font-size:7px!important}}

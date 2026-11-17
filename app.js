@@ -38,9 +38,11 @@ function a1MiniPrinterMarkup() {
     <path d="M37 146 194 146 220 155 62 158Z" fill="#aeb8c6" stroke="#657386" stroke-width="1.5"/>
     <path d="M37 146 194 146 194 166 62 169 37 159Z" fill="#f7f9fc" stroke="#aab4c2" stroke-width="1.5"/>
     <path d="M194 146 220 155 220 167 194 166Z" fill="#d4dbe5" stroke="#8793a3" stroke-width="1.3"/>
-    <rect x="179" y="151" width="19" height="12" rx="2.5" fill="#18263b"/>
-    <rect x="182" y="153" width="13" height="8" rx="1.5" fill="#65d6d0"/>
-    <circle cx="201" cy="157" r="1.8" fill="#64748b"/>
+    <rect x="168" y="146" width="31" height="19" rx="3" fill="#172a40" stroke="#60728a" stroke-width="1.1"/>
+    <rect x="171" y="149" width="25" height="13" rx="1.5" fill="#eaf6f5"/>
+    <text class="a1-screen-percent" x="173" y="155" fill="#18354a" font-size="5.6" font-family="Arial,sans-serif" font-weight="700">0%</text>
+    <rect x="173" y="157.5" width="21" height="2.8" rx="1.2" fill="#c6d7d7"/>
+    <rect class="a1-screen-progress-fill" x="173" y="157.5" width="0" height="2.8" rx="1.2" fill="#0da69c"/>
     <!-- Rechter staander en bovenrail: A1 mini cantilever-frame -->
     <path d="M197 37 214 42 214 151 198 146Z" fill="#d7dee8" stroke="#7c899b" stroke-width="1.6"/>
     <path d="M203 43 208 45 208 142 203 141Z" fill="#f8fafc" opacity=".95"/>
@@ -81,8 +83,30 @@ function a1MiniPrinterMarkup() {
     <path d="M45 160 190 160" stroke="#fff" stroke-width="1" opacity=".8"/>
   </svg>`;
 }
+const A1_LOADER_PROGRESS_MS = 4000;
+const A1_LOADER_PROGRESS_MAX = 95;
+function updateA1LoaderDisplays(now = performance.now()) {
+  document.querySelectorAll(".a1-loader").forEach(loader => {
+    let startedAt = Number(loader.dataset.progressStartedAt);
+    if (!Number.isFinite(startedAt) || startedAt <= 0) {
+      startedAt = now;
+      loader.dataset.progressStartedAt = String(startedAt);
+    }
+    const elapsed = Math.max(0, now - startedAt);
+    const progress = Math.min(A1_LOADER_PROGRESS_MAX, Math.floor((elapsed / A1_LOADER_PROGRESS_MS) * A1_LOADER_PROGRESS_MAX));
+    const percent = loader.querySelector(".a1-screen-percent");
+    const fill = loader.querySelector(".a1-screen-progress-fill");
+    if (percent) percent.textContent = `${progress}%`;
+    if (fill) fill.setAttribute("width", (21 * progress / 100).toFixed(2));
+    loader.setAttribute("aria-label", `Product wordt geladen: ${progress}%`);
+  });
+  requestAnimationFrame(updateA1LoaderDisplays);
+}
+requestAnimationFrame(updateA1LoaderDisplays);
+
 function productSkeletonMarkup(count = 6) {
-  const cards = Array.from({ length: count }, () => `<article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div>${a1MiniPrinterMarkup()}<span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
+  const initialProgressStart = (performance.now() - Math.max(0, Date.now() - productLoadingStartedAt)).toFixed(2);
+  const cards = Array.from({ length: count }, () => `<article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader" data-progress-started-at="${initialProgressStart}"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div>${a1MiniPrinterMarkup()}<span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div></div><div class="skeleton-line skeleton-title"></div><div class="skeleton-line skeleton-price"></div><div class="skeleton-line skeleton-button"></div></article>`).join("");
   return `<div class="product-loading-state"><div class="product-loading-status"><span class="product-loading-spinner" aria-hidden="true"></span><span>Ons assortiment komt eraan…</span></div><div class="product-skeleton-grid">${cards}</div></div>`;
 }
 function firebaseLoadingMarkup(label = "Gegevens laden…") {
@@ -300,7 +324,14 @@ function finishProductImageLoad(img, succeeded) {
   const loader = imageBox?.querySelector(".product-image-loader");
   if (succeeded) {
     img.classList.add("is-loaded");
-    loader?.remove();
+    if (loader) {
+      const percent = loader.querySelector(".a1-screen-percent");
+      const fill = loader.querySelector(".a1-screen-progress-fill");
+      if (percent) percent.textContent = "100%";
+      if (fill) fill.setAttribute("width", "21");
+      loader.classList.add("is-finishing");
+      setTimeout(() => loader.remove(), 220);
+    }
   } else {
     img.remove();
     if (loader) {
