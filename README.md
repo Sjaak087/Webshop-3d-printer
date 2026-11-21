@@ -181,7 +181,7 @@ De bestaande webshop gebruikt een eigen accountsysteem aan de clientzijde. De Re
 - **Afhandeling in bestellingen**: een bestelling die via de chat wordt gestart, wordt als **Ophalen** opgeslagen en heeft geen adres of verzendkosten. Een bestelling met adres wordt als **Verzenden** weergegeven. Bestaande chatbestellingen zonder expliciete verzendmethode worden in de weergave als ophalen behandeld.
 - **Categorieën beheren**: Sitebeheer > Categorieën laat je categorieën toevoegen, verbergen, opnieuw tonen en verwijderen. Verwijderen koppelt bestaande producten eerst los van die categorie.
 - **Categorieën op de homepage**: bezoekers zien filterknoppen voor de actieve categorieën. Producten krijgen in Sitebeheer > Producten > Bewerken een categorie; de categorie wordt ook als label op de productkaart getoond.
-- **Productkeuzes kopiëren**: in de producteditor kun je de optiegroepen van een ander product selecteren en in één actie kopiëren. Namen, opties, prijsverschillen en uitverkocht-status worden gekopieerd. Sla het product daarna op om de kopie te bewaren.
+- **Productkeuzes live koppelen**: in de producteditor kun je een bestaande productkeuzeset met een ander product delen. De gekoppelde producten gebruiken daarna één gedeelde set in Firebase Realtime Database.
 - **Technische controles**: category names worden beperkt tot 50 tekens en moeten uniek zijn via de beheerinterface; categorieën krijgen een expliciete Realtime Database-regel. De nieuwe functies gebruiken Firebase multi-location updates waar meerdere paden tegelijk moeten veranderen.
 
 ### Publiceren van deze update
@@ -201,6 +201,15 @@ De huidige webshop gebruikt nog steeds een eigen klant-/beheerlogin in de browse
 - Statussen zijn voor klanten en Sitebeheer afgestemd op de afhandeling: bij ophalen wordt bijvoorbeeld **klaar om op te halen / opgehaald** getoond, bij verzending **klaar voor verzending / bezorgd**. De bestaande interne statuswaarden blijven compatibel met oudere bestellingen.
 - Offertekleuren kunnen in Sitebeheer op uitverkocht worden gezet; uitverkochte kleuren worden niet aangeboden bij nieuwe aanvragen. Offertes kunnen worden verwijderd. Bij reeds omgezette offertes blijven de normale bestelling, chat en track & trace behouden.
 - Categorieën kunnen in Sitebeheer worden aangemaakt, verborgen en verwijderd. Je koppelt ze via Producten bewerken; actieve categorieën verschijnen op de homepage als filters.
-- Productoptiegroepen kunnen in de producteditor van een ander product worden gekopieerd. De labels, opties, prijsverschillen en uitverkochtstatussen worden gekopieerd; daarna sla je het doelproduct op.
+- Productoptiegroepen kunnen in de producteditor van een ander product live worden gekoppeld. De labels, opties, prijsverschillen, kleurstaaltjes en uitverkochtstatussen worden gedeeld vanuit één Firebase-keuzeset.
 
 Publiceer na upload ook het bijgewerkte `database.rules.json` via Firebase Console > Realtime Database > Regels. De huidige bestaande database-opzet gebruikt nog brede lees-/schrijfrechten en een client-side beheerlogin. De interface-aanpassingen maken die opzet niet veilig voor vertrouwelijke klantgegevens; Firebase Authentication en server-side autorisatie zijn nog nodig voor echte toegangsbeveiliging.
+
+
+## Productkeuzes met kleurvoorbeelden
+- In **Sitebeheer > Producten > Bewerken** kun je per optie nu optioneel **Kleurvoorbeeld** aanvinken en een kleur kiezen met de kleurkiezer.
+- De klant ziet het gekozen kleurstaaltje direct naast de optie in de productconfigurator. Het voorbeeld blijft zichtbaar in de configuratiesamenvatting, winkelwagen, bestelling en track & trace.
+- In **Producten → Bewerken → Productopties** kun je een ander product kiezen en op **Live koppelen** klikken. De opties worden dan onder `settings/productOptionSets` als gedeelde keuzeset opgeslagen en beide producten verwijzen naar dezelfde `optionSetId`.
+- Wijzigingen aan optienamen, kleurvoorbeelden, kleurcodes, prijsverschillen en uitverkocht-statussen worden na **Product opslaan** via Firebase Realtime Database direct zichtbaar bij alle producten die aan diezelfde keuzeset gekoppeld zijn.
+- Gebruik **Loskoppelen en zelfstandig maken** om een product weer eigen keuzes te geven. Eerder met de oude knop gekopieerde producten blijven zelfstandige kopieën; koppel die producten één keer opnieuw met **Live koppelen** om ze samen te laten bijwerken.
+- Kleurvoorbeelden zijn optioneel; bestaande productopties zonder kleurcode blijven ongewijzigd werken. Er zijn geen extra database-regels nodig voor dit optionele veld.

@@ -697,3 +697,22 @@ to{translate:0 -8px;rotate:12deg}}
  .quote-color-item{max-width:100%}
 }
 @media(max-width:380px){.brand{font-size:18px}.brand-mark{width:29px;height:29px}.topbar nav .nav-btn,.topbar nav .cart-btn{min-width:35px;padding:7px}.category-filter{padding:7px 10px;font-size:11px}}
+
+/* Kleurvoorbeelden bij productopties */
+.option-choice-title{display:flex;align-items:center;gap:9px;min-width:0}
+.product-option-swatch{display:inline-block;flex:0 0 20px;width:20px;height:20px;border:1px solid rgba(20,30,50,.18);border-radius:50%;background:var(--option-color,#888);box-shadow:inset 0 0 0 2px #ffffff35;vertical-align:middle}
+.product-option-swatch.inline{width:16px;height:16px;min-width:16px;flex-basis:16px;margin-right:5px}
+.choice-option-row{grid-template-columns:minmax(0,1fr) 105px minmax(135px,auto) minmax(88px,auto) auto}
+.choice-option-row .choice-color-field{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:10px;color:#59657b}
+.choice-option-row .choice-color-field input[type=checkbox]{width:auto;margin:0}
+.choice-option-row .choice-color-field input[type=color]{width:30px;height:28px;padding:2px;border:1px solid #dce2ed;border-radius:7px;background:#fff;cursor:pointer}
+.choice-option-row .choice-color-field input[type=color]:disabled{opacity:.4;cursor:not-allowed}
+.choice-option-row .choice-out-field{display:flex;align-items:center;gap:5px;white-space:nowrap}
+@media(max-width:760px){
+  .choice-option-row{grid-template-columns:minmax(0,1fr) 90px 34px;row-gap:8px}
+  .choice-option-row>.choice-name{grid-column:1;grid-row:1}
+  .choice-option-row>.delta-wrap{grid-column:2;grid-row:1}
+  .choice-option-row>.remove-item{grid-column:3;grid-row:1}
+  .choice-option-row>.choice-color-field{grid-column:1/3;grid-row:2}
+  .choice-option-row>.choice-out-field{grid-column:3;grid-row:2;justify-self:end}
+}

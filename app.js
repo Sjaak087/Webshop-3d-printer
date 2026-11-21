@@ -28,7 +28,7 @@ const statusLabel = (order, status = order?.status) => {
   return status || "ontvangen";
 };
 const fulfillmentLabel = order => isPickupOrder(order) ? "Ophalen" : "Verzenden";
-const state = { user: null, admin: false, products: [], categories: [], categoryFilter: "all", cart: [], tab: "products", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
+const state = { user: null, admin: false, products: [], categories: [], optionSets: {}, categoryFilter: "all", cart: [], tab: "products", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 const DEFAULT_CONTACT = { title: "Neem contact met ons op", intro: "Heb je een vraag over een product of bestelling? Neem gerust contact met ons op.", name: "", address: "", email: "", phone: "", hours: "", extra: "" };
 let contactSettings = { ...DEFAULT_CONTACT };
@@ -140,17 +140,56 @@ function closeDialog(force = false) { if (lockDialog && force !== true) return; 
 function listen(q, cb) { unsubs.push(onValue(q, cb)); }   // wordt automatisch opgeruimd
 const toList = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
 const legacyOptions = p => (Array.isArray(p?.options) ? p.options : Object.values(p?.options || {})).filter(o => o && o.name);
+const validColorHex = value => /^#[0-9a-f]{6}$/i.test(String(value || ""));
 const optionGroupsOf = p => {
-  const raw = Array.isArray(p?.optionGroups) ? p.optionGroups : Object.values(p?.optionGroups || {});
+  // Een optionSetId verwijst naar één gedeelde set in Firebase. Daardoor zien
+  // alle gekoppelde producten dezelfde opties na iedere Realtime Database-update.
+  const sharedSet = p?.optionSetId ? state.optionSets?.[p.optionSetId] : null;
+  const source = sharedSet && sharedSet.groups != null ? sharedSet.groups : p?.optionGroups;
+  const raw = Array.isArray(source) ? source : Object.values(source || {});
+  const normalizeOption = o => ({
+    name: String(o.name), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut,
+    ...(validColorHex(o.colorHex) ? { colorHex: String(o.colorHex).toLowerCase() } : {})
+  });
   const groups = raw.filter(g => g && g.label && (Array.isArray(g.options) || g.options)).map((g, i) => ({
-    id: g.id || `group-${i}`, label: String(g.label), options: (Array.isArray(g.options) ? g.options : Object.values(g.options || {})).filter(o => o && o.name).map(o => ({
-      name: String(o.name), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut
-    }))
+    id: g.id || `group-${i}`, label: String(g.label), options: (Array.isArray(g.options) ? g.options : Object.values(g.options || {})).filter(o => o && o.name).map(normalizeOption)
   }));
-  if (groups.length) return groups;
+  if (groups.length || (sharedSet && sharedSet.groups != null)) return groups;
   const old = legacyOptions(p);
-  return old.length ? [{ id: "legacy", label: p.optionLabel || "Keuze", options: old.map(o => ({ name: String(o.name), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut })) }] : [];
+  return old.length ? [{ id: "legacy", label: p.optionLabel || "Keuze", options: old.map(normalizeOption) }] : [];
 };
+const serializableOptionGroups = groups => groups.map(g => ({
+  label: String(g.label || "").trim(),
+  options: (Array.isArray(g.options) ? g.options : []).map(o => ({
+    name: String(o.name || "").trim(), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut,
+    ...(validColorHex(o.colorHex) ? { colorHex: String(o.colorHex).toLowerCase() } : {})
+  })).filter(o => o.name)
+})).filter(g => g.label || g.options.length);
+async function ensureSharedOptionSet(product) {
+  if (!product?.id) throw new Error("Het bronproduct is niet beschikbaar.");
+  if (product.optionSetId) {
+    const existing = await get(ref(db, `settings/productOptionSets/${product.optionSetId}`));
+    if (existing.exists()) {
+      state.optionSets[product.optionSetId] = existing.val();
+      return product.optionSetId;
+    }
+  }
+  const groups = serializableOptionGroups(optionGroupsOf(product));
+  if (!groups.length) throw new Error("Dit product heeft geen keuzes om live te koppelen.");
+  const setId = push(ref(db, "settings/productOptionSets")).key;
+  const now = Date.now();
+  const setData = { name: `Gedeelde keuzes · ${product.title || "Product"}`, groups, createdAt: now, updatedAt: now };
+  const updates = {
+    [`settings/productOptionSets/${setId}`]: setData,
+    [`products/${product.id}/optionSetId`]: setId,
+    [`products/${product.id}/optionGroups`]: null,
+    [`products/${product.id}/optionLabel`]: null,
+    [`products/${product.id}/options`]: null
+  };
+  await update(ref(db), updates);
+  state.optionSets[setId] = setData;
+  return setId;
+}
 const optList = p => optionGroupsOf(p).flatMap(g => g.options);
 const isSoldOut = p => !!p.soldOut || optionGroupsOf(p).some(g => g.options.length > 0 && g.options.every(o => o.soldOut));
 const selectionsOf = item => Array.isArray(item?.selections) ? item.selections : (item?.option ? [{ label: item.optionLabel || "Keuze", value: item.option, priceDelta: 0 }] : []);
@@ -158,7 +197,7 @@ const selectionsKey = selections => selectionsOf({ selections }).map(s => `${enc
 const itemKey = (id, selections) => id + "|" + (Array.isArray(selections) ? selectionsKey(selections) : (selections || ""));
 const optText = item => {
   const choices = selectionsOf(item);
-  const choiceText = choices.length ? ` · ${choices.map(s => `${safe(s.label)}: <b>${safe(s.value)}</b>`).join(" · ")}` : "";
+  const choiceText = choices.length ? ` · ${choices.map(s => `${safe(s.label)}: ${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(s.value)}</b>`).join(" · ")}` : "";
   const d = item?.dimensions;
   const dims = d ? ` · ${Number(d.length)} × ${Number(d.width)} × ${Number(d.height)} mm (L × B × H)` : "";
   return choiceText + dims;
@@ -286,8 +325,9 @@ let productLoadTimer = null;
 let pendingProductSnapshot = [];
 let productSnapshotReceived = false;
 let pendingProductError = false;
+let optionSetSnapshotReceived = false;
 function completeInitialProductLoad() {
-  if (state.loaded || !productSnapshotReceived || productLoadTimer !== null) return;
+  if (state.loaded || !productSnapshotReceived || !optionSetSnapshotReceived || productLoadTimer !== null) return;
   const remaining = Math.max(0, PRODUCT_LOADING_MIN_MS - (Date.now() - productLoadingStartedAt));
   productLoadTimer = setTimeout(() => {
     state.products = pendingProductSnapshot;
@@ -296,6 +336,17 @@ function completeInitialProductLoad() {
     renderProducts();
   }, remaining);
 }
+onValue(ref(db, "settings/productOptionSets"), snap => {
+  state.optionSets = snap.val() || {};
+  optionSetSnapshotReceived = true;
+  if (state.loaded) renderProducts();
+  completeInitialProductLoad();
+}, error => {
+  console.error("Firebase shared product options could not be loaded", error);
+  state.optionSets = {};
+  optionSetSnapshotReceived = true;
+  completeInitialProductLoad();
+});
 onValue(ref(db, "products"), snap => {
   const products = toList(snap).filter(p => p.active !== false);
   if (!state.loaded) {
@@ -407,7 +458,8 @@ function showProduct(id) {
           <div class="option-choices">${current.options.map((o, i) => {
             const active = currentChoice === o.name;
             return `<button type="button" class="option-choice ${active ? "active" : ""}" data-choice="${i}" ${o.soldOut ? "disabled" : ""}>
-              <b>${safe(o.name)}</b><small>${deltaText(o.priceDelta)}${o.soldOut ? " · Uitverkocht" : ""}</small>
+              <span class="option-choice-title">${validColorHex(o.colorHex) ? `<i class="product-option-swatch" style="--option-color:${safe(o.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(o.name)}</b></span>
+              <small>${deltaText(o.priceDelta)}${o.soldOut ? " · Uitverkocht" : ""}</small>
             </button>`;
           }).join("")}</div>
           <div class="option-wizard-actions">
@@ -417,7 +469,7 @@ function showProduct(id) {
               : `<button type="button" class="primary" id="detailAdd" ${!chosen[step] ? "disabled" : ""}><i data-lucide="shopping-bag"></i> Toevoegen aan winkelwagen</button>`}
           </div>
           <div class="option-summary"><span>Prijs tot nu toe</span><b>${money(total)}</b></div>
-          ${chosen.some(Boolean) ? `<div class="config-summary">${chosen.filter(Boolean).map(s => `<div class="config-summary-row"><span>${safe(s.label)}</span><b>${safe(s.value)} · ${deltaText(s.priceDelta)}</b></div>`).join("")}</div>` : ""}
+          ${chosen.some(Boolean) ? `<div class="config-summary">${chosen.filter(Boolean).map(s => `<div class="config-summary-row"><span>${safe(s.label)}</span><b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)} · ${deltaText(s.priceDelta)}</b></div>`).join("")}</div>` : ""}
         </div>` : ""}
         ${!groups.length && !out ? `<button class="primary full" id="detailAdd"><i data-lucide="shopping-bag"></i> Toevoegen aan winkelwagen · ${money(p.price)}</button>` : ""}
         ${groups.length && !out && step === groups.length - 1 && chosen.every(Boolean) ? `<p class="hint">Je hebt alle ${groups.length} keuzes gemaakt. De prijs hierboven is inclusief alle toeslagen en kortingen.</p>` : ""}
@@ -427,7 +479,7 @@ function showProduct(id) {
     content.querySelectorAll("[data-image]").forEach(b => b.onclick = () => { activeImage = Number(b.dataset.image); render(); });
     content.querySelectorAll("[data-choice]").forEach(b => b.onclick = () => {
       const option = current.options[Number(b.dataset.choice)];
-      chosen[step] = { label: current.label, value: option.name, priceDelta: Number(option.priceDelta) || 0 };
+      chosen[step] = { label: current.label, value: option.name, priceDelta: Number(option.priceDelta) || 0, ...(validColorHex(option.colorHex) ? { colorHex: option.colorHex } : {}) };
       chosen = chosen.slice(0, step + 1); render();
     });
     $("#optionBack")?.addEventListener("click", () => { step = Math.max(0, step - 1); render(); });
@@ -445,7 +497,7 @@ function showProduct(id) {
 $("#cartBtn").onclick = showCart;
 function showCart() {
   const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)} bij verzenden · ophalen gratis</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)} bij verzenden · ophalen gratis</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, selectionsOf(x)) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => itemKey(x.id, selectionsOf(x)) === b.dataset.qty); if (!it) return;
@@ -755,7 +807,7 @@ function showPublicTracking(token) {
       <h3>Bestellingsoverzicht</h3>
       ${(o.items || []).map((item, n) => {
         const units = Math.max(1, Number(item.qty) || 1), stages = item.stages || [];
-        const selectionText = (item.selections || []).map(s => `${safe(s.label)}: <b>${safe(s.value)}</b>`).join(" · ");
+        const selectionText = (item.selections || []).map(s => `${safe(s.label)}: ${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(s.value)}</b>`).join(" · ");
         const schedules = Object.entries(item.plan || {}).sort(([a],[b]) => a.localeCompare(b)).map(([k, slot]) => slot?.startTs ? `<small>Stuk ${Number(k.split("_").pop()) + 1}: ${whenShort(slot.startTs)} – ${new Date(slot.endTs).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</small>` : "").join("");
         return `<div class="public-item"><b>${safe(item.title)} × ${units}</b>${selectionText ? `<small>${selectionText}</small>` : ""}${item.dimensions ? `<small>Afmetingen: ${Number(item.dimensions.length)} × ${Number(item.dimensions.width)} × ${Number(item.dimensions.height)} mm (L × B × H)</small>` : ""}${item.customDescription ? `<small>${safe(item.customDescription)}</small>` : ""}${units > 1 || idx >= 2 ? `<div class="unit-stages">${Array.from({length:units},(_,u)=>`<span class="unit-chip">Stuk ${u+1}: ${stageChip(stages[u] || STAGES[0])}</span>`).join("")}</div>` : ""}${schedules}</div>`;
       }).join("")}
@@ -1094,15 +1146,25 @@ function adminTab() {
   content.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab === state.tab));
   cleanup(); const target = $("#adminContent"); if (!target) return;
   target.innerHTML = firebaseLoadingMarkup("Firebase-gegevens laden…");
-  if (state.tab === "products") listen(ref(db, "products"), snap => {
-    const ps = toList(snap);
-    target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = optionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${p.soldOut ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}<small>${money(p.price)}${p.categoryId && categoryLabel(p.categoryId) ? ` · ${safe(categoryLabel(p.categoryId))}` : ""}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
-    $("#newProduct").onclick = () => productEditor();
-    target.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => productEditor(b.dataset.edit));
-    target.querySelectorAll("[data-delete]").forEach(b => b.onclick = async () => { if (confirm("Dit product verwijderen?")) { await remove(ref(db, "products/" + b.dataset.delete)); toast("Product verwijderd"); } });
-    target.querySelectorAll("[data-soldout]").forEach(b => b.onclick = () => { const p = ps.find(x => x.id === b.dataset.soldout); if (p) update(ref(db, "products/" + p.id), { soldOut: !p.soldOut }).then(() => toast(p.soldOut ? "Product weer beschikbaar" : "Product op uitverkocht gezet")).catch(() => toast("Opslaan mislukt")); });
-    target.querySelectorAll("[data-optout]").forEach(b => b.onclick = () => { const p = ps.find(x => x.id === b.dataset.optout), g = p && optionGroupsOf(p)[Number(b.dataset.g)], o = g && g.options[Number(b.dataset.i)]; if (!o) return; const path = p.optionGroups ? `products/${p.id}/optionGroups/${b.dataset.g}/options/${b.dataset.i}` : `products/${p.id}/options/${b.dataset.i}`; update(ref(db, path), { soldOut: !o.soldOut }).then(() => toast(o.soldOut ? `${o.name} weer beschikbaar` : `${o.name} op uitverkocht gezet`)).catch(() => toast("Opslaan mislukt")); });
-  });
+  if (state.tab === "products") {
+    let ps = [];
+    const drawProducts = () => {
+      if (!target.isConnected) return;
+      target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = optionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${p.soldOut ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}${p.optionSetId ? ` <span class="status-pill" title="Deze productkeuzes worden gedeeld met andere producten">LIVE GEKOPPELD</span>` : ""}<small>${money(p.price)}${p.categoryId && categoryLabel(p.categoryId) ? ` · ${safe(categoryLabel(p.categoryId))}` : ""}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
+      $("#newProduct").onclick = () => productEditor();
+      target.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => productEditor(b.dataset.edit));
+      target.querySelectorAll("[data-delete]").forEach(b => b.onclick = async () => { if (confirm("Dit product verwijderen?")) { await remove(ref(db, "products/" + b.dataset.delete)); toast("Product verwijderd"); } });
+      target.querySelectorAll("[data-soldout]").forEach(b => b.onclick = () => { const p = ps.find(x => x.id === b.dataset.soldout); if (p) update(ref(db, "products/" + p.id), { soldOut: !p.soldOut }).then(() => toast(p.soldOut ? "Product weer beschikbaar" : "Product op uitverkocht gezet")).catch(() => toast("Opslaan mislukt")); });
+      target.querySelectorAll("[data-optout]").forEach(b => b.onclick = () => {
+        const p = ps.find(x => x.id === b.dataset.optout), gIndex = Number(b.dataset.g), oIndex = Number(b.dataset.i), g = p && optionGroupsOf(p)[gIndex], o = g && g.options[oIndex];
+        if (!o) return;
+        const path = p.optionSetId ? `settings/productOptionSets/${p.optionSetId}/groups/${gIndex}/options/${oIndex}` : (p.optionGroups ? `products/${p.id}/optionGroups/${gIndex}/options/${oIndex}` : `products/${p.id}/options/${oIndex}`);
+        update(ref(db, path), { soldOut: !o.soldOut }).then(() => toast(o.soldOut ? `${o.name} weer beschikbaar` : `${o.name} op uitverkocht gezet`)).catch(() => toast("Opslaan mislukt"));
+      });
+    };
+    listen(ref(db, "products"), snap => { ps = toList(snap); drawProducts(); });
+    listen(ref(db, "settings/productOptionSets"), snap => { state.optionSets = snap.val() || {}; drawProducts(); });
+  }
   else if (state.tab === "orders" || state.tab === "myorders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
     target.innerHTML = `<h3>${state.tab === "myorders" ? "Mijn bestellingen · overzicht en betaallinks" : "Bestellingen en status"}</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.username || "Klant")}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}<p class="order-note"><b>Afhandeling:</b> ${fulfillmentLabel(o)} · <b>Betaling:</b> ${safe(o.paymentStatus || "Niet geregistreerd")}</p>${o.paymentMethod === "tikkie" ? `<div class="stage-panel"><b>Betaallink voor klant</b><input type="url" data-tikkie-input="${safe(o.id)}" value="${safe(o.tikkieLink || "")}" placeholder="https://tikkie.me/... of https://betaalverzoek.rabobank.nl/..."><div class="admin-actions"><button class="secondary" data-tikkie-save="${safe(o.id)}">Betaallink opslaan</button><button class="secondary" data-tikkie-paid="${safe(o.id)}">Markeer als betaald</button></div></div>` : ""}${o.address ? `<p class="order-note"><b>Verzendadres:</b> ${safe([o.address.firstName, o.address.lastName].filter(Boolean).join(" "))}, ${safe(o.address.street || "")} ${safe(o.address.houseNumber || "")} ${safe(o.address.addition || "")}, ${safe(o.address.postcode || "")} ${safe(o.address.city || "")}, ${safe(o.address.country || "Nederland")}</p>` : ""}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.returnRequestAt ? `<div class="stage-panel"><b>Retouraanvraag ontvangen</b><p class="order-note">Aangevraagd op ${when(o.returnRequestAt)} · ${o.returnStatus === "handled" ? "Afgehandeld" : "Wacht op afhandeling"}</p>${o.returnStatus !== "handled" ? `<button class="secondary" data-return-handled="${safe(o.id)}">Markeer retouraanvraag als afgehandeld</button>` : ""}</div>` : ""}${o.deliveredAt ? `<p class="order-note">${isPickupOrder(o) ? "Opgehaald" : "Afgeleverd"} op ${when(o.deliveredAt)} · retourtermijn eindigt ${when(returnDeadline(o))}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option value="${safe(s)}" ${s === o.status ? "selected" : ""}>${safe(statusLabel(o, s))}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
@@ -1148,10 +1210,12 @@ async function shrinkImage(file, max = 900, limit = 300000) {
 async function productEditor(id = null) {
   if (id) openDialog(firebaseLoadingMarkup("Productgegevens laden…"));
   const p = id ? ((await get(ref(db, "products/" + id))).val() || {}) : {};
-  const [categoriesSnap, allProductsSnap] = await Promise.all([get(ref(db, "categories")), get(ref(db, "products"))]);
+  const [categoriesSnap, allProductsSnap, optionSetsSnap] = await Promise.all([get(ref(db, "categories")), get(ref(db, "products")), get(ref(db, "settings/productOptionSets"))]);
+  state.optionSets = optionSetsSnap.val() || {};
   const productCategories = toList(categoriesSnap).sort((a,b) => String(a.name).localeCompare(String(b.name), "nl"));
   const availableProducts = toList(allProductsSnap).filter(source => source.active !== false);
   let images = productImages(p);
+  let linkedOptionSetId = p.optionSetId || null;
   let groups = optionGroupsOf(p).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
   openDialog(`<p class="eyebrow">CATALOGUS</p><h2>${id ? "Product bewerken" : "Nieuw product"}</h2>
     <form id="productForm" class="stack">
@@ -1165,10 +1229,12 @@ async function productEditor(id = null) {
         <div id="imagePreviewGrid" class="image-editor-grid"></div>
       </fieldset>
       <fieldset class="opt-editor"><legend>Productopties en prijsaanpassingen</legend>
-        <div class="choice-copy-row"><label>Keuzes kopiëren van een ander product<select id="copyOptionsFrom"><option value="">Selecteer een product…</option>${availableProducts.filter(source => source.id !== id && optionGroupsOf(source).length).map(source => `<option value="${safe(source.id)}">${safe(source.title)}</option>`).join("")}</select></label><button type="button" class="secondary" id="copyOptionsBtn">Keuzes kopiëren</button></div>
+        <div class="choice-copy-row"><label>Product om live mee te koppelen<select id="copyOptionsFrom"><option value="">Selecteer een product…</option>${availableProducts.filter(source => source.id !== id && optionGroupsOf(source).length).map(source => `<option value="${safe(source.id)}">${safe(source.title)}</option>`).join("")}</select></label><button type="button" class="secondary" id="copyOptionsBtn">Live koppelen</button></div>
+        <p id="optionLinkStatus" class="hint">${linkedOptionSetId ? "Dit product gebruikt een gedeelde keuzeset. Wijzigingen worden voor alle gekoppelde producten gepubliceerd zodra je opslaat." : "Dit product heeft eigen keuzes. Kies een ander product en gebruik Live koppelen om dezelfde keuzes voortaan samen te beheren."}</p>
+        <button type="button" class="secondary" id="unlinkOptionSet" ${linkedOptionSetId ? "" : "hidden"}>Loskoppelen en zelfstandig maken</button>
         <div id="optionGroupsEditor" class="choice-groups-editor"></div>
         <button type="button" class="secondary" id="addOptionGroup"><i data-lucide="plus"></i> Optiegroep toevoegen</button>
-        <p class="hint">Elke optiegroep wordt één stap in de productconfigurator. Per optie kun je een bedrag toevoegen (bijv. 2,50) of aftrekken (bijv. -1,00). Laat de prijs op 0,00 voor geen prijsverschil.</p>
+        <p class="hint">Elke optiegroep wordt één stap in de productconfigurator. Kleurvoorbeelden, prijsverschillen en uitverkocht-statussen worden gedeeld. Na opslaan zien alle gekoppelde producten de update automatisch via Firebase.</p>
       </fieldset>
       <label class="check"><input type="checkbox" id="pSoldOut" ${p.soldOut ? "checked" : ""}> Hele product uitverkocht</label>
       <button class="primary full" id="pSave">Product opslaan</button>
@@ -1181,32 +1247,73 @@ async function productEditor(id = null) {
   const drawGroups = () => {
     groupWrap.innerHTML = groups.map((g, gi) => `<div class="choice-group-editor" data-group="${gi}">
       <div class="choice-group-head"><label>Naam van stap ${gi + 1}<input class="group-label" maxlength="40" required placeholder="Bijv. Kleur, formaat of afwerking" value="${safe(g.label)}"></label><button type="button" class="remove-item" data-remove-group="${gi}">Verwijder stap</button></div>
-      <div class="choice-options">${g.options.map((o, oi) => `<div class="choice-option-row" data-option="${oi}">
+      <div class="choice-options">${g.options.map((o, oi) => { const hasColor = validColorHex(o.colorHex); return `<div class="choice-option-row" data-option="${oi}">
         <input class="choice-name" maxlength="50" required placeholder="Optienaam, bijv. Rood" value="${safe(o.name)}">
         <div class="delta-wrap"><input class="choice-delta" type="number" step="0.01" value="${Number(o.priceDelta) || 0}" aria-label="Prijsaanpassing in euro"></div>
-        <label><input class="choice-out" type="checkbox" ${o.soldOut ? "checked" : ""}> uitverkocht</label>
+        <label class="choice-color-field"><input class="choice-color-enabled" type="checkbox" ${hasColor ? "checked" : ""}><span>Kleurvoorbeeld</span><input class="choice-color" type="color" value="${hasColor ? safe(o.colorHex) : "#808080"}" ${hasColor ? "" : "disabled"} aria-label="Kleurvoorbeeld kiezen"></label>
+        <label class="choice-out-field"><input class="choice-out" type="checkbox" ${o.soldOut ? "checked" : ""}> uitverkocht</label>
         <button type="button" class="remove-item" data-remove-option="${oi}" aria-label="Optie verwijderen">×</button>
-      </div>`).join("")}</div>
+      </div>`; }).join("")}</div>
       <button type="button" class="secondary" data-add-option="${gi}"><i data-lucide="plus"></i> Optie toevoegen</button>
     </div>`).join("");
     groupWrap.querySelectorAll(".group-label").forEach(el => el.oninput = () => { groups[Number(el.closest("[data-group]").dataset.group)].label = el.value; });
     groupWrap.querySelectorAll(".choice-name").forEach(el => el.oninput = () => { const g = Number(el.closest("[data-group]").dataset.group), o = Number(el.closest("[data-option]").dataset.option); groups[g].options[o].name = el.value; });
     groupWrap.querySelectorAll(".choice-delta").forEach(el => el.oninput = () => { const g = Number(el.closest("[data-group]").dataset.group), o = Number(el.closest("[data-option]").dataset.option); groups[g].options[o].priceDelta = Number(el.value) || 0; });
+    groupWrap.querySelectorAll(".choice-color-enabled").forEach(el => el.onchange = () => {
+      const row = el.closest("[data-option]"), g = Number(el.closest("[data-group]").dataset.group), o = Number(row.dataset.option), picker = row.querySelector(".choice-color");
+      picker.disabled = !el.checked;
+      groups[g].options[o].colorHex = el.checked ? picker.value : "";
+    });
+    groupWrap.querySelectorAll(".choice-color").forEach(el => el.oninput = () => {
+      const row = el.closest("[data-option]"), g = Number(el.closest("[data-group]").dataset.group), o = Number(row.dataset.option);
+      if (row.querySelector(".choice-color-enabled").checked) groups[g].options[o].colorHex = el.value;
+    });
     groupWrap.querySelectorAll(".choice-out").forEach(el => el.onchange = () => { const g = Number(el.closest("[data-group]").dataset.group), o = Number(el.closest("[data-option]").dataset.option); groups[g].options[o].soldOut = el.checked; });
     groupWrap.querySelectorAll("[data-remove-group]").forEach(b => b.onclick = () => { groups.splice(Number(b.dataset.removeGroup), 1); drawGroups(); });
     groupWrap.querySelectorAll("[data-add-option]").forEach(b => b.onclick = () => { groups[Number(b.dataset.addOption)].options.push({ name: "", priceDelta: 0, soldOut: false }); drawGroups(); });
     groupWrap.querySelectorAll("[data-remove-option]").forEach(b => b.onclick = () => { const g = Number(b.closest("[data-group]").dataset.group); groups[g].options.splice(Number(b.dataset.removeOption), 1); drawGroups(); });
   };
-  drawImages(); drawGroups();
-  $("#copyOptionsBtn").onclick = () => {
-    const sourceId = $("#copyOptionsFrom").value; if (!sourceId) return toast("Selecteer eerst een product om keuzes van te kopiëren.");
-    const source = availableProducts.find(x => x.id === sourceId); if (!source) return toast("Dat bronproduct is niet beschikbaar.");
-    const sourceGroups = optionGroupsOf(source); if (!sourceGroups.length) return toast("Dit product heeft geen keuzes om te kopiëren.");
-    if (groups.length && !confirm("De huidige keuzes van dit product worden vervangen door de gekopieerde keuzes. Doorgaan?")) return;
-    groups = sourceGroups.map(g => ({ label: g.label, options: g.options.map(o => ({ name: o.name, priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut })) }));
-    drawGroups(); toast(`Keuzes van “${source.title}” gekopieerd. Sla het product op om ze te bewaren.`);
+  const updateOptionLinkStatus = () => {
+    const status = $("#optionLinkStatus"), unlink = $("#unlinkOptionSet");
+    if (status) status.textContent = linkedOptionSetId
+      ? "LIVE GEKOPPELD: dit product deelt zijn keuzes met andere producten. Wijzigingen worden na opslaan automatisch overal bijgewerkt."
+      : "Dit product heeft eigen keuzes. Koppel het aan een ander product om één gedeelde keuzeset te gebruiken.";
+    if (unlink) unlink.hidden = !linkedOptionSetId;
   };
-  $("#addOptionGroup").onclick = () => { groups.push({ label: `Keuze ${groups.length + 1}`, options: [{ name: "", priceDelta: 0, soldOut: false }] }); drawGroups(); };
+  drawImages(); drawGroups(); updateOptionLinkStatus();
+  $("#copyOptionsBtn").onclick = async () => {
+    const sourceId = $("#copyOptionsFrom").value; if (!sourceId) return toast("Selecteer eerst een product om live mee te koppelen.");
+    const source = availableProducts.find(x => x.id === sourceId); if (!source) return toast("Dat bronproduct is niet beschikbaar.");
+    if (source.optionSetId && source.optionSetId === linkedOptionSetId) return toast("Deze producten zijn al aan dezelfde keuzes gekoppeld.");
+    if (groups.length && !confirm("De huidige keuzes worden vervangen door gedeelde keuzes. Vanaf nu worden wijzigingen bij beide producten zichtbaar. Doorgaan?")) return;
+    const button = $("#copyOptionsBtn"); button.disabled = true; button.textContent = "Koppelen…";
+    try {
+      // Lees de bron opnieuw om te voorkomen dat een verouderde editor-snapshot
+      // een inmiddels gekoppelde productkeuzeset dubbel aanmaakt.
+      const freshSourceSnap = await get(ref(db, `products/${source.id}`));
+      if (!freshSourceSnap.exists()) throw new Error("Het bronproduct is intussen verwijderd.");
+      const freshSource = { id: source.id, ...freshSourceSnap.val() };
+      const setId = await ensureSharedOptionSet(freshSource);
+      source.optionSetId = setId;
+      const setSnap = await get(ref(db, `settings/productOptionSets/${setId}`));
+      if (!setSnap.exists()) throw new Error("De gedeelde keuzeset kon niet worden geladen.");
+      const setData = setSnap.val();
+      state.optionSets[setId] = setData;
+      linkedOptionSetId = setId;
+      groups = optionGroupsOf({ optionSetId: setId }).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
+      drawGroups(); updateOptionLinkStatus();
+      toast(`Live gekoppeld aan “${source.title}”. Sla dit product op om de koppeling vast te leggen.`);
+    } catch (err) {
+      console.error("Could not create live product option link", err);
+      toast(err.message || "Live koppelen is mislukt. Controleer de Firebase-regels.");
+    } finally { button.disabled = false; button.textContent = "Live koppelen"; }
+  };
+  $("#unlinkOptionSet").onclick = () => {
+    if (!linkedOptionSetId) return;
+    if (!confirm("Dit product loskoppelen? De huidige keuzes blijven als zelfstandige kopie bij dit product staan.")) return;
+    linkedOptionSetId = null; updateOptionLinkStatus(); toast("Product wordt zelfstandig na opslaan.");
+  };
+  $("#addOptionGroup").onclick = () => { groups.push({ label: `Keuze ${groups.length + 1}`, options: [{ name: "", priceDelta: 0, soldOut: false, colorHex: "" }] }); drawGroups(); };
   imageInput.onchange = async e => {
     const files = [...e.target.files || []];
     if (images.length + files.length > 3) { toast("Je kunt maximaal 3 afbeeldingen toevoegen"); imageInput.value = ""; return; }
@@ -1219,14 +1326,26 @@ async function productEditor(id = null) {
   $("#productForm").onsubmit = async e => {
     e.preventDefault();
     const price = Number($("#pPrice").value); if (!Number.isFinite(price) || price < 0) return toast("Vul een geldige basisprijs in");
-    const optionGroups = groups.map(g => ({ label: String(g.label || "").trim(), options: g.options.map(o => ({ name: String(o.name || "").trim(), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut })).filter(o => o.name) })).filter(g => g.label || g.options.length);
+    const optionGroups = groups.map(g => ({ label: String(g.label || "").trim(), options: g.options.map(o => ({ name: String(o.name || "").trim(), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut, ...(validColorHex(o.colorHex) ? { colorHex: String(o.colorHex).toLowerCase() } : {}) })).filter(o => o.name) })).filter(g => g.label || g.options.length);
     if (optionGroups.some(g => !g.label || !g.options.length)) return toast("Geef elke optiestap een naam en voeg minimaal één optie toe");
     if (new Set(optionGroups.map(g => g.label.toLowerCase())).size !== optionGroups.length) return toast("Elke optiestap moet een eigen naam hebben");
     const allNamesValid = optionGroups.every(g => new Set(g.options.map(o => o.name.toLowerCase())).size === g.options.length);
     if (!allNamesValid) return toast("Binnen een optiestap moeten de optienamen uniek zijn");
     const btn = $("#pSave"); btn.disabled = true; btn.textContent = "Opslaan…";
-    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, optionGroups: optionGroups.length ? optionGroups : null, optionLabel: null, options: null, updatedAt: Date.now() };
-    try { id ? await update(ref(db, "products/" + id), data) : await set(push(ref(db, "products")), { ...data, createdAt: Date.now() }); toast("Product opgeslagen"); adminPanel(); }
+    const now = Date.now();
+    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
+    try {
+      const productId = id || push(ref(db, "products")).key;
+      const writes = Object.fromEntries(Object.entries(data).map(([key, value]) => [`products/${productId}/${key}`, value]));
+      if (!id) writes[`products/${productId}/createdAt`] = now;
+      if (linkedOptionSetId) {
+        writes[`settings/productOptionSets/${linkedOptionSetId}/groups`] = optionGroups;
+        writes[`settings/productOptionSets/${linkedOptionSetId}/updatedAt`] = now;
+      }
+      await update(ref(db), writes);
+      toast(linkedOptionSetId ? "Product opgeslagen. De gedeelde keuzes zijn direct bijgewerkt bij alle gekoppelde producten." : "Product opgeslagen");
+      adminPanel();
+    }
     catch (err) { console.error(err); btn.disabled = false; btn.textContent = "Product opslaan"; toast("Opslaan mislukt: " + (err.code || err.message)); }
   };
 }
