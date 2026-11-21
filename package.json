@@ -1,10 +1,15 @@
 {
   "name": "3d-printed-shop-functions",
   "private": true,
-  "engines": { "node": "20" },
+  "engines": {
+    "node": "20"
+  },
   "main": "index.js",
   "dependencies": {
     "firebase-admin": "^13.0.0",
     "firebase-functions": "^6.3.0"
+  },
+  "scripts": {
+    "compress:models": "node scripts/compress-product-models.cjs"
   }
 }

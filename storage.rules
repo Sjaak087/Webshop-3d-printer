@@ -1,9 +1,15 @@
-// OPEN DEMO-REGELS: alleen gebruiken voor een tijdelijke testomgeving.
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    match /{allPaths=**} {
-      allow read, write: if true;
+    // Product models are public assets because customers need to load the 3D preview.
+    // Uploads are limited to new files up to 10 MiB. Existing objects cannot be overwritten or deleted by clients.
+    match /product-models/{productId}/{fileName} {
+      allow read: if true;
+      // resource == null means this is a new object, not an overwrite or delete.
+      allow write: if resource == null
+                   && request.resource.size <= 10 * 1024 * 1024
+                   && request.resource.contentType == 'application/octet-stream'
+                   && fileName.matches('.*\\.(stl|3mf)');
     }
   }
 }

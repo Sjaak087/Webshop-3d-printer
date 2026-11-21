@@ -1,4 +1,5 @@
-import { db, functions } from "./firebase.js";
+import { db, functions, storage } from "./firebase.js";
+import { ref as storageRef, uploadBytes, getBytes } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
@@ -1534,40 +1535,50 @@ function formatFileSize(bytes) {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
-function bytesToBase64(bytes) {
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += 0x8000) binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
-  return btoa(binary);
-}
+const MAX_PRODUCT_MODEL_BYTES = 10 * 1024 * 1024;
 function base64ToBytes(encoded) {
   const binary = atob(encoded), bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
   return bytes;
 }
-async function gzipBytes(bytes) {
-  if (typeof CompressionStream === "undefined") return null;
-  const stream = new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
-}
-async function compressProductModelFile(file) {
+async function uploadProductModelFile(file, productId) {
   const extension = String(file.name || "").split(".").pop().toLowerCase();
   if (!["stl", "3mf"].includes(extension)) throw new Error("Upload alleen een STL- of 3MF-bestand.");
-  if (file.size > 25 * 1024 * 1024) throw new Error("Het bronbestand mag maximaal 25 MB zijn.");
-  const raw = new Uint8Array(await file.arrayBuffer());
-  if (raw.length < 84) throw new Error("Dit bestand lijkt geen geldig 3D-model te zijn.");
-  if (extension === "3mf" && !(raw[0] === 0x50 && raw[1] === 0x4b)) throw new Error("Dit 3MF-bestand heeft geen geldige ZIP-container.");
-  if (extension === "stl" && raw.length < 84 && !new TextDecoder().decode(raw.slice(0, 5)).toLowerCase().startsWith("solid")) throw new Error("Dit STL-bestand is ongeldig of onvolledig.");
-  let stored = raw, encoding = "raw";
-  try {
-    const gzipped = await gzipBytes(raw);
-    if (gzipped && gzipped.length < raw.length) { stored = gzipped; encoding = "gzip"; }
-  } catch (error) { console.warn("Gzip-compressie niet beschikbaar; origineel modelbestand wordt bewaard", error); }
-  // Realtime Database is JSON-opslag; de harde limiet voorkomt dat een enkel model het productrecord buitensporig groot maakt.
-  if (stored.length > 1_500_000) throw new Error(`Na compressie is het model ${formatFileSize(stored.length)}. Kies een lichter model (maximaal 1,5 MB opgeslagen).`);
-  return { format: extension, name: String(file.name || `model.${extension}`).slice(0, 120), encoding, data: bytesToBase64(stored), originalBytes: raw.length, storedBytes: stored.length, updatedAt: Date.now() };
+  if (!file.size || file.size > MAX_PRODUCT_MODEL_BYTES) throw new Error("Het STL- of 3MF-bestand mag maximaal 10 MB zijn.");
+  const header = new Uint8Array(await file.slice(0, Math.min(file.size, 84)).arrayBuffer());
+  if (header.length < 5) throw new Error("Dit bestand lijkt geen geldig 3D-model te zijn.");
+  if (extension === "3mf" && !(header[0] === 0x50 && header[1] === 0x4b)) throw new Error("Dit 3MF-bestand heeft geen geldige ZIP-container.");
+  if (extension === "stl" && file.size < 84 && !new TextDecoder().decode(header.slice(0, 5)).toLowerCase().startsWith("solid")) throw new Error("Dit STL-bestand is ongeldig of onvolledig.");
+
+  // Bewaar het originele bestand ongewijzigd. Een apart beheerscript kan het later comprimeren.
+  const baseName = String(file.name || "model").replace(/\.[^.]*$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 70) || "model";
+  const uniqueId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+  const uniqueName = `${Date.now()}-${uniqueId}-${baseName}.${extension}`;
+  const path = `product-models/${productId}/${uniqueName}`;
+  await uploadBytes(storageRef(storage, path), file, {
+    contentType: "application/octet-stream",
+    customMetadata: { format: extension, originalName: String(file.name || safeName).slice(0, 120) }
+  });
+  return {
+    format: extension,
+    name: String(file.name || `model.${extension}`).slice(0, 120),
+    storagePath: path,
+    encoding: "raw",
+    originalBytes: file.size,
+    storedBytes: file.size,
+    updatedAt: Date.now()
+  };
 }
 async function decodeProductModel(model) {
-  const bytes = base64ToBytes(model.data || "");
+  let bytes;
+  if (model.storagePath) {
+    bytes = await getBytes(storageRef(storage, model.storagePath), MAX_PRODUCT_MODEL_BYTES);
+  } else {
+    // Achterwaartse compatibiliteit met modellen uit eerdere versies die als Base64 in Realtime Database staan.
+    bytes = base64ToBytes(model.data || "");
+  }
   if (model.encoding === "gzip") {
     if (typeof DecompressionStream === "undefined") throw new Error("Deze browser kan het gecomprimeerde 3D-model niet openen. Gebruik een recente versie van Chrome, Edge, Firefox of Safari.");
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
@@ -1586,7 +1597,7 @@ async function loadThreeToolkit() {
   return threeToolkitPromise;
 }
 async function mountProductModelViewer(root, model, availableColors, initialColors, onColorsChange) {
-  if (!root || !model?.data) return null;
+  if (!root || !(model?.data || model?.storagePath)) return null;
   const canvas = root.querySelector("canvas"), status = root.querySelector(".model-viewer-state"), controlsRoot = root.querySelector(".model-part-color-controls");
   let renderer, controls, frame = 0, resizeObserver, disposed = false, modelRoot = null;
   const cleanup = () => {
@@ -1680,6 +1691,7 @@ async function productEditor(id = null) {
   const availableProducts = toList(allProductsSnap).filter(source => source.active !== false);
   let images = productImages(p);
   let model3d = p.model3d || null;
+  const draftProductId = id || push(ref(db, "products")).key;
   let linkedOptionSetId = p.optionSetId || null;
   let groups = optionGroupsOf(p).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
   openDialog(`<p class="eyebrow">CATALOGUS</p><h2>${id ? "Product bewerken" : "Nieuw product"}</h2>
@@ -1695,8 +1707,8 @@ async function productEditor(id = null) {
       </fieldset>
       <fieldset class="opt-editor model-upload-editor"><legend>3D-model en productconfigurator</legend>
         <label>Upload een STL- of 3MF-bestand<input id="pModelFile" type="file" accept=".stl,.3mf,model/stl,model/3mf"></label>
-        <p class="hint">Het model wordt lokaal gecomprimeerd vóór opslag in Firebase. Bronbestand maximaal 25 MB; na compressie maximaal 1,5 MB. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. STL heeft één kleurdeel; onderdelen uit 3MF worden waar mogelijk apart getoond.</p>
-        <div id="modelFileStatus" class="model-file-status">${p.model3d ? `<b>${safe(p.model3d.name || "3D-model")}</b><small>${safe(String(p.model3d.format || "").toUpperCase())} · ${formatFileSize(p.model3d.originalBytes || 0)} bron · ${formatFileSize(p.model3d.storedBytes || 0)} opgeslagen</small>` : "Nog geen 3D-model toegevoegd."}</div>
+        <p class="hint">Upload een STL- of 3MF-bestand van maximaal 10 MB. Het originele bestand wordt eerst ongewijzigd naar Firebase Storage geüpload. Je kunt het daarna met het meegeleverde script comprimeren om opslagruimte te besparen. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. STL heeft één kleurdeel; onderdelen uit 3MF worden waar mogelijk apart getoond.</p>
+        <div id="modelFileStatus" class="model-file-status">${p.model3d ? `<b>${safe(p.model3d.name || "3D-model")}</b><small>${safe(String(p.model3d.format || "").toUpperCase())} · ${formatFileSize(p.model3d.originalBytes || 0)} origineel · ${formatFileSize(p.model3d.storedBytes || 0)} opgeslagen (${p.model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "nog niet gecomprimeerd"})</small>` : "Nog geen 3D-model toegevoegd."}</div>
         <button type="button" class="secondary" id="remove3DModel" ${p.model3d ? "" : "hidden"}>3D-model verwijderen</button>
       </fieldset>
       <fieldset class="opt-editor"><legend>Voorraadbeheer</legend>
@@ -1758,16 +1770,16 @@ async function productEditor(id = null) {
   drawImages(); drawGroups(); updateOptionLinkStatus();
   const refreshModelFileStatus = () => {
     const box = $("#modelFileStatus"), removeButton = $("#remove3DModel");
-    if (box) box.innerHTML = model3d ? `<b>${safe(model3d.name || "3D-model")}</b><small>${safe(String(model3d.format || "").toUpperCase())} · ${formatFileSize(model3d.originalBytes || 0)} bron · ${formatFileSize(model3d.storedBytes || 0)} opgeslagen (${model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "al gecomprimeerd / ongewijzigd"})</small>` : "Nog geen 3D-model toegevoegd.";
+    if (box) box.innerHTML = model3d ? `<b>${safe(model3d.name || "3D-model")}</b><small>${safe(String(model3d.format || "").toUpperCase())} · ${formatFileSize(model3d.originalBytes || 0)} origineel · ${formatFileSize(model3d.storedBytes || 0)} opgeslagen (${model3d.encoding === "gzip" ? "later met script gecomprimeerd" : "origineel, nog niet gecomprimeerd"})</small>` : "Nog geen 3D-model toegevoegd.";
     if (removeButton) removeButton.hidden = !model3d;
   };
   $("#pStockTracked").onchange = () => { $("#pStockFields").hidden = !$("#pStockTracked").checked; };
   $("#remove3DModel").onclick = () => { model3d = null; modelFileInput.value = ""; refreshModelFileStatus(); toast("3D-model wordt verwijderd na opslaan"); };
   modelFileInput.onchange = async () => {
     const file = modelFileInput.files?.[0]; if (!file) return;
-    const status = $("#modelFileStatus"); status.textContent = "Bestand controleren en comprimeren…"; modelFileInput.disabled = true;
-    try { model3d = await compressProductModelFile(file); refreshModelFileStatus(); toast("3D-model gecomprimeerd en toegevoegd"); }
-    catch (error) { console.error("3D model upload failed", error); status.textContent = error.message || "Het 3D-model kon niet worden verwerkt."; toast(error.message || "3D-model verwerken mislukt"); }
+    const status = $("#modelFileStatus"); status.textContent = "Bestand controleren en ongewijzigd uploaden…"; modelFileInput.disabled = true;
+    try { model3d = await uploadProductModelFile(file, draftProductId); refreshModelFileStatus(); toast("Origineel 3D-model geüpload"); }
+    catch (error) { console.error("3D model upload failed", error); status.textContent = error.message || "Het 3D-model kon niet worden geüpload."; toast(error.message || "3D-model uploaden mislukt"); }
     finally { modelFileInput.disabled = false; modelFileInput.value = ""; }
   };
   $("#copyOptionsBtn").onclick = async () => {
@@ -1826,7 +1838,7 @@ async function productEditor(id = null) {
     if (stockTracked && (!Number.isInteger(stockQuantity) || stockQuantity < 0 || !Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) return toast("Vul hele, niet-negatieve voorraadaantallen in");
     const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), model3d: model3d || null, active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, stockTracked, stockQuantity: stockTracked ? stockQuantity : null, lowStockThreshold: stockTracked ? lowStockThreshold : null, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
     try {
-      const productId = id || push(ref(db, "products")).key;
+      const productId = draftProductId;
       const writes = Object.fromEntries(Object.entries(data).map(([key, value]) => [`products/${productId}/${key}`, value]));
       if (!id) writes[`products/${productId}/createdAt`] = now;
       if (linkedOptionSetId) {
