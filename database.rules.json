@@ -4,7 +4,7 @@
       ".read": true,
       ".write": true,
       "$id": {
-        ".validate": "newData.hasChildren(['title','price']) && newData.child('title').isString() && newData.child('title').val().length <= 100 && newData.child('price').isNumber() && newData.child('price').val() >= 0 && (!newData.hasChild('image') || (newData.child('image').isString() && newData.child('image').val().length < 450000)) && (!newData.hasChild('categoryId') || (newData.child('categoryId').isString() && newData.child('categoryId').val().length <= 100))"
+        ".validate": "newData.hasChildren(['title','price']) && newData.child('title').isString() && newData.child('title').val().length <= 100 && newData.child('price').isNumber() && newData.child('price').val() >= 0 && (!newData.hasChild('image') || (newData.child('image').isString() && newData.child('image').val().length < 450000)) && (!newData.hasChild('categoryId') || (newData.child('categoryId').isString() && newData.child('categoryId').val().length <= 100)) && (!newData.hasChild('stockTracked') || newData.child('stockTracked').isBoolean()) && (!newData.hasChild('stockQuantity') || newData.child('stockQuantity').isNumber() && newData.child('stockQuantity').val() >= 0 && newData.child('stockQuantity').val() <= 100000) && (!newData.hasChild('lowStockThreshold') || newData.child('lowStockThreshold').isNumber() && newData.child('lowStockThreshold').val() >= 0 && newData.child('lowStockThreshold').val() <= 100000) && (!newData.hasChild('model3d') || (newData.child('model3d').hasChildren(['format','encoding','data','originalBytes','storedBytes']) && (newData.child('model3d/format').val() === 'stl' || newData.child('model3d/format').val() === '3mf') && (newData.child('model3d/encoding').val() === 'raw' || newData.child('model3d/encoding').val() === 'gzip') && newData.child('model3d/data').isString() && newData.child('model3d/data').val().length <= 2100000 && newData.child('model3d/storedBytes').isNumber() && newData.child('model3d/storedBytes').val() <= 1500000 && newData.child('model3d/originalBytes').isNumber() && newData.child('model3d/originalBytes').val() <= 26214400))"
       }
     },
     "accounts": {
@@ -67,7 +67,12 @@
     "profiles": {
       "$uid": {
         ".read": true,
-        ".write": true
+        ".write": true,
+        "favorites": {
+          "$productId": {
+            ".validate": "newData.val() === true"
+          }
+        }
       }
     },
     "usernames": {
