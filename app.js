@@ -1848,7 +1848,20 @@ async function parseProduction3MF(THREE, buffer) {
 }
 async function mountProductModelViewer(root, model, availableColors, initialColors, onColorsChange) {
   if (!root || !(model?.data || model?.storagePath || model?.databasePath)) return null;
-  const canvas = root.querySelector("canvas"), status = root.querySelector(".model-viewer-state"), controlsRoot = root.querySelector(".model-part-color-controls");
+  const canvas = root.querySelector("canvas"), status = root.querySelector(".model-viewer-state");
+  // The color controls are a sibling of #productModelViewer inside the
+  // .product-model-section, not a child of the canvas/viewer root itself.
+  // Query from the enclosing section so the element is actually found.
+  let controlsRoot = root.closest(".product-model-section")?.querySelector(".model-part-color-controls")
+    || root.parentElement?.querySelector(".model-part-color-controls")
+    || null;
+  // Keep the preview functional even if another page template omitted the
+  // optional color-control container.
+  if (!controlsRoot) {
+    controlsRoot = document.createElement("div");
+    controlsRoot.className = "model-part-color-controls";
+    root.insertAdjacentElement("afterend", controlsRoot);
+  }
   let renderer, controls, frame = 0, resizeObserver, disposed = false, modelRoot = null;
   const cleanup = () => {
     disposed = true; cancelAnimationFrame(frame); resizeObserver?.disconnect(); controls?.dispose();
@@ -1856,7 +1869,7 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
     renderer?.dispose();
   };
   try {
-    status.textContent = "3D-model laden…";
+    if (status) status.textContent = "3D-model laden…";
     const [{ THREE, STLLoader, ThreeMFLoader, OrbitControls }, buffer] = await Promise.all([loadThreeToolkit(), decodeProductModel(model)]);
     if (disposed || !root.isConnected) return cleanup;
     if (model.format === "stl") {
@@ -1874,7 +1887,7 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
         modelRoot?.traverse(child => { if (child.isMesh && child.geometry) parsedMeshes++; });
         if (!modelRoot || !parsedMeshes) modelRoot = await parseProduction3MF(THREE, buffer);
       } catch (standardLoaderError) {
-        console.warn("Standaard 3MF-loader kon het model niet volledig lezen; productie-3MF-parser wordt gebruikt.", standardLoaderError);
+        console.info("3MF wordt met de aanvullende productieparser ingelezen.", standardLoaderError?.message || standardLoaderError);
         modelRoot = await parseProduction3MF(THREE, buffer);
       }
     }
@@ -1933,7 +1946,7 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
     } else {
       controlsRoot.innerHTML = `<p class="model-color-missing">Voeg bij dit product eerst kleurstaaltjes toe via Sitebeheer → Producten → Bewerken. Alleen die ingestelde kleuren kunnen voor dit model worden gekozen.</p>`;
     }
-    status.textContent = "Draai het model met je muis of vinger.";
+    if (status) status.textContent = "Draai het model met je muis of vinger.";
     const animate = () => { if (disposed || !root.isConnected) return; frame = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
     animate();
     return cleanup;

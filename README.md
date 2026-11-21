@@ -1,4 +1,4 @@
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v13)
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v14)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -56,4 +56,11 @@ De code is lokaal gecontroleerd op JavaScript-syntaxis, JSON-validiteit en ZIP-i
 
 De productpreview bevat nu een aanvullende parser voor 3MF Production Extension-bestanden. Deze volgt onderdelen die in aparte `3D/Objects/*.model`-bestanden staan en leest de `p:path`, `objectid` en transformaties uit het 3MF-archief. De gewone Three.js 3MF-loader blijft de eerste keuze voor standaard 3MF-bestanden; de aanvullende parser wordt gebruikt wanneer die loader geen bruikbare meshes vindt of een fout geeft. STL-preview en de productkleurkeuze blijven ongewijzigd.
 
-De parser gebruikt de ingebouwde browser-API om ZIP/DEFLATE uit te pakken, dus er is geen extra bibliotheek, buildstap of PowerShell nodig. Na het uploaden naar GitHub Pages wordt de gewijzigde `app.js` door de nieuwe versietag `v=13-3mf-production-loader` opnieuw geladen.
+De parser gebruikt de ingebouwde browser-API om ZIP/DEFLATE uit te pakken, dus er is geen extra bibliotheek, buildstap of PowerShell nodig. Na het uploaden naar GitHub Pages wordt de gewijzigde `app.js` door de nieuwe versietag `v=14-3mf-preview-fix` opnieuw geladen.
+
+
+## 3D-preview correctie (v14)
+
+In v13 werd de container voor de kleurkeuzes gezocht binnen `#productModelViewer`, terwijl deze container in de productpagina ernaast staat. Daardoor kon de 3D-preview na het inlezen van het model alsnog stoppen met `Cannot set properties of null (setting 'innerHTML')`. v14 zoekt de kleurkeuze-container binnen de omliggende `.product-model-section` en maakt zo nodig een lege container aan. De preview kan daardoor ook blijven werken wanneer kleurkeuzes niet aanwezig zijn.
+
+De melding dat de standaard Three.js-loader uitwijkt naar de productieparser is geen fatale fout op zichzelf; bij 3MF Production Extension-bestanden is dit een verwachte fallback. Deze melding is nu informatief in plaats van een waarschuwing. De cacheversie is verhoogd naar `v=14-3mf-preview-fix`, zodat GitHub Pages de nieuwe JavaScript-bestanden ophaalt.
