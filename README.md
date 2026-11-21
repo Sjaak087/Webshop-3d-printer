@@ -87,3 +87,11 @@ Vervang bij publiceren alle bestanden uit de ZIP in de GitHub-repository. Er is 
 - De echte upload `Kerstboom voor oma.3mf` is als generieke test gebruikt: de parser leest het externe bestand `3D/Objects/object_1.model` uit en vindt daarin een mesh. Er is geen bestandsnaam-detectie of productgebonden uitzondering meer.
 - Er is geen PowerShell, betaalde Firebase Storage of extra backend nodig.
 - Getest met vier ZIP/3MF-varianten in Chromium: het aangeleverde Bambu Studio-bestand (1 mesh), een standaard 3MF (1 mesh), meerdere build-items (2 meshes) en geneste externe componentverwijzingen (1 mesh).
+
+
+## Versie 17 – 3D-preview zichtbaar maken
+
+- De modelpositie wordt na het schalen correct gecentreerd. Dit verhelpt modellen die wel als geladen werden gemeld maar buiten het camerabeeld stonden door de grote build-offset in veel 3MF-bestanden.
+- De camera berekent automatisch de juiste afstand op basis van de afmetingen van het model.
+- Het previewcanvas wordt pas gerenderd met de werkelijk beschikbare breedte en hoogte; bij het zichtbaar worden van de productdialoog wordt opnieuw geschaald.
+- De statusmelding zegt nu expliciet wanneer het model daadwerkelijk gerenderd wordt.

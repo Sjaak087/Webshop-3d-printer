@@ -1905,11 +1905,33 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
       throw new Error("Dit 3D-bestandstype wordt niet ondersteund. Upload een STL- of 3MF-bestand.");
     }
     if (!modelRoot) throw new Error("Het 3D-model kon niet worden gelezen.");
-    modelRoot.rotation.x = -Math.PI / 2; // STL/3MF gebruikt doorgaans Z als boven-as; Three.js gebruikt Y.
-    const box = new THREE.Box3().setFromObject(modelRoot), size = box.getSize(new THREE.Vector3()), center = box.getCenter(new THREE.Vector3());
-    if (!Number.isFinite(size.x + size.y + size.z) || Math.max(size.x, size.y, size.z) <= 0) throw new Error("Het model bevat geen bruikbare driehoeken.");
-    modelRoot.position.sub(center);
-    modelRoot.scale.setScalar(1.75 / Math.max(size.x, size.y, size.z));
+    // Zet de gebruikelijke 3MF-Z-as om naar de Y-as van Three.js voordat
+    // we de grenzen bepalen. 3MF-build-items bevatten vaak ook een grote
+    // bed-offset (bijv. 90, 90, 80 mm); die moet na het schalen volledig
+    // worden weggehaald, anders blijft het model ver buiten beeld.
+    modelRoot.rotation.x = -Math.PI / 2;
+    modelRoot.updateMatrixWorld(true);
+    const originalBounds = new THREE.Box3().setFromObject(modelRoot);
+    const originalSize = originalBounds.getSize(new THREE.Vector3());
+    const originalCenter = originalBounds.getCenter(new THREE.Vector3());
+    const largestDimension = Math.max(originalSize.x, originalSize.y, originalSize.z);
+    if (!Number.isFinite(largestDimension) || largestDimension <= 0) throw new Error("Het model bevat geen bruikbare driehoeken.");
+
+    // Let op de volgorde: Object3D.position wordt niet door de eigen scale
+    // vermenigvuldigd. Dus eerst schalen en daarna de positie instellen op
+    // -center * scale. Alleen position.sub(center) laat een enorme offset over.
+    const modelScale = 1.75 / largestDimension;
+    modelRoot.scale.setScalar(modelScale);
+    modelRoot.position.set(
+      -originalCenter.x * modelScale,
+      -originalCenter.y * modelScale,
+      -originalCenter.z * modelScale
+    );
+    modelRoot.updateMatrixWorld(true);
+    const normalizedBounds = new THREE.Box3().setFromObject(modelRoot);
+    const normalizedSphere = normalizedBounds.getBoundingSphere(new THREE.Sphere());
+    if (!Number.isFinite(normalizedSphere.radius) || normalizedSphere.radius <= 0) throw new Error("Het model kon niet goed in het previewvenster worden geplaatst.");
+
     const meshes = [];
     modelRoot.traverse(child => { if (child.isMesh && child.geometry) meshes.push(child); });
     if (!meshes.length) throw new Error("In dit bestand is geen 3D-mesh gevonden.");
@@ -1926,16 +1948,39 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
       if (mesh.material.length === 1) mesh.material = mesh.material[0];
     });
     const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf8fafc);
-    const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100); camera.position.set(2.8, 2.2, 3.3);
+    const camera = new THREE.PerspectiveCamera(38, 1, 0.001, 1000);
+    // Bereken de camera-afstand uit de echte modelgrootte. Zo blijven ook
+    // heel kleine en grote STL/3MF-bestanden zichtbaar zonder vaste zoom.
+    const viewDirection = new THREE.Vector3(1, 0.78, 1.15).normalize();
+    const cameraDistance = Math.max(0.5, normalizedSphere.radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.28);
+    camera.position.copy(normalizedSphere.center).addScaledVector(viewDirection, cameraDistance);
+    camera.near = Math.max(0.001, normalizedSphere.radius / 1000);
+    camera.far = Math.max(100, cameraDistance + normalizedSphere.radius * 30);
+    camera.updateProjectionMatrix();
     renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false }); renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.8)); renderer.outputColorSpace = THREE.SRGBColorSpace;
+    canvas.style.width = "100%"; canvas.style.height = "100%"; canvas.style.display = "block";
     scene.add(new THREE.HemisphereLight(0xffffff, 0x708096, 2.1));
     const keyLight = new THREE.DirectionalLight(0xffffff, 2.2); keyLight.position.set(4, 6, 5); scene.add(keyLight);
     const fillLight = new THREE.DirectionalLight(0xc6ddff, 1.0); fillLight.position.set(-4, 2, -4); scene.add(fillLight);
     scene.add(modelRoot);
-    controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.07; controls.minDistance = 1.4; controls.maxDistance = 7; controls.target.set(0, 0, 0);
-    camera.lookAt(0, 0, 0);
-    const resize = () => { if (!root.isConnected) return; const width = Math.max(220, root.clientWidth), height = Math.max(200, root.clientHeight || 280); renderer.setSize(width, height, false); camera.aspect = width / height; camera.updateProjectionMatrix(); };
+    controls = new OrbitControls(camera, canvas); controls.enableDamping = true; controls.dampingFactor = 0.07;
+    controls.minDistance = Math.max(0.05, normalizedSphere.radius * 0.15);
+    controls.maxDistance = Math.max(cameraDistance * 12, normalizedSphere.radius * 30);
+    controls.target.copy(normalizedSphere.center);
+    camera.lookAt(normalizedSphere.center);
+    const resize = () => {
+      if (!root.isConnected) return;
+      const rect = root.getBoundingClientRect();
+      const width = Math.floor(rect.width), height = Math.floor(rect.height);
+      // Niet renderen met een geforceerde maat wanneer de dialoog nog verborgen is.
+      // ResizeObserver probeert opnieuw zodra het previewvak echt zichtbaar is.
+      if (width < 1 || height < 1) return;
+      renderer.setSize(width, height, false);
+      camera.aspect = width / height;
+      camera.updateProjectionMatrix();
+    };
     resizeObserver = new ResizeObserver(resize); resizeObserver.observe(root); resize();
+    requestAnimationFrame(resize);
     const allowed = (availableColors || []).filter(color => validColorHex(color.hex));
     const current = [];
     const applyPartColor = (index, hex, colorName) => {
@@ -1962,6 +2007,7 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
     if (status) status.textContent = "Draai het model met je muis of vinger.";
     const animate = () => { if (disposed || !root.isConnected) return; frame = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
     animate();
+    if (status) status.textContent = "3D-model zichtbaar · sleep om te draaien.";
     return cleanup;
   } catch (error) {
     console.error("3D preview could not be rendered", error);
