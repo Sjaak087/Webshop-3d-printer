@@ -1,20 +1,22 @@
 [
   {
     "origin": [
-      "*"
+      "https://sjaak087.github.io"
     ],
     "method": [
       "GET",
+      "HEAD",
       "POST",
-      "PUT",
-      "HEAD"
+      "PUT"
     ],
     "responseHeader": [
       "Content-Type",
-      "Content-Length",
-      "Content-Encoding",
-      "Range",
-      "x-goog-resumable"
+      "Authorization",
+      "x-goog-resumable",
+      "x-goog-generation",
+      "x-goog-metageneration",
+      "x-goog-hash",
+      "ETag"
     ],
     "maxAgeSeconds": 3600
   }

@@ -1557,10 +1557,25 @@ async function uploadProductModelFile(file, productId) {
     : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
   const uniqueName = `${Date.now()}-${uniqueId}-${baseName}.${extension}`;
   const path = `product-models/${productId}/${uniqueName}`;
-  await uploadBytes(storageRef(storage, path), file, {
-    contentType: "application/octet-stream",
-    customMetadata: { format: extension, originalName: String(file.name || safeName).slice(0, 120) }
-  });
+  try {
+    await uploadBytes(storageRef(storage, path), file, {
+      contentType: "application/octet-stream",
+      customMetadata: { format: extension, originalName: String(file.name || safeName).slice(0, 120) }
+    });
+  } catch (error) {
+    const code = String(error?.code || "");
+    console.error("Firebase Storage upload failed", { code, message: error?.message || String(error) });
+    if (code === "storage/unauthorized") {
+      throw new Error("Firebase Storage weigert de upload (storage/unauthorized). Controleer of storage.rules zijn gepubliceerd en of de uploadregel voor product-models actief is.");
+    }
+    if (code === "storage/bucket-not-found") {
+      throw new Error("De Firebase Storage-bucket is niet gevonden. Controleer in Firebase Console of Cloud Storage actief is en of firebase.js de juiste bucketnaam gebruikt.");
+    }
+    if (!code || code === "storage/retry-limit-exceeded") {
+      throw new Error("De verbinding met Firebase Storage is mislukt. Controleer de CORS-instelling op de bucket met configure-storage-cors.ps1 en controleer daarna opnieuw. De oorspronkelijke fout staat in de browserconsole.");
+    }
+    throw new Error(`Firebase Storage-upload mislukt (${code}): ${error?.message || "onbekende fout"}`);
+  }
   return {
     format: extension,
     name: String(file.name || `model.${extension}`).slice(0, 120),

@@ -45,7 +45,9 @@
 2. Maak in Firebase Console een service-account voor serverbeheer en download het JSON-sleutelbestand. Bewaar het buiten de webshopmap en deel het nooit. Stel daarna `GOOGLE_APPLICATION_CREDENTIALS` in naar het bestandspad (PowerShell: `$env:GOOGLE_APPLICATION_CREDENTIALS="C:\pad\service-account.json"`).
 3. Voer vanuit de map `functions` `npm run compress:models` uit. Het script verwerkt alleen nieuwe modellen die nog `encoding: raw` hebben. Het comprimeert alleen wanneer gzip kleiner is, werkt eerst de databaseverwijzing bij en verwijdert daarna het origineel.
 
-Voor browserdownloads is ook CORS nodig. Voer eenmalig vanuit de hoofdmap `gsutil cors set cors.json gs://webshop-3cf70.firebasestorage.app` uit (met Google Cloud SDK/gsutil geïnstalleerd).
+Voor browserverkeer bevat deze versie `cors.json`, beperkt tot de GitHub Pages-origin `https://sjaak087.github.io`. De meegeleverde scripts stellen deze instelling in op de bucket met de actuele Google Cloud CLI-opdracht `gcloud storage buckets update --cors-file`. CORS is een instelling van de Storage-bucket, niet van GitHub Pages; alleen een ZIP pushen verandert de bucketconfiguratie dus niet. Zie [Google Cloud: CORS instellen](https://cloud.google.com/storage/docs/using-cors) en [Firebase: bestanden downloaden in de browser](https://firebase.google.com/docs/storage/web/download-files).
+
+Krijg je na het uitvoeren van het script nog steeds de melding “Response to preflight request doesn't pass access control check”? Controleer dan in Google Cloud Console of de bucketnaam exact `webshop-3cf70.firebasestorage.app` is, of Cloud Storage voor dit Firebase-project is ingeschakeld en of de Storage-regels zijn gepubliceerd. De browser kan bij een mislukte preflight de onderliggende 403/404 verbergen als CORS-melding. De uploadfunctie toont nu Firebase-foutcodes waar die beschikbaar zijn; bekijk ook de browserconsole.
 
 Het script draait niet automatisch bij iedere upload; je voert het uit wanneer je de nieuw geüploade modellen wilt comprimeren. Zorg dat alleen een vertrouwde beheerder het script en de service-accountgegevens gebruikt.
 
