@@ -1640,17 +1640,16 @@ async function loadThreeToolkit() {
   if (!threeToolkitPromise) threeToolkitPromise = Promise.all([
     import("three"),
     import("three/addons/loaders/STLLoader.js"),
-    import("three/addons/loaders/3MFLoader.js"),
     import("three/addons/controls/OrbitControls.js")
-  ]).then(([THREE, stl, threeMF, controls]) => ({ THREE, STLLoader: stl.STLLoader, ThreeMFLoader: threeMF.ThreeMFLoader, OrbitControls: controls.OrbitControls })).catch(error => { threeToolkitPromise = null; throw error; });
+  ]).then(([THREE, stl, controls]) => ({ THREE, STLLoader: stl.STLLoader, OrbitControls: controls.OrbitControls })).catch(error => { threeToolkitPromise = null; throw error; });
   return threeToolkitPromise;
 }
 
 // Bambu Studio, OrcaSlicer and PrusaSlicer can store the actual meshes in
 // separate 3D/Objects/*.model parts (3MF Production Extension). The stock
-// ThreeMFLoader in older Three.js releases does not follow p:path references.
-// This fallback resolves those references inside the 3MF ZIP and builds the
-// Three.js groups directly, so multi-part projects can still be previewed.
+// Parse the ZIP package directly so each uploaded model is handled
+// consistently, including external 3MF Production Extension references
+// (p:path), without filename-specific fallbacks or converted assets.
 async function parseProduction3MF(THREE, buffer) {
   // A 3MF file is a ZIP archive. Read its central directory directly and use
   // the browser's native DEFLATE stream, avoiding another third-party runtime.
@@ -1685,10 +1684,17 @@ async function parseProduction3MF(THREE, buffer) {
     if (name && !name.endsWith("/")) zipEntries.set(name, { flags, method, compressedSize, uncompressedSize, localHeaderOffset });
     cursor += 46 + nameLength + extraLength + commentLength;
   }
-  const normalizePath = value => {
-    let path = String(value || "").replace(/\\/g, "/").replace(/^\/+/, "");
+  const normalizePath = (value, basePath = "") => {
+    let path = String(value || "").replace(/\\/g, "/");
     try { path = decodeURIComponent(path); } catch (_) { /* Keep literal ZIP path if it is not URI encoded. */ }
-    return path.replace(/^\.\//, "");
+    if (!path.startsWith("/" ) && basePath) path = `${basePath.slice(0, basePath.lastIndexOf("/") + 1)}${path}`;
+    const segments = [];
+    for (const segment of path.split("/")) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") { if (segments.length) segments.pop(); continue; }
+      segments.push(segment);
+    }
+    return segments.join("/");
   };
   const textCache = new Map();
   const readZipEntry = async (rawPath) => {
@@ -1731,11 +1737,20 @@ async function parseProduction3MF(THREE, buffer) {
   const children = (node, localName) => Array.from(node?.children || []).filter(child => child.localName === localName);
   const firstChild = (node, localName) => children(node, localName)[0] || null;
   const productionNamespace = "http://schemas.microsoft.com/3dmanufacturing/production/2015/06";
-  const pathAttribute = node => node.getAttributeNS?.(productionNamespace, "path") || node.getAttribute("p:path") || node.getAttribute("path") || "";
+  const pathAttribute = node => {
+    if (!node) return "";
+    const namespaced = node.getAttributeNS?.(productionNamespace, "path");
+    if (namespaced) return namespaced;
+    for (const attribute of Array.from(node.attributes || [])) {
+      if (attribute.localName === "path" && (!attribute.namespaceURI || attribute.namespaceURI === productionNamespace)) return attribute.value;
+    }
+    return node.getAttribute("p:path") || node.getAttribute("path") || "";
+  };
   let rootPath = "3D/3dmodel.model";
   if (zipEntries.has("_rels/.rels")) {
     const relDoc = await parseXml("_rels/.rels");
-    const startPart = Array.from(relDoc.getElementsByTagName("Relationship")).find(rel => /3dmodel/i.test(rel.getAttribute("Type") || ""));
+    const relationships = Array.from(relDoc.getElementsByTagNameNS?.("*", "Relationship") || relDoc.getElementsByTagName("Relationship"));
+    const startPart = relationships.find(rel => /3dmodel/i.test(rel.getAttribute("Type") || ""));
     if (startPart?.getAttribute("Target")) rootPath = normalizePath(startPart.getAttribute("Target"));
   }
   if (!zipEntries.has(rootPath)) {
@@ -1772,7 +1787,7 @@ async function parseProduction3MF(THREE, buffer) {
       0, 0, 0, 1
     );
   };
-  const makeMesh = (objectNode, objectId) => {
+  const makeMesh = (objectNode, objectId, unit = "millimeter") => {
     const meshNode = firstChild(objectNode, "mesh");
     if (!meshNode) return null;
     const verticesNode = firstChild(meshNode, "vertices");
@@ -1780,11 +1795,12 @@ async function parseProduction3MF(THREE, buffer) {
     const vertices = children(verticesNode, "vertex");
     const triangles = children(trianglesNode, "triangle");
     if (!vertices.length || !triangles.length) return null;
+    const unitScale = ({ micron: 0.001, millimeter: 1, centimeter: 10, inch: 25.4, foot: 304.8, meter: 1000 })[String(unit || "millimeter").toLowerCase()] || 1;
     const positions = new Float32Array(vertices.length * 3);
     vertices.forEach((vertex, index) => {
-      positions[index * 3] = Number(vertex.getAttribute("x"));
-      positions[index * 3 + 1] = Number(vertex.getAttribute("y"));
-      positions[index * 3 + 2] = Number(vertex.getAttribute("z"));
+      positions[index * 3] = Number(vertex.getAttribute("x")) * unitScale;
+      positions[index * 3 + 1] = Number(vertex.getAttribute("y")) * unitScale;
+      positions[index * 3 + 2] = Number(vertex.getAttribute("z")) * unitScale;
     });
     const indices = [];
     triangles.forEach(triangle => {
@@ -1812,11 +1828,12 @@ async function parseProduction3MF(THREE, buffer) {
     building.add(cacheKey);
     const group = new THREE.Group();
     group.name = String(objectNode.getAttribute("name") || `Object ${objectId}`).slice(0, 70);
-    const mesh = makeMesh(objectNode, objectId);
+    const mesh = makeMesh(objectNode, objectId, part.unit);
     if (mesh) group.add(mesh);
     const componentsNode = firstChild(objectNode, "components");
     for (const component of children(componentsNode, "component")) {
-      const childPart = normalizePath(pathAttribute(component) || partPath);
+      const referencedPath = pathAttribute(component);
+      const childPart = referencedPath ? normalizePath(referencedPath, partPath) : partPath;
       const childId = component.getAttribute("objectid");
       const childGroup = (await resolveObject(childPart, childId)).clone(true);
       const transform = readTransform(component.getAttribute("transform"));
@@ -1834,7 +1851,8 @@ async function parseProduction3MF(THREE, buffer) {
   const result = new THREE.Group();
   result.name = "3MF-model";
   for (const item of buildItems) {
-    const itemPath = normalizePath(pathAttribute(item) || rootPath);
+    const referencedPath = pathAttribute(item);
+    const itemPath = referencedPath ? normalizePath(referencedPath, rootPath) : rootPath;
     const objectId = item.getAttribute("objectid");
     const instance = (await resolveObject(itemPath, objectId)).clone(true);
     const transform = readTransform(item.getAttribute("transform"));
@@ -1870,26 +1888,21 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
   };
   try {
     if (status) status.textContent = "3D-model laden…";
-    const [{ THREE, STLLoader, ThreeMFLoader, OrbitControls }, buffer] = await Promise.all([loadThreeToolkit(), decodeProductModel(model)]);
+    const [{ THREE, STLLoader, OrbitControls }, buffer] = await Promise.all([loadThreeToolkit(), decodeProductModel(model)]);
     if (disposed || !root.isConnected) return cleanup;
     if (model.format === "stl") {
       const geometry = new STLLoader().parse(buffer);
       geometry.computeVertexNormals();
       modelRoot = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x9aa7b8, metalness: 0.08, roughness: 0.68 }));
       modelRoot.name = "Volledig model";
+    } else if (model.format === "3mf") {
+      // Always parse the uploaded 3MF itself. No filename-based fallback or
+      // preconverted model is used, so every product follows the same path.
+      // This parser supports normal 3MF meshes and Production Extension
+      // references (p:path) to nested 3D/Objects/*.model parts.
+      modelRoot = await parseProduction3MF(THREE, buffer);
     } else {
-      // Use Three.js' standard loader when it can read the file. For
-      // Bambu/Orca/Prusa production-extension archives, fall back to the
-      // multi-part parser which follows external p:path model references.
-      try {
-        modelRoot = new ThreeMFLoader().parse(buffer);
-        let parsedMeshes = 0;
-        modelRoot?.traverse(child => { if (child.isMesh && child.geometry) parsedMeshes++; });
-        if (!modelRoot || !parsedMeshes) modelRoot = await parseProduction3MF(THREE, buffer);
-      } catch (standardLoaderError) {
-        console.info("3MF wordt met de aanvullende productieparser ingelezen.", standardLoaderError?.message || standardLoaderError);
-        modelRoot = await parseProduction3MF(THREE, buffer);
-      }
+      throw new Error("Dit 3D-bestandstype wordt niet ondersteund. Upload een STL- of 3MF-bestand.");
     }
     if (!modelRoot) throw new Error("Het 3D-model kon niet worden gelezen.");
     modelRoot.rotation.x = -Math.PI / 2; // STL/3MF gebruikt doorgaans Z als boven-as; Three.js gebruikt Y.
@@ -1981,7 +1994,7 @@ async function productEditor(id = null) {
       </fieldset>
       <fieldset class="opt-editor model-upload-editor"><legend>3D-model en productconfigurator</legend>
         <label>Upload een STL- of 3MF-bestand<input id="pModelFile" type="file" accept=".stl,.3mf,model/stl,model/3mf"></label>
-        <p class="hint">Upload een STL- of 3MF-bestand van maximaal 10 MB. Het originele bestand wordt ongewijzigd in kleine delen opgeslagen in de gratis Firebase Realtime Database; Firebase Storage en een betaald abonnement zijn hiervoor niet nodig. Het model wordt pas gedownload wanneer een klant de productpagina opent. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. STL heeft één kleurdeel; onderdelen uit 3MF worden waar mogelijk apart getoond.</p>
+        <p class="hint">Upload een STL- of 3MF-bestand van maximaal 10 MB. Het originele bestand wordt ongewijzigd in kleine delen opgeslagen in de gratis Firebase Realtime Database; Firebase Storage en een betaald abonnement zijn hiervoor niet nodig. Het model wordt pas gedownload wanneer een klant de productpagina opent. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. Elk product gebruikt zijn eigen originele upload; er is geen bestandsnaam-afhankelijke reserveweergave. STL heeft één kleurdeel; de afzonderlijke objecten en componenten uit 3MF worden als aparte onderdelen ingelezen.</p>
         <div id="modelFileStatus" class="model-file-status">${p.model3d ? `<b>${safe(p.model3d.name || "3D-model")}</b><small>${safe(String(p.model3d.format || "").toUpperCase())} · ${formatFileSize(p.model3d.originalBytes || 0)} origineel · ${formatFileSize(p.model3d.storedBytes || 0)} opgeslagen (${p.model3d.databasePath ? "gratis database-opslag" : p.model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd."}</div>
         <button type="button" class="secondary" id="remove3DModel" ${p.model3d ? "" : "hidden"}>3D-model verwijderen</button>
       </fieldset>

@@ -54,7 +54,7 @@ De code is lokaal gecontroleerd op JavaScript-syntaxis, JSON-validiteit en ZIP-i
 
 ## 3MF-preview voor Bambu Studio, OrcaSlicer en PrusaSlicer
 
-De productpreview bevat nu een aanvullende parser voor 3MF Production Extension-bestanden. Deze volgt onderdelen die in aparte `3D/Objects/*.model`-bestanden staan en leest de `p:path`, `objectid` en transformaties uit het 3MF-archief. De gewone Three.js 3MF-loader blijft de eerste keuze voor standaard 3MF-bestanden; de aanvullende parser wordt gebruikt wanneer die loader geen bruikbare meshes vindt of een fout geeft. STL-preview en de productkleurkeuze blijven ongewijzigd.
+De productpreview bevat een ingebouwde parser voor 3MF-bestanden. Deze leest standaard 3MF-meshes en volgt Production Extension-verwijzingen naar onderdelen in aparte `3D/Objects/*.model`-bestanden. Ook `p:path`, `objectid`, geneste componenten en transformaties worden verwerkt. De Three.js 3MFLoader wordt niet gebruikt, omdat die bij sommige geldige Production Extension-bestanden vastloopt. STL-preview en de productkleurkeuze blijven beschikbaar.
 
 De parser gebruikt de ingebouwde browser-API om ZIP/DEFLATE uit te pakken, dus er is geen extra bibliotheek, buildstap of PowerShell nodig. Na het uploaden naar GitHub Pages wordt de gewijzigde `app.js` door de nieuwe versietag `v=14-3mf-preview-fix` opnieuw geladen.
 
@@ -64,3 +64,26 @@ De parser gebruikt de ingebouwde browser-API om ZIP/DEFLATE uit te pakken, dus e
 In v13 werd de container voor de kleurkeuzes gezocht binnen `#productModelViewer`, terwijl deze container in de productpagina ernaast staat. Daardoor kon de 3D-preview na het inlezen van het model alsnog stoppen met `Cannot set properties of null (setting 'innerHTML')`. v14 zoekt de kleurkeuze-container binnen de omliggende `.product-model-section` en maakt zo nodig een lege container aan. De preview kan daardoor ook blijven werken wanneer kleurkeuzes niet aanwezig zijn.
 
 De melding dat de standaard Three.js-loader uitwijkt naar de productieparser is geen fatale fout op zichzelf; bij 3MF Production Extension-bestanden is dit een verwachte fallback. Deze melding is nu informatief in plaats van een waarschuwing. De cacheversie is verhoogd naar `v=14-3mf-preview-fix`, zodat GitHub Pages de nieuwe JavaScript-bestanden ophaalt.
+
+
+## Versie 15 – reparatie 3MF-preview
+
+- De 3MF-preview gebruikt nu eerst de productieparser voor Bambu Studio-, OrcaSlicer- en PrusaSlicer-bestanden met externe `p:path`-modelonderdelen.
+- Verwijzingen naar externe modelbestanden worden genormaliseerd, ook wanneer een export relatieve paden gebruikt.
+- De eenheden van afzonderlijke 3MF-modelonderdelen worden omgerekend naar millimeters.
+- Elk product gebruikt uitsluitend het bij dat product geüploade STL- of 3MF-bestand. Er is geen hardcoded bestandsnaam, product-specifiek GLB-bestand of reserveweergave.
+- De 3MF-preview gebruikt een generieke browserparser voor standaard 3MF-meshes en Production Extension-verwijzingen zoals `p:path` naar geneste `3D/Objects/*.model`-bestanden. Meerdere build-items, componenten en transforms worden verwerkt.
+- In v15 werd bij één aangeleverd testmodel een apart GLB-reservebestand gebruikt. Dat was product-specifiek en is in v16 verwijderd.
+
+Vervang bij publiceren alle bestanden uit de ZIP in de GitHub-repository. Er is geen aparte `models`-map nodig.
+
+
+## Versie 16 – generieke 3MF-preview
+
+- De product-specifieke Kerstboom-voor-oma-GLB-koppeling en de bijbehorende `models`-map zijn volledig verwijderd.
+- Alle producten volgen hetzelfde upload- en previewpad op basis van hun eigen modelbestand.
+- De Three.js 3MFLoader is uit de preview verwijderd; deze kon bij Production Extension-bestanden crashen met `Cannot read properties of undefined (reading 'mesh')`.
+- STL blijft de Three.js STLLoader gebruiken. 3MF wordt voor elk product ingelezen door dezelfde ingebouwde parser, die standaard meshes, externe `.model`-onderdelen, geneste componentverwijzingen en transforms verwerkt.
+- De echte upload `Kerstboom voor oma.3mf` is als generieke test gebruikt: de parser leest het externe bestand `3D/Objects/object_1.model` uit en vindt daarin een mesh. Er is geen bestandsnaam-detectie of productgebonden uitzondering meer.
+- Er is geen PowerShell, betaalde Firebase Storage of extra backend nodig.
+- Getest met vier ZIP/3MF-varianten in Chromium: het aangeleverde Bambu Studio-bestand (1 mesh), een standaard 3MF (1 mesh), meerdere build-items (2 meshes) en geneste externe componentverwijzingen (1 mesh).
