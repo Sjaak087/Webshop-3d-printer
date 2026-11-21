@@ -161,7 +161,7 @@ De productloader gebruikt nu een opvallender dansend skelet per laadkaart en per
 2. Voeg onder **Kleuren voor maatwerk** de kleuren toe die klanten mogen kiezen. Elke kleur heeft een naam en een kleurcode. Verwijderen haalt de kleur uit nieuwe aanvragen; bestaande offertes bewaren hun oorspronkelijke kleurgegevens.
 3. Bekijk bij elke offerte de afbeelding, beschrijving, afmetingen, gekozen kleur, klantgegevens en status.
 4. Open **Offertechat openen** om met de klant te overleggen. Statuswijzigingen worden ook als systeembericht aan de klant getoond.
-5. Als prijs en afhandeling zijn afgesproken, kies **Omzetten naar bestelling**. Vul de afgesproken productprijs in en kies ophalen (gratis) of bezorgen (de bestaande verzendkosten van € 3,95). Bij bezorgen zijn de Nederlandse adresgegevens verplicht.
+5. Als prijs en afhandeling zijn afgesproken, kies **Omzetten naar bestelling**. Vul de afgesproken productprijs in en kies ophalen (gratis) of verzenden (de bestaande verzendkosten van € 3,95). Bij verzenden zijn de Nederlandse adresgegevens verplicht.
 
 ### Na omzetten naar bestelling
 - Er wordt een normale order aangemaakt met een unieke track-&-trace-token en openbare track-&-trace-projectie.
@@ -172,3 +172,35 @@ De productloader gebruikt nu een opvallender dansend skelet per laadkaart en per
 
 ### Belangrijke beveiligingswaarschuwing voor offertes
 De bestaande webshop gebruikt een eigen accountsysteem aan de clientzijde. De Realtime Database-regels in deze projectversie bevatten nog brede `.read: true`- en `.write: true`-rechten voor onder meer `quotes`, `chats`, `orders` en `settings`. Daardoor zijn offertegegevens, geüploade ontwerpafbeeldingen, klant-e-mailadressen en chatberichten niet privé afgeschermd voor onbevoegde databasebezoekers. De nieuwe offertefunctie verandert die bestaande beveiligingssituatie niet. **Gebruik dit niet met echte klantgegevens of vertrouwelijke ontwerpen voordat Firebase Authentication en strikt afgeschermde Realtime Database-regels (of een beveiligde backend) zijn ingericht.** Voor productie verdient het ook de voorkeur ontwerpafbeeldingen in Firebase Storage op te slaan met toegangsregels, in plaats van ze als base64 in Realtime Database te bewaren.
+
+## Extra update: mobiel beheer, kleurenvoorraad en categorieën
+
+- **Mobiele navigatie**: de knoppen Inloggen en Sitebeheer hebben nu vaste inline SVG-iconen. Daardoor blijven deze twee belangrijke knoppen ook zichtbaar als de externe iconenbibliotheek niet laadt. Op smalle schermen staat de navigatie op een eigen rij.
+- **Offertekleuren op voorraad**: onder Sitebeheer > Offertes kun je een kleur op *Uitverkocht* zetten of weer beschikbaar maken. Uitverkochte kleuren verdwijnen uit het formulier voor nieuwe offerteaanvragen; eerder ingediende offertes behouden hun gekozen kleur.
+- **Offertes verwijderen**: elke offerte heeft een verwijderactie met bevestiging. Bij een nog niet omgezette offerte wordt ook de bijbehorende offertechat verwijderd. Is de offerte al een bestelling geworden, dan blijven de bestelling, bestelchat en track & trace juist behouden.
+- **Afhandeling in bestellingen**: een bestelling die via de chat wordt gestart, wordt als **Ophalen** opgeslagen en heeft geen adres of verzendkosten. Een bestelling met adres wordt als **Verzenden** weergegeven. Bestaande chatbestellingen zonder expliciete verzendmethode worden in de weergave als ophalen behandeld.
+- **Categorieën beheren**: Sitebeheer > Categorieën laat je categorieën toevoegen, verbergen, opnieuw tonen en verwijderen. Verwijderen koppelt bestaande producten eerst los van die categorie.
+- **Categorieën op de homepage**: bezoekers zien filterknoppen voor de actieve categorieën. Producten krijgen in Sitebeheer > Producten > Bewerken een categorie; de categorie wordt ook als label op de productkaart getoond.
+- **Productkeuzes kopiëren**: in de producteditor kun je de optiegroepen van een ander product selecteren en in één actie kopiëren. Namen, opties, prijsverschillen en uitverkocht-status worden gekopieerd. Sla het product daarna op om de kopie te bewaren.
+- **Technische controles**: category names worden beperkt tot 50 tekens en moeten uniek zijn via de beheerinterface; categorieën krijgen een expliciete Realtime Database-regel. De nieuwe functies gebruiken Firebase multi-location updates waar meerdere paden tegelijk moeten veranderen.
+
+### Publiceren van deze update
+
+1. Upload alle bestanden uit deze ZIP naar Firebase Hosting en vervang de bestaande bestanden.
+2. Publiceer ook de meegeleverde `database.rules.json` via Firebase Console > Realtime Database > Regels. Deze versie voegt expliciete regels voor `categories` toe.
+3. Wis op mobiel eventueel de sitecache of open de website in een privévenster als oude CSS/JavaScript blijft staan. De assets hebben nieuwe versienummers.
+
+### Beveiligingsbeperking die nog blijft bestaan
+
+De huidige webshop gebruikt nog steeds een eigen klant-/beheerlogin in de browser in plaats van Firebase Authentication. De bestaande regels laten brede lees- en schrijfacties toe op onder andere producten, offertes, chats, bestellingen en instellingen. Deze update maakt categorieën technisch bruikbaar, maar maakt privégegevens of beheerschrijfacties niet veilig tegen onbevoegde toegang. Voor gebruik met echte klantgegevens is een migratie naar Firebase Authentication, gebruikersgebonden Realtime Database-regels en server-side validatie via Cloud Functions nog noodzakelijk.
+
+
+## Verbeteringen in de mobiele en bestelinterface
+- De mobiele header toont nu aparte, vaste pictogrammen voor Inloggen en Sitebeheer; deze SVG-iconen zijn lokaal in de pagina opgenomen en zijn niet afhankelijk van de externe iconenbibliotheek.
+- In de bestelkeuze is de route zonder adres duidelijk benoemd als **Ophalen via chat**. Die bestelling wordt opgeslagen met `fulfillmentMethod: pickup`, zonder adres en zonder verzendkosten. De andere route heet **Verzenden of ophalen**; alleen bij verzenden vraagt de checkout om een adres en rekent hij de verzendkosten.
+- Statussen zijn voor klanten en Sitebeheer afgestemd op de afhandeling: bij ophalen wordt bijvoorbeeld **klaar om op te halen / opgehaald** getoond, bij verzending **klaar voor verzending / bezorgd**. De bestaande interne statuswaarden blijven compatibel met oudere bestellingen.
+- Offertekleuren kunnen in Sitebeheer op uitverkocht worden gezet; uitverkochte kleuren worden niet aangeboden bij nieuwe aanvragen. Offertes kunnen worden verwijderd. Bij reeds omgezette offertes blijven de normale bestelling, chat en track & trace behouden.
+- Categorieën kunnen in Sitebeheer worden aangemaakt, verborgen en verwijderd. Je koppelt ze via Producten bewerken; actieve categorieën verschijnen op de homepage als filters.
+- Productoptiegroepen kunnen in de producteditor van een ander product worden gekopieerd. De labels, opties, prijsverschillen en uitverkochtstatussen worden gekopieerd; daarna sla je het doelproduct op.
+
+Publiceer na upload ook het bijgewerkte `database.rules.json` via Firebase Console > Realtime Database > Regels. De huidige bestaande database-opzet gebruikt nog brede lees-/schrijfrechten en een client-side beheerlogin. De interface-aanpassingen maken die opzet niet veilig voor vertrouwelijke klantgegevens; Firebase Authentication en server-side autorisatie zijn nog nodig voor echte toegangsbeveiliging.

@@ -4,7 +4,7 @@
       ".read": true,
       ".write": true,
       "$id": {
-        ".validate": "newData.hasChildren(['title','price']) && (!newData.hasChild('image') || newData.child('image').val().length < 450000)"
+        ".validate": "newData.hasChildren(['title','price']) && newData.child('title').isString() && newData.child('title').val().length <= 100 && newData.child('price').isNumber() && newData.child('price').val() >= 0 && (!newData.hasChild('image') || (newData.child('image').isString() && newData.child('image').val().length < 450000)) && (!newData.hasChild('categoryId') || (newData.child('categoryId').isString() && newData.child('categoryId').val().length <= 100))"
       }
     },
     "accounts": {
@@ -18,7 +18,9 @@
     "quotes": {
       ".read": true,
       ".write": true,
-      ".indexOn": ["userId"],
+      ".indexOn": [
+        "userId"
+      ],
       "$id": {
         ".validate": "newData.hasChildren(['userId','title','description','image','dimensions','colorName','chatId','createdAt']) && newData.child('title').isString() && newData.child('title').val().length <= 90 && newData.child('description').isString() && newData.child('description').val().length <= 1800 && newData.child('image').isString() && newData.child('image').val().length < 450000 && newData.child('dimensions').hasChildren(['length','width','height']) && newData.child('dimensions/length').val() >= 1 && newData.child('dimensions/length').val() <= 180 && newData.child('dimensions/width').val() >= 1 && newData.child('dimensions/width').val() <= 180 && newData.child('dimensions/height').val() >= 1 && newData.child('dimensions/height').val() <= 180"
       }
@@ -42,6 +44,11 @@
       ".write": true,
       "camera": {
         ".validate": "newData.hasChildren() && (!newData.hasChild('url') || (newData.child('url').isString() && newData.child('url').val().matches(/^https:\\/\\/.*/) && newData.child('url').val().length < 300))"
+      },
+      "quoteColors": {
+        "$id": {
+          ".validate": "newData.hasChildren(['name','hex']) && newData.child('name').isString() && newData.child('name').val().length <= 50 && newData.child('hex').isString() && newData.child('hex').val().matches(/^#[0-9a-fA-F]{6}$/) && (!newData.hasChild('active') || newData.child('active').isBoolean()) && (!newData.hasChild('soldOut') || newData.child('soldOut').isBoolean())"
+        }
       }
     },
     "publicTrack": {
@@ -60,6 +67,13 @@
       ".read": true,
       "$username": {
         ".write": "!data.exists() || newData.val() === data.val()"
+      }
+    },
+    "categories": {
+      ".read": true,
+      ".write": true,
+      "$id": {
+        ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 50 && (!newData.hasChild('active') || newData.child('active').isBoolean())"
       }
     }
   }
