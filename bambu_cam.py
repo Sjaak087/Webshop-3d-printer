@@ -26,7 +26,7 @@ USE_TUNNEL = "--tunnel" in sys.argv
 
 
 def ask_settings():
-    """Haalt IP + Access Code uit omgeving, opgeslagen bestand of vraagt ze (zodat PowerShell ze gewoon invult)."""
+    """Haalt IP + Access Code uit omgeving, opgeslagen bestand of vraagt ze (zodat het script ze kan verwerken)."""
     global PRINTER_IP, ACCESS_CODE
     saved = {}
     try:
@@ -85,7 +85,7 @@ def start_tunnel():
         proc = subprocess.Popen(["cloudflared", "tunnel", "--url", f"http://127.0.0.1:{LISTEN_PORT}"],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     except FileNotFoundError:
-        log("cloudflared niet gevonden. Installeer met:  winget install Cloudflare.cloudflared  (daarna PowerShell opnieuw openen)")
+        log("cloudflared niet gevonden. Installeer met:  winget install Cloudflare.cloudflared  (start daarna het terminalvenster opnieuw)")
         return None
 
     def pump():

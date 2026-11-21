@@ -1,6 +1,4 @@
-import { db, functions, storage } from "./firebase.js";
-import { ref as storageRef, uploadBytes, getBytes } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
-import { httpsCallable } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
+import { db } from "./firebase.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
@@ -1536,6 +1534,17 @@ function formatFileSize(bytes) {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 const MAX_PRODUCT_MODEL_BYTES = 10 * 1024 * 1024;
+// Kleine stukjes blijven ruim onder Firebase Realtime Database's maximale stringgrootte.
+// 768 KiB ruwe bytes wordt ongeveer 1 MiB Base64 per database-write.
+const PRODUCT_MODEL_CHUNK_BYTES = 768 * 1024;
+function bytesToBase64(bytes) {
+  let binary = "";
+  const step = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += step) {
+    binary += String.fromCharCode(...bytes.subarray(offset, Math.min(offset + step, bytes.length)));
+  }
+  return btoa(binary);
+}
 function base64ToBytes(encoded) {
   const binary = atob(encoded), bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -1550,52 +1559,77 @@ async function uploadProductModelFile(file, productId) {
   if (extension === "3mf" && !(header[0] === 0x50 && header[1] === 0x4b)) throw new Error("Dit 3MF-bestand heeft geen geldige ZIP-container.");
   if (extension === "stl" && file.size < 84 && !new TextDecoder().decode(header.slice(0, 5)).toLowerCase().startsWith("solid")) throw new Error("Dit STL-bestand is ongeldig of onvolledig.");
 
-  // Bewaar het originele bestand ongewijzigd. Een apart beheerscript kan het later comprimeren.
   const baseName = String(file.name || "model").replace(/\.[^.]*$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 70) || "model";
   const uniqueId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
-  const uniqueName = `${Date.now()}-${uniqueId}-${baseName}.${extension}`;
-  const path = `product-models/${productId}/${uniqueName}`;
+  // RTDB-sleutels mogen geen punt bevatten; gebruik daarom alleen de unieke ID.
+  const path = `productModels/${productId}/${uniqueId}`;
+  const chunkCount = Math.ceil(file.size / PRODUCT_MODEL_CHUNK_BYTES);
   try {
-    await uploadBytes(storageRef(storage, path), file, {
-      contentType: "application/octet-stream",
-      customMetadata: { format: extension, originalName: String(file.name || safeName).slice(0, 120) }
+    for (let index = 0; index < chunkCount; index++) {
+      const start = index * PRODUCT_MODEL_CHUNK_BYTES;
+      const end = Math.min(start + PRODUCT_MODEL_CHUNK_BYTES, file.size);
+      const bytes = new Uint8Array(await file.slice(start, end).arrayBuffer());
+      await set(ref(db, `${path}/chunks/${index}`), bytesToBase64(bytes));
+    }
+    // Metadata wordt als laatste geschreven: de viewer ziet het model pas als de upload compleet is.
+    await set(ref(db, `${path}/meta`), {
+      format: extension,
+      originalBytes: file.size,
+      chunkCount,
+      name: String(file.name || `model.${extension}`).slice(0, 120),
+      updatedAt: Date.now()
     });
   } catch (error) {
+    console.error("Gratis Realtime Database modelupload mislukt", { code: error?.code || "", message: error?.message || String(error) });
+    await remove(ref(db, path)).catch(cleanupError => console.warn("Onvolledige modelupload kon niet automatisch worden opgeruimd", cleanupError));
     const code = String(error?.code || "");
-    console.error("Firebase Storage upload failed", { code, message: error?.message || String(error) });
-    if (code === "storage/unauthorized") {
-      throw new Error("Firebase Storage weigert de upload (storage/unauthorized). Controleer of storage.rules zijn gepubliceerd en of de uploadregel voor product-models actief is.");
+    if (code.includes("PERMISSION_DENIED") || code.includes("permission-denied")) {
+      throw new Error("Firebase Realtime Database heeft de modelupload geweigerd. Publiceer de meegeleverde database.rules.json via Firebase Console → Realtime Database → Rules.");
     }
-    if (code === "storage/bucket-not-found") {
-      throw new Error("De Firebase Storage-bucket is niet gevonden. Controleer in Firebase Console of Cloud Storage actief is en of firebase.js de juiste bucketnaam gebruikt.");
+    if (code.includes("NETWORK") || !navigator.onLine) {
+      throw new Error("De internetverbinding is onderbroken tijdens het uploaden. Probeer het opnieuw met een stabiele verbinding.");
     }
-    if (!code || code === "storage/retry-limit-exceeded") {
-      throw new Error("De verbinding met Firebase Storage is mislukt. Controleer de CORS-instelling op de bucket met configure-storage-cors.ps1 en controleer daarna opnieuw. De oorspronkelijke fout staat in de browserconsole.");
-    }
-    throw new Error(`Firebase Storage-upload mislukt (${code}): ${error?.message || "onbekende fout"}`);
+    throw new Error(`3D-model opslaan in de gratis Firebase-database is mislukt: ${error?.message || code || "onbekende fout"}`);
   }
   return {
     format: extension,
-    name: String(file.name || `model.${extension}`).slice(0, 120),
-    storagePath: path,
-    encoding: "raw",
+    name: String(file.name || `${baseName}.${extension}`).slice(0, 120),
+    databasePath: path,
+    encoding: "base64-chunks",
     originalBytes: file.size,
-    storedBytes: file.size,
+    storedBytes: Math.ceil(file.size / 3) * 4,
+    chunkCount,
     updatedAt: Date.now()
   };
 }
 async function decodeProductModel(model) {
   let bytes;
-  if (model.storagePath) {
-    bytes = await getBytes(storageRef(storage, model.storagePath), MAX_PRODUCT_MODEL_BYTES);
+  if (model.databasePath) {
+    const snapshot = await get(ref(db, model.databasePath));
+    if (!snapshot.exists()) throw new Error("Dit 3D-model staat niet meer in de gratis Firebase-database. Upload het originele STL- of 3MF-bestand opnieuw bij het product.");
+    const record = snapshot.val() || {};
+    const meta = record.meta || {};
+    const chunkCount = Number(meta.chunkCount);
+    if (!Number.isInteger(chunkCount) || chunkCount < 1 || chunkCount > 14) throw new Error("De opgeslagen 3D-modelgegevens zijn onvolledig of ongeldig.");
+    let encoded = "";
+    for (let index = 0; index < chunkCount; index++) {
+      const part = record.chunks?.[index];
+      if (typeof part !== "string" || !part.length) throw new Error("Een deel van het 3D-model ontbreekt. Upload het model opnieuw.");
+      encoded += part;
+    }
+    bytes = base64ToBytes(encoded);
+    const expectedBytes = Number(model.originalBytes || meta.originalBytes);
+    if (bytes.byteLength > MAX_PRODUCT_MODEL_BYTES || bytes.byteLength !== expectedBytes) throw new Error("De opgeslagen 3D-modelgrootte klopt niet. Upload het model opnieuw.");
+  } else if (model.storagePath) {
+    throw new Error("Dit oude model staat nog in Firebase Storage. Dat werkt niet met het gratis Spark-abonnement. Upload het originele STL- of 3MF-bestand opnieuw bij het product.");
   } else {
-    // Achterwaartse compatibiliteit met modellen uit eerdere versies die als Base64 in Realtime Database staan.
+    // Achterwaartse compatibiliteit met oudere modellen die als Base64 in Realtime Database staan.
     bytes = base64ToBytes(model.data || "");
   }
   if (model.encoding === "gzip") {
-    if (typeof DecompressionStream === "undefined") throw new Error("Deze browser kan het gecomprimeerde 3D-model niet openen. Gebruik een recente versie van Chrome, Edge, Firefox of Safari.");
+    if (typeof DecompressionStream === "undefined") throw new Error("Deze browser kan het gecomprimeerde 3D-model niet openen. Gebruik een recente browser.");
     const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
     return await new Response(stream).arrayBuffer();
   }
@@ -1612,7 +1646,7 @@ async function loadThreeToolkit() {
   return threeToolkitPromise;
 }
 async function mountProductModelViewer(root, model, availableColors, initialColors, onColorsChange) {
-  if (!root || !(model?.data || model?.storagePath)) return null;
+  if (!root || !(model?.data || model?.storagePath || model?.databasePath)) return null;
   const canvas = root.querySelector("canvas"), status = root.querySelector(".model-viewer-state"), controlsRoot = root.querySelector(".model-part-color-controls");
   let renderer, controls, frame = 0, resizeObserver, disposed = false, modelRoot = null;
   const cleanup = () => {
@@ -1693,7 +1727,7 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
     return cleanup;
   } catch (error) {
     console.error("3D preview could not be rendered", error);
-    if (status && root.isConnected) status.textContent = "3D-voorvertoning niet beschikbaar. Controleer het STL/3MF-bestand en de internetverbinding.";
+    if (status && root.isConnected) status.textContent = error?.message || "3D-voorvertoning niet beschikbaar. Controleer het STL/3MF-bestand en de internetverbinding.";
     return cleanup;
   }
 }
@@ -1722,8 +1756,8 @@ async function productEditor(id = null) {
       </fieldset>
       <fieldset class="opt-editor model-upload-editor"><legend>3D-model en productconfigurator</legend>
         <label>Upload een STL- of 3MF-bestand<input id="pModelFile" type="file" accept=".stl,.3mf,model/stl,model/3mf"></label>
-        <p class="hint">Upload een STL- of 3MF-bestand van maximaal 10 MB. Het originele bestand wordt eerst ongewijzigd naar Firebase Storage geüpload. Je kunt het daarna met het meegeleverde script comprimeren om opslagruimte te besparen. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. STL heeft één kleurdeel; onderdelen uit 3MF worden waar mogelijk apart getoond.</p>
-        <div id="modelFileStatus" class="model-file-status">${p.model3d ? `<b>${safe(p.model3d.name || "3D-model")}</b><small>${safe(String(p.model3d.format || "").toUpperCase())} · ${formatFileSize(p.model3d.originalBytes || 0)} origineel · ${formatFileSize(p.model3d.storedBytes || 0)} opgeslagen (${p.model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "nog niet gecomprimeerd"})</small>` : "Nog geen 3D-model toegevoegd."}</div>
+        <p class="hint">Upload een STL- of 3MF-bestand van maximaal 10 MB. Het originele bestand wordt ongewijzigd in kleine delen opgeslagen in de gratis Firebase Realtime Database; Firebase Storage en een betaald abonnement zijn hiervoor niet nodig. Het model wordt pas gedownload wanneer een klant de productpagina opent. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. STL heeft één kleurdeel; onderdelen uit 3MF worden waar mogelijk apart getoond.</p>
+        <div id="modelFileStatus" class="model-file-status">${p.model3d ? `<b>${safe(p.model3d.name || "3D-model")}</b><small>${safe(String(p.model3d.format || "").toUpperCase())} · ${formatFileSize(p.model3d.originalBytes || 0)} origineel · ${formatFileSize(p.model3d.storedBytes || 0)} opgeslagen (${p.model3d.databasePath ? "gratis database-opslag" : p.model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd."}</div>
         <button type="button" class="secondary" id="remove3DModel" ${p.model3d ? "" : "hidden"}>3D-model verwijderen</button>
       </fieldset>
       <fieldset class="opt-editor"><legend>Voorraadbeheer</legend>
@@ -1785,7 +1819,7 @@ async function productEditor(id = null) {
   drawImages(); drawGroups(); updateOptionLinkStatus();
   const refreshModelFileStatus = () => {
     const box = $("#modelFileStatus"), removeButton = $("#remove3DModel");
-    if (box) box.innerHTML = model3d ? `<b>${safe(model3d.name || "3D-model")}</b><small>${safe(String(model3d.format || "").toUpperCase())} · ${formatFileSize(model3d.originalBytes || 0)} origineel · ${formatFileSize(model3d.storedBytes || 0)} opgeslagen (${model3d.encoding === "gzip" ? "later met script gecomprimeerd" : "origineel, nog niet gecomprimeerd"})</small>` : "Nog geen 3D-model toegevoegd.";
+    if (box) box.innerHTML = model3d ? `<b>${safe(model3d.name || "3D-model")}</b><small>${safe(String(model3d.format || "").toUpperCase())} · ${formatFileSize(model3d.originalBytes || 0)} origineel · ${formatFileSize(model3d.storedBytes || 0)} opgeslagen (${model3d.databasePath ? "gratis database-opslag" : model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd.";
     if (removeButton) removeButton.hidden = !model3d;
   };
   $("#pStockTracked").onchange = () => { $("#pStockFields").hidden = !$("#pStockTracked").checked; };

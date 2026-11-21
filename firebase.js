@@ -1,8 +1,6 @@
 // Firebase voor 3D Printed Shop.
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import { getDatabase } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
-import { getFunctions } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-functions.js";
-import { getStorage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js";
 import { initializeAppCheck, ReCaptchaV3Provider } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app-check.js";
 
 export const firebaseConfig = {
@@ -10,7 +8,6 @@ export const firebaseConfig = {
   authDomain: "webshop-3cf70.firebaseapp.com",
   databaseURL: "https://webshop-3cf70-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "webshop-3cf70",
-  storageBucket: "webshop-3cf70.firebasestorage.app",
   messagingSenderId: "253002374669",
   appId: "1:253002374669:web:3058a5c9b2d4f111503f44",
   measurementId: "G-7YTVRGHRKL"
@@ -29,5 +26,3 @@ if (APP_CHECK_SITE_KEY && !APP_CHECK_SITE_KEY.startsWith("VUL_HIER")) {
 }
 
 export const db = getDatabase(app);
-export const storage = getStorage(app);
-export const functions = getFunctions(app, "europe-west1");
