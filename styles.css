@@ -716,3 +716,82 @@ to{translate:0 -8px;rotate:12deg}}
   .choice-option-row>.choice-color-field{grid-column:1/3;grid-row:2}
   .choice-option-row>.choice-out-field{grid-column:3;grid-row:2;justify-self:end}
 }
+
+
+/* Chatfoto's: vooraf verkleind naar lichte JPEG-bestanden */
+.send-message{align-items:center}
+.send-message input#messageText{flex:1;min-width:0}
+.chat-attach-button{width:42px;height:42px;flex:0 0 42px;display:grid;place-items:center;border:1px solid #dce5f1;border-radius:11px;background:#f6f8fc;color:#315b91;cursor:pointer}
+.chat-attach-button:hover{background:#eaf2ff;border-color:#b9d0f2}
+.chat-attach-button svg{width:19px;height:19px}
+.chat-upload-hint{display:block;color:#8793a5;font-size:10px;text-align:right;margin-top:-6px}
+.chat-image-pending{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid #dce8f7;border-radius:12px;background:#f7faff}
+.chat-image-pending[hidden]{display:none}
+.chat-image-pending img{width:54px;height:54px;object-fit:cover;border-radius:8px;background:white}
+.chat-image-pending div{display:grid;gap:3px;min-width:0;flex:1}
+.chat-image-pending b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chat-image-pending small{font-size:10px;color:#758198}
+.chat-image{display:block;max-width:min(320px,100%);max-height:280px;width:auto;height:auto;object-fit:contain;border-radius:11px;border:1px solid #dce5f1;background:white}
+.chat-image-link{display:inline-block;max-width:100%;margin-bottom:5px}
+
+/* Productwaarderingen en reviews */
+.product-rating-summary{display:flex;align-items:center;gap:5px;margin:0 0 7px;min-height:16px}
+.product-rating-summary>span,.review-stars,.review-overview>span{color:#f2a900;letter-spacing:1px;font-size:13px;white-space:nowrap}
+.product-rating-summary b{font-size:11px;color:#2f3c55}
+.product-rating-summary small{font-size:10px;color:#7a8799}
+.product-rating-summary.no-reviews>span{color:#c6ccd6}
+.product-reviews{margin-top:30px;padding-top:24px;border-top:1px solid #e8edf4}
+.product-reviews-head{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:16px}
+.product-reviews-head h3{font:800 22px Manrope;color:var(--navy);margin:0 0 5px}
+.product-reviews-head .eyebrow{margin-bottom:5px}
+.review-overview{display:grid;justify-items:end;gap:2px;padding:12px 16px;border:1px solid #f3e4bd;background:linear-gradient(135deg,#fffaf0,#fff);border-radius:14px;min-width:112px}
+.review-overview strong{font:800 25px Manrope;color:#26344d}
+.review-overview>span{font-size:16px}
+.review-overview small{font-size:10px;color:#758198}
+.review-overview.empty{border-color:#e6ebf3;background:#fafcff}
+.review-overview.empty strong{font-size:16px}
+.review-overview.empty>span{color:#c6ccd6}
+.product-review-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.product-review-card{padding:15px 16px;border:1px solid #e8edf4;border-radius:14px;background:#fff;box-shadow:0 5px 18px #243b6008}
+.product-review-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.product-review-top time{font-size:10px;color:#8994a5}
+.product-review-card h4{font:700 14px Manrope;color:#26344d;margin:9px 0 5px}
+.product-review-card p{font-size:12px;line-height:1.6;color:#64738a;white-space:pre-wrap;margin:0 0 10px}
+.review-author{display:flex;align-items:center;gap:5px;color:#718198;font-size:10px}
+.review-author svg{width:13px;height:13px;color:#289c81}
+.review-empty-card{display:flex;flex-direction:column;align-items:center;text-align:center;gap:7px;padding:25px 15px;background:#f8faff;border:1px dashed #d9e3f1;border-radius:14px}
+.review-empty-icon{width:38px;height:38px;display:grid;place-items:center;background:#fff4d9;color:#e7a000;border-radius:12px;font-size:23px}
+.review-empty-card b{font-size:13px;color:#34425b}
+.review-empty-card small{font-size:11px;color:#7c899c}
+.order-review-list{display:grid;gap:8px;margin-top:12px;padding:12px;border-radius:12px;background:#f8faff;border:1px solid #e8edf6}
+.order-review-list> b{font-size:12px;color:#3d4d66}
+.order-review-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:8px;border-top:1px solid #e8edf6}
+.order-review-item>span{font-size:12px;font-weight:700;color:#45546b}
+.review-write-button{display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid #f0d99f;border-radius:9px;background:#fff9e9;color:#8a6100;font-size:10px;font-weight:800;white-space:nowrap}
+.review-write-button svg{width:13px;height:13px;fill:#f2b500;stroke:#d99a00}
+.review-already{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.review-already .review-stars{font-size:12px}
+.review-already small{font-size:10px;color:#778498}
+.product-review-form{margin-top:15px}
+.review-star-picker{border:1px solid #e6ebf3;border-radius:12px;padding:12px 14px;background:#fafcff}
+.review-star-picker legend{padding:0 5px;color:#53627a;font-size:12px;font-weight:800}
+.review-star-options{display:flex;flex-direction:row-reverse;justify-content:flex-end;gap:4px}
+.review-star-options input{position:absolute;opacity:0;width:1px;height:1px;padding:0;margin:-1px;border:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;pointer-events:none}
+.review-star-options label{display:block;font-size:33px;line-height:1;color:#d5dbe5;cursor:pointer;transition:transform .15s,color .15s}
+.review-star-options label:hover,.review-star-options label:hover~label,.review-star-options input:checked~label{color:#f2ae00}
+.review-star-options label:hover{transform:scale(1.12)}
+.review-star-options input:focus-visible+label{outline:2px solid var(--blue);outline-offset:3px;border-radius:4px}
+.review-form-head h2{margin-bottom:6px}
+.review-thanks{text-align:center;padding:12px 3px}
+.review-thanks-icon{width:52px;height:52px;display:grid;place-items:center;margin:0 auto 15px;border-radius:18px;background:#e8f8f1;color:#19865c;font-size:28px;font-weight:900}
+.review-thanks h2{margin-bottom:7px}
+.review-stars.big{font-size:24px;margin:8px 0 15px}
+.review-thanks>p:not(.eyebrow){font-size:13px;line-height:1.6;color:#64738a}
+@media(max-width:620px){
+ .product-review-list{grid-template-columns:1fr}
+ .product-reviews-head{align-items:flex-start}
+ .review-overview{min-width:94px;padding:9px 10px}
+ .order-review-item{align-items:flex-start;flex-direction:column}
+ .review-already{align-items:flex-start}
+ .chat-upload-hint{text-align:left}
+}

@@ -28,7 +28,7 @@ const statusLabel = (order, status = order?.status) => {
   return status || "ontvangen";
 };
 const fulfillmentLabel = order => isPickupOrder(order) ? "Ophalen" : "Verzenden";
-const state = { user: null, admin: false, products: [], categories: [], optionSets: {}, categoryFilter: "all", cart: [], tab: "products", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
+const state = { user: null, admin: false, products: [], categories: [], optionSets: {}, reviews: {}, categoryFilter: "all", cart: [], tab: "products", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 const DEFAULT_CONTACT = { title: "Neem contact met ons op", intro: "Heb je een vraag over een product of bestelling? Neem gerust contact met ons op.", name: "", address: "", email: "", phone: "", hours: "", extra: "" };
 let contactSettings = { ...DEFAULT_CONTACT };
@@ -204,6 +204,36 @@ const optText = item => {
 };
 const deltaText = n => Number(n) > 0 ? `+ ${money(n)}` : Number(n) < 0 ? `− ${money(Math.abs(n))}` : "Geen meerprijs";
 const productImages = p => (Array.isArray(p?.images) && p.images.length ? p.images : [p?.image]).filter(Boolean).slice(0, 3);
+const eligibleProductsForOrder = order => Object.fromEntries((order?.items || []).filter(item => item?.id).map(item => [String(item.id), true]));
+function reviewsForProduct(productId) {
+  return Object.entries(state.reviews || {}).map(([orderId, productMap]) => productMap?.[productId] ? ({ ...productMap[productId], orderId }) : null).filter(Boolean).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+function reviewStats(productId) {
+  const reviews = reviewsForProduct(productId), average = reviews.length ? reviews.reduce((sum, review) => sum + Number(review.stars || 0), 0) / reviews.length : 0;
+  return { reviews, average, count: reviews.length };
+}
+function starText(value) { const n = Math.max(0, Math.min(5, Math.round(Number(value) || 0))); return "★".repeat(n) + "☆".repeat(5 - n); }
+function productRatingSummary(productId) {
+  const { average, count } = reviewStats(productId);
+  return count ? `<div class="product-rating-summary" aria-label="Gemiddeld ${average.toFixed(1).replace('.', ',')} uit 5 sterren"><span>${starText(average)}</span><b>${average.toFixed(1).replace('.', ',')}</b><small>${count} ${count === 1 ? "review" : "reviews"}</small></div>` : `<div class="product-rating-summary no-reviews"><span>☆☆☆☆☆</span><small>Nog geen reviews</small></div>`;
+}
+function productReviewsMarkup(productId) {
+  const { reviews, average, count } = reviewStats(productId);
+  return `<div class="product-reviews-head"><div><p class="eyebrow">ERVARINGEN VAN KLANTEN</p><h3>Reviews</h3><p class="muted">Echte ervaringen van klanten die dit product hebben besteld.</p></div>${count ? `<div class="review-overview"><strong>${average.toFixed(1).replace('.', ',')}</strong><span>${starText(average)}</span><small>${count} ${count === 1 ? "beoordeling" : "beoordelingen"}</small></div>` : `<div class="review-overview empty"><strong>Nieuw</strong><span>☆☆☆☆☆</span><small>Wees de eerste</small></div>`}</div>${count ? `<div class="product-review-list">${reviews.slice(0, 8).map(review => `<article class="product-review-card"><div class="product-review-top"><span class="review-stars">${starText(review.stars)}</span><time>${when(review.createdAt)}</time></div><h4>${safe(review.title || "Ervaring")}</h4><p>${safe(review.description || "")}</p><small class="review-author"><i data-lucide="user-round"></i> ${safe(review.username || "Klant")}</small></article>`).join("")}</div>${count > 8 ? `<p class="hint">De nieuwste 8 van ${count} reviews worden getoond.</p>` : ""}` : `<div class="review-empty-card"><span class="review-empty-icon">✦</span><b>Dit product wacht op zijn eerste review</b><small>Heb je dit product ontvangen? Deel straks jouw ervaring.</small></div>`}`;
+}
+function reviewActionMarkup(order, item) {
+  if (order?.status !== "bezorgd" || !order.deliveredAt || !item?.id || (state.user && order.userId !== state.user.uid)) return "";
+  const existing = state.reviews?.[order.id]?.[item.id];
+  return existing ? `<div class="review-already"><span class="review-stars">${starText(existing.stars)}</span><small>Je review is geplaatst: <b>${safe(existing.title || "Bedankt!")}</b></small></div>` : `<button type="button" class="review-write-button" data-review-write="${safe(order.id)}" data-review-product="${safe(item.id)}"><i data-lucide="star"></i> Schrijf een review</button>`;
+}
+function refreshReviewActions() {
+  document.querySelectorAll("[data-review-slot]").forEach(slot => {
+    const orderId = slot.dataset.orderId, productId = slot.dataset.productId;
+    slot.innerHTML = reviewActionMarkup({ id: orderId, userId: slot.dataset.orderUser, status: slot.dataset.orderStatus, deliveredAt: Number(slot.dataset.deliveredAt || 0) }, { id: productId });
+  });
+  document.querySelectorAll("[data-review-write]").forEach(button => button.onclick = () => openProductReviewForm(button.dataset.reviewWrite, button.dataset.reviewProduct));
+  if (window.lucide) window.lucide.createIcons();
+}
 const publicTrackPayload = o => ({
   shortId: short(o.id), status: o.status || "ontvangen", fulfillmentMethod: isPickupOrder(o) ? "pickup" : "delivery", createdAt: o.createdAt || Date.now(),
   items: (o.items || []).map((i, n) => ({ title: i.title, qty: i.qty, selections: selectionsOf(i), ...(i.dimensions ? { dimensions: i.dimensions } : {}), ...(i.customDescription ? { customDescription: i.customDescription } : {}), stages: unitStages(i), plan: Object.fromEntries(Object.entries(o.plan || {}).filter(([k]) => k.startsWith(`${n}_`))) })),
@@ -378,6 +408,13 @@ onValue(ref(db, "categories"), snap => {
   if (state.loaded) renderProducts();
 }, error => console.error("Firebase categories load failed", error));
 onValue(ref(db, "settings/contact"), snap => { contactSettings = { ...DEFAULT_CONTACT, ...(snap.val() || {}) }; updatePrivacyContactDetails(); const page = $("#contactPageContent"); if (page) page.innerHTML = contactPageMarkup(); }, error => console.error("Firebase contact settings load failed", error));
+onValue(ref(db, "reviews"), snap => {
+  state.reviews = snap.val() || {};
+  if (state.loaded) renderProducts();
+  const productReviewBox = $("#productReviews");
+  if (productReviewBox?.dataset.productId) productReviewBox.innerHTML = productReviewsMarkup(productReviewBox.dataset.productId);
+  refreshReviewActions();
+}, error => console.error("Firebase reviews load failed", error));
 function renderProducts() {
   const productsEl = $("#products");
   if (!state.loaded) { productsEl.setAttribute("aria-busy", "true"); productsEl.innerHTML = productSkeletonMarkup(pendingProductSnapshot.length || 6); return; }
@@ -391,7 +428,7 @@ function renderProducts() {
     return `<article class="product-card ${out ? "sold-out" : ""}">
       <button class="product-open" data-open="${safe(p.id)}" aria-label="Bekijk ${safe(p.title)}">
         <div class="product-image">${image ? `<div class="product-image-loader" role="status" aria-label="Product wordt geladen"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div>${a1MiniPrinterMarkup()}<span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div></div><img class="product-image-source" loading="lazy" decoding="async" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
-        <div class="product-info"><h3>${safe(p.title)}</h3>${categoryLabel(p.categoryId) ? `<span class="product-category-chip">${safe(categoryLabel(p.categoryId))}</span>` : ""}<strong>${money(p.price)}</strong>${groups.length ? `<small class="product-options-hint">${groups.length} ${groups.length === 1 ? "keuze" : "keuzes"} mogelijk</small>` : ""}</div>
+        <div class="product-info"><h3>${safe(p.title)}</h3>${categoryLabel(p.categoryId) ? `<span class="product-category-chip">${safe(categoryLabel(p.categoryId))}</span>` : ""}${productRatingSummary(p.id)}<strong>${money(p.price)}</strong>${groups.length ? `<small class="product-options-hint">${groups.length} ${groups.length === 1 ? "keuze" : "keuzes"} mogelijk</small>` : ""}</div>
       </button>
       ${out ? `<button class="add-small" disabled>Uitverkocht</button>` : groups.length ? `<button class="add-small" data-open="${safe(p.id)}">Stel samen</button>` : `<button class="add-small" data-add="${safe(p.id)}">In winkelwagen</button>`}
     </article>`;
@@ -475,7 +512,8 @@ function showProduct(id) {
         ${groups.length && !out && step === groups.length - 1 && chosen.every(Boolean) ? `<p class="hint">Je hebt alle ${groups.length} keuzes gemaakt. De prijs hierboven is inclusief alle toeslagen en kortingen.</p>` : ""}
         ${out ? `<button class="primary full" disabled>Momenteel niet beschikbaar</button>` : ""}
       </div>
-    </div>`;
+    </div>
+    <section class="product-reviews" id="productReviews" data-product-id="${safe(p.id)}">${productReviewsMarkup(p.id)}</section>`;
     content.querySelectorAll("[data-image]").forEach(b => b.onclick = () => { activeImage = Number(b.dataset.image); render(); });
     content.querySelectorAll("[data-choice]").forEach(b => b.onclick = () => {
       const option = current.options[Number(b.dataset.choice)];
@@ -656,7 +694,7 @@ function checkoutForm() {
       const items = state.cart.map(c => { const product = state.products.find(x => x.id === c.id); const selected = selectionsOf(c); const delta = selected.reduce((sum, choice) => { const group = optionGroupsOf(product).find(g => g.label === choice.label), option = group?.options.find(o => o.name === choice.value); return sum + (Number(option?.priceDelta) || 0); }, 0); return { id: c.id, title: product.title, price: Math.max(0, Number(product.price) + delta), qty: c.qty, ...(selected.length ? { selections: selected } : {}) }; });
       const subtotal = items.reduce((sum, item) => sum + item.price * item.qty, 0), shipping = pickup ? 0 : SHIPPING, total = subtotal + shipping;
       const orderId = push(ref(db, "orders")).key, now = Date.now(), publicToken = randomToken();
-      const order = { userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, items, subtotal, shipping, total, address, fulfillmentMethod: pickup ? "pickup" : "delivery", paymentMethod: "tikkie", paymentStatus: "awaiting_tikkie", status: STATUSES[0], createdAt: now, publicToken, ...(String(data.get("note") || "").trim() ? { note: String(data.get("note") || "").trim().slice(0, 500) } : {}) };
+      const order = { userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, items, reviewEligibleProducts: eligibleProductsForOrder({ items }), subtotal, shipping, total, address, fulfillmentMethod: pickup ? "pickup" : "delivery", paymentMethod: "tikkie", paymentStatus: "awaiting_tikkie", status: STATUSES[0], createdAt: now, publicToken, ...(String(data.get("note") || "").trim() ? { note: String(data.get("note") || "").trim().slice(0, 500) } : {}) };
       await update(ref(db), { [`orders/${orderId}`]: order, [`publicTrack/${publicToken}`]: publicTrackPayload({ ...order, id: orderId }) });
       state.cart = []; state.orderNote = ""; saveCart();
       openDialog(`<p class="eyebrow">BESTELLING AANGEMAAKT</p><h2>Wachten op betaalverzoek</h2><p>Je bestelling <b>#${short(orderId)}</b> is aangemaakt. Zodra de beheerder de betaallink toevoegt, verschijnt die hier bij <b>Mijn bestellingen</b>.</p><p class="muted">Totaal: <b>${money(total)}</b>. Je hoeft nu nog niets te betalen.</p><button class="primary full" id="toMyOrders">Bekijk mijn bestellingen</button>`);
@@ -671,7 +709,7 @@ async function placeChatOrder() {
   const items = state.cart.map(c => { const p = state.products.find(x => x.id === c.id); const selected = selectionsOf(c); const delta = selected.reduce((sum, s) => { const group = optionGroupsOf(p).find(g => g.label === s.label), option = group?.options.find(o => o.name === s.value); return sum + (Number(option?.priceDelta) || 0); }, 0); return { id: c.id, title: p.title, price: Math.max(0, Number(p.price) + delta), qty: c.qty, ...(selected.length ? { selections: selected } : {}) }; });
   const subtotal = items.reduce((n, i) => n + i.price * i.qty, 0), total = subtotal, note = (state.orderNote || "").trim().slice(0, 500);
   const orderKey = push(ref(db, "orders")).key, chatKey = push(ref(db, "chats")).key, msgKey = push(ref(db, `chats/${chatKey}/messages`)).key, now = Date.now(), publicToken = randomToken();
-  const newOrder = { userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, items, subtotal, shipping: 0, total, fulfillmentMethod: "pickup", address: null, paymentMethod: "chat", paymentStatus: "not_required", status: STATUSES[0], createdAt: now, chatId: chatKey, publicToken, ...(note ? { note } : {}) };
+  const newOrder = { userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, items, reviewEligibleProducts: eligibleProductsForOrder({ items }), subtotal, shipping: 0, total, fulfillmentMethod: "pickup", address: null, paymentMethod: "chat", paymentStatus: "not_required", status: STATUSES[0], createdAt: now, chatId: chatKey, publicToken, ...(note ? { note } : {}) };
   try {
     await update(ref(db), { ["orders/" + orderKey]: newOrder, ["publicTrack/" + publicToken]: publicTrackPayload({ ...newOrder, id: orderKey }), ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, createdAt: now, lastMessage: "Bestelling · ophalen", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is aangemaakt met afhalen als afhandeling. Producttotaal: ${money(total)}. Er zijn geen verzendkosten toegevoegd. We bespreken de verdere afspraken hier in de chat.`, createdAt: now } } } });
     state.cart = []; state.orderNote = ""; saveCart(); toast("Chatbestelling aangemaakt"); openChat(chatKey);
@@ -687,7 +725,10 @@ function showMyOrders() {
       o.userId === state.user.uid ||
       (email && String(o.email || "").trim().toLowerCase() === email)
     ).sort((a, b) => b.createdAt - a.createdAt);
-    $("#ordersBox").innerHTML = orders.length ? orders.map(o => `<div class="order-row"><div><b>Bestelling #${short(o.id)}</b><small>${when(o.createdAt)} · ${money(o.total)} · ${fulfillmentLabel(o)} · betaling: ${safe(o.paymentStatus === "awaiting_tikkie" ? "Wachten op betaalverzoek" : o.paymentStatus === "tikkie_link_added" ? "Betaallink beschikbaar" : o.paymentStatus || "niet geregistreerd")}</small>${o.address ? `<p class="order-note"><b>Verzendadres:</b> ${safe([o.address.firstName, o.address.lastName].filter(Boolean).join(" "))}, ${safe(o.address.street || "")} ${safe(o.address.houseNumber || "")}, ${safe(o.address.postcode || "")} ${safe(o.address.city || "")}</p>` : ""}<span class="status-pill">${safe(statusLabel(o))}</span>${o.paymentMethod === "tikkie" ? (o.tikkieLink ? `<p class="order-note"><b>Betaal via betaalverzoek:</b> <a href="${safe(o.tikkieLink)}" target="_blank" rel="noopener noreferrer">Open jouw betaalverzoek</a></p>` : `<p class="order-note">De betaallink wordt nog door de webshopbeheerder toegevoegd.</p>`) : ""}${o.deliveredAt ? `<p class="order-note">${isPickupOrder(o) ? "Opgehaald" : "Afgeleverd"} op ${when(o.deliveredAt)}. ${o.returnRequestAt ? `Retour aangevraagd op ${when(o.returnRequestAt)}. Status: ${o.returnStatus === "handled" ? "afgehandeld" : "in behandeling"}.` : Date.now() < returnDeadline(o) ? `Retour aanvragen kan tot ${when(returnDeadline(o))}.` : "De retourtermijn van 14 dagen is verstreken."}</p>` : ""}</div><div class="order-actions"><button class="secondary" data-track="${safe(o.id)}">Volgen</button><button class="secondary" data-share="${safe(o.id)}"><i data-lucide="share-2"></i> Deellink</button>${returnWindowOpen(o) ? `<button class="primary" data-return="${safe(o.id)}">Retour aanvragen</button>` : ""}</div></div>`).join("") : "<p class='muted'>Je hebt nog geen bestellingen.</p>";
+    $("#ordersBox").innerHTML = orders.length ? orders.map(o => `<div class="order-row"><div><b>Bestelling #${short(o.id)}</b><small>${when(o.createdAt)} · ${money(o.total)} · ${fulfillmentLabel(o)} · betaling: ${safe(o.paymentStatus === "awaiting_tikkie" ? "Wachten op betaalverzoek" : o.paymentStatus === "tikkie_link_added" ? "Betaallink beschikbaar" : o.paymentStatus || "niet geregistreerd")}</small>${o.address ? `<p class="order-note"><b>Verzendadres:</b> ${safe([o.address.firstName, o.address.lastName].filter(Boolean).join(" "))}, ${safe(o.address.street || "")} ${safe(o.address.houseNumber || "")}, ${safe(o.address.postcode || "")} ${safe(o.address.city || "")}</p>` : ""}<span class="status-pill">${safe(statusLabel(o))}</span>${o.paymentMethod === "tikkie" ? (o.tikkieLink ? `<p class="order-note"><b>Betaal via betaalverzoek:</b> <a href="${safe(o.tikkieLink)}" target="_blank" rel="noopener noreferrer">Open jouw betaalverzoek</a></p>` : `<p class="order-note">De betaallink wordt nog door de webshopbeheerder toegevoegd.</p>`) : ""}${o.deliveredAt ? `<p class="order-note">${isPickupOrder(o) ? "Opgehaald" : "Afgeleverd"} op ${when(o.deliveredAt)}. ${o.returnRequestAt ? `Retour aangevraagd op ${when(o.returnRequestAt)}. Status: ${o.returnStatus === "handled" ? "afgehandeld" : "in behandeling"}.` : Date.now() < returnDeadline(o) ? `Retour aanvragen kan tot ${when(returnDeadline(o))}.` : "De retourtermijn van 14 dagen is verstreken."}</p>` : ""}${o.status === "bezorgd" && o.deliveredAt ? `<div class="order-review-list"><b>Deel je ervaring</b>${(o.items || []).map(item => `<div class="order-review-item"><span>${safe(item.title)}</span><div class="review-action-slot" data-review-slot data-order-id="${safe(o.id)}" data-order-user="${safe(o.userId || "")}" data-product-id="${safe(item.id || "")}" data-order-status="${safe(o.status)}" data-delivered-at="${Number(o.deliveredAt) || 0}">${reviewActionMarkup(o, item)}</div></div>`).join("")}</div>` : ""}</div><div class="order-actions"><button class="secondary" data-track="${safe(o.id)}">Volgen</button><button class="secondary" data-share="${safe(o.id)}"><i data-lucide="share-2"></i> Deellink</button>${returnWindowOpen(o) ? `<button class="primary" data-return="${safe(o.id)}">Retour aanvragen</button>` : ""}</div></div>`).join("") : "<p class='muted'>Je hebt nog geen bestellingen.</p>";
+    // Legacy bestellingen die al als bezorgd staan krijgen een eenmalige productlijst voor reviewcontrole.
+    orders.filter(o => o.status === "bezorgd" && !o.reviewEligibleProducts && o.userId === state.user.uid).forEach(o => update(ref(db, `orders/${o.id}/reviewEligibleProducts`), eligibleProductsForOrder(o)).catch(err => console.warn("Review-geschiktheid kon niet worden bijgewerkt", err)));
+    refreshReviewActions();
     content.querySelectorAll("[data-track]").forEach(b => b.onclick = () => showOrderTracking(b.dataset.track));
     content.querySelectorAll("[data-share]").forEach(b => b.onclick = () => createShareTrack(b.dataset.share));
     content.querySelectorAll("[data-return]").forEach(b => b.onclick = async () => {
@@ -704,6 +745,40 @@ function showMyOrders() {
       } catch (err) { console.error(err); toast("Retouraanvraag versturen is niet gelukt."); }
     });
   });
+}
+async function openProductReviewForm(orderId, productId) {
+  if (!state.user) return authForm("login");
+  try {
+    const [orderSnap, reviewSnap] = await Promise.all([get(ref(db, `orders/${orderId}`)), get(ref(db, `reviews/${orderId}/${productId}`))]);
+    const order = orderSnap.val();
+    if (!order || order.userId !== state.user.uid || order.status !== "bezorgd" || !order.deliveredAt || !(order.items || []).some(item => String(item.id) === String(productId))) return toast("Je kunt alleen een review plaatsen voor een product uit een bezorgde bestelling.");
+    const item = (order.items || []).find(entry => String(entry.id) === String(productId));
+    if (reviewSnap.exists()) {
+      const existing = reviewSnap.val();
+      openDialog(`<div class="review-thanks"><div class="review-thanks-icon">✓</div><p class="eyebrow">BEDANKT VOOR JE REVIEW</p><h2>${safe(existing.title || "Jouw beoordeling")}</h2><div class="review-stars big">${starText(existing.stars)}</div><p>${safe(existing.description || "")}</p><small class="muted">Je hebt dit product al beoordeeld.</small><button class="primary full" id="reviewBack">Terug naar mijn bestellingen</button></div>`);
+      $("#reviewBack").onclick = showMyOrders;
+      return;
+    }
+    openDialog(`<div class="review-form-head"><p class="eyebrow">JOUW ERVARING TELT</p><h2>Beoordeel ${safe(item.title)}</h2><p class="muted">Je bestelling is ${isPickupOrder(order) ? "opgehaald" : "bezorgd"}. Deel je eerlijke ervaring met andere klanten.</p></div><form id="productReviewForm" class="stack product-review-form"><fieldset class="review-star-picker"><legend>Hoeveel sterren geef je?</legend><div class="review-star-options">${[5,4,3,2,1].map(n => `<input type="radio" id="reviewStars${n}" name="stars" value="${n}" required><label for="reviewStars${n}" title="${n} ${n === 1 ? "ster" : "sterren"}" aria-label="${n} ${n === 1 ? "ster" : "sterren"}">★</label>`).join("")}</div></fieldset><label>Titel van je review<input name="title" required maxlength="80" placeholder="Bijv. Precies wat ik zocht!"></label><label>Beschrijving<textarea name="description" required rows="5" maxlength="900" placeholder="Wat vind je van de kwaliteit, afwerking en het product?"></textarea><small class="hint">Maximaal 900 tekens. Houd je review vriendelijk en eerlijk.</small></label><button class="primary full" type="submit">Review plaatsen</button></form>`);
+    $("#productReviewForm").onsubmit = async e => {
+      e.preventDefault(); const form = e.currentTarget, data = new FormData(form), stars = Number(data.get("stars")), title = String(data.get("title") || "").trim(), description = String(data.get("description") || "").trim(), submit = form.querySelector("button[type=submit]");
+      if (!Number.isInteger(stars) || stars < 1 || stars > 5 || !title || !description) return toast("Vul sterren, een titel en een beschrijving in.");
+      submit.disabled = true; submit.textContent = "Review plaatsen…";
+      try {
+        // Controleer de bestelling nogmaals vlak voor het opslaan.
+        const latest = (await get(ref(db, `orders/${orderId}`))).val();
+        if (!latest || latest.userId !== state.user.uid || latest.status !== "bezorgd" || !latest.deliveredAt || !(latest.items || []).some(entry => String(entry.id) === String(productId))) throw new Error("Deze bestelling voldoet niet meer aan de voorwaarden voor een review.");
+        if (latest.reviewEligibleProducts?.[productId] !== true) {
+          await update(ref(db, `orders/${orderId}/reviewEligibleProducts`), { ...eligibleProductsForOrder(latest) });
+        }
+        const existing = await get(ref(db, `reviews/${orderId}/${productId}`));
+        if (existing.exists()) throw new Error("Je hebt dit product voor deze bestelling al beoordeeld.");
+        const review = { userId: state.user.uid, username: state.user.username || "Klant", orderId, productId, productTitle: item.title, stars, title: title.slice(0, 80), description: description.slice(0, 900), createdAt: Date.now() };
+        await set(ref(db, `reviews/${orderId}/${productId}`), review);
+        toast("Bedankt! Je review is geplaatst."); showMyOrders();
+      } catch (err) { console.error("Review plaatsen mislukt", err); toast(err.message || "Review plaatsen mislukt. Probeer het opnieuw."); submit.disabled = false; submit.textContent = "Review plaatsen"; }
+    };
+  } catch (err) { console.error(err); toast(err.message || "Reviewformulier openen mislukt."); }
 }
 async function createShareTrack(orderId) {
   try {
@@ -829,6 +904,35 @@ $("#myOrdersBtn").onclick = () => state.user ? showMyOrders() : authForm();
 $("#myChatsBtn").onclick = showMyChats;
 
 /* ---------- chat ---------- */
+async function shrinkChatImage(file) {
+  if (!file || !String(file.type || "").startsWith("image/")) throw new Error("Kies een geldig afbeeldingsbestand.");
+  if (file.size > 12 * 1024 * 1024) throw new Error("Kies een foto kleiner dan 12 MB.");
+  const bitmap = await createImageBitmap(file);
+  try {
+    // Foto's worden in de browser verkleind en als JPEG opgeslagen; canvas verwijdert ook EXIF-metadata.
+    for (const maxSide of [760, 640, 560, 480, 400]) {
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+      canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+      const context = canvas.getContext("2d", { alpha: false });
+      context.fillStyle = "#fff"; context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.76, 0.66, 0.56, 0.46, 0.38]) {
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        if (dataUrl.length <= 88000) return dataUrl;
+      }
+    }
+  } finally { bitmap.close?.(); }
+  throw new Error("Deze foto kan niet klein genoeg worden gemaakt. Kies een andere of kleinere foto.");
+}
+function chatMessageMarkup(message) {
+  const imageData = String(message.imageData || "");
+  const image = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(imageData) && imageData.length <= 88000
+    ? `<a class="chat-image-link" href="${imageData}" target="_blank" rel="noopener noreferrer" aria-label="Foto openen"><img class="chat-image" src="${imageData}" alt="${safe(message.imageName || "Foto in chat")}" loading="lazy"></a>` : "";
+  const text = message.text ? `<p>${formatChatText(message.text)}</p>` : "";
+  return `${image}${text}<small>${message.sender === "admin" ? "3D Printed Shop" : message.sender === "system" ? "Systeem" : "Jij"} · ${when(message.createdAt)}${image ? " · Foto" : ""}</small>`;
+}
 function formatChatText(value) {
   // Werkt op de ruwe tekst: eerst links zoeken, daarna alles apart escapen (geen kapotte &amp;-links).
   const re = /(?<![@\w.\/-])(?:https?:\/\/[^\s<>"]+|www\.[^\s<>"]+|(?:[a-z0-9-]+\.)+(?:com|nl|me|be|eu|org|net|io|app)(?:\/[^\s<>"]*)?)/gi;
@@ -856,21 +960,44 @@ function openChat(id, asAdmin = false) {
     const c = s.val(); if (!c) return toast("Chat niet gevonden");
     if (!asAdmin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
     const isQuoteChat = c.kind === "quote";
-    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>${isQuoteChat ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div>${c.orderId ? `<button class="secondary" id="chatTrack">Bestelling volgen</button>` : `<span class="status-pill">Offertegesprek</span>`}</div><div class="chat-notice">${isQuoteChat ? (c.orderId ? `Deze offerte is omgezet naar bestelling #${short(c.orderId)}. Bespreek hier eventuele vragen over je bestelling.` : "Bespreek hier de mogelijkheden en details van je maatwerkproduct.") : "Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen."}</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
+    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>${isQuoteChat ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div>${c.orderId ? `<button class="secondary" id="chatTrack">Bestelling volgen</button>` : `<span class="status-pill">Offertegesprek</span>`}</div><div class="chat-notice">${isQuoteChat ? (c.orderId ? `Deze offerte is omgezet naar bestelling #${short(c.orderId)}. Bespreek hier eventuele vragen over je bestelling.` : "Bespreek hier de mogelijkheden en details van je maatwerkproduct.") : "Deel hier je vraag, een link of een foto. Foto's worden automatisch sterk verkleind voordat ze worden opgeslagen."}</div><div id="messages" class="messages" aria-live="polite"></div><div id="chatImagePending" class="chat-image-pending" hidden></div><form id="sendMessage" class="send-message"><label for="chatImageInput" class="chat-attach-button" title="Foto toevoegen" aria-label="Foto toevoegen"><i data-lucide="paperclip"></i></label><input id="chatImageInput" type="file" accept="image/*" hidden><input id="messageText" placeholder="Typ je bericht…" maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form><small class="chat-upload-hint">Maximaal 12 MB origineel · automatisch verkleind tot ongeveer 65 KB.</small></div>`);
+    if (window.lucide) window.lucide.createIcons();
     if (c.orderId) $("#chatTrack").onclick = () => showOrderTracking(c.orderId, asAdmin);
-    $("#sendMessage").onsubmit = async e => {
-      e.preventDefault(); const input = $("#messageText"), text = input.value.trim(); if (!text) return;
-      const now = Date.now();
+    const chatForm = $("#sendMessage"), messageInput = $("#messageText"), imageInput = $("#chatImageInput"), pendingImage = $("#chatImagePending");
+    let pendingObjectUrl = "";
+    imageInput.onchange = () => {
+      const file = imageInput.files?.[0];
+      if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl);
+      pendingObjectUrl = "";
+      if (!file) { pendingImage.hidden = true; pendingImage.innerHTML = ""; return; }
+      if (!String(file.type || "").startsWith("image/")) { imageInput.value = ""; pendingImage.hidden = true; return toast("Kies een afbeeldingsbestand."); }
+      if (file.size > 12 * 1024 * 1024) { imageInput.value = ""; pendingImage.hidden = true; return toast("Kies een foto kleiner dan 12 MB."); }
+      pendingObjectUrl = URL.createObjectURL(file);
+      pendingImage.hidden = false;
+      pendingImage.innerHTML = `<img src="${pendingObjectUrl}" alt="Voorbeeld van toegevoegde foto"><div><b>${safe(file.name || "Foto")}</b><small>Wordt sterk verkleind bij verzenden</small></div><button type="button" class="remove-item" id="removeChatImage" aria-label="Foto verwijderen">×</button>`;
+      $("#removeChatImage").onclick = () => { if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl); pendingObjectUrl = ""; imageInput.value = ""; pendingImage.hidden = true; pendingImage.innerHTML = ""; };
+    };
+    chatForm.onsubmit = async e => {
+      e.preventDefault(); const text = messageInput.value.trim(), file = imageInput.files?.[0]; if (!text && !file) return;
+      const submit = chatForm.querySelector("button.primary"), now = Date.now(); submit.disabled = true;
       try {
-        await update(ref(db), { [`chats/${id}/messages/${push(ref(db, `chats/${id}/messages`)).key}`]: { sender: asAdmin ? "admin" : "user", uid: asAdmin ? "admin" : state.user.uid, text, createdAt: now }, [`chats/${id}/lastMessage`]: text, [`chats/${id}/lastMessageAt`]: now });
-        input.value = ""; input.focus();
-      } catch (err) { console.error(err); toast("Bericht verzenden mislukt."); }
+        let imageData = "";
+        if (file) { submit.textContent = "Foto verkleinen…"; imageData = await shrinkChatImage(file); }
+        const messageId = push(ref(db, `chats/${id}/messages`)).key;
+        const message = { sender: asAdmin ? "admin" : "user", uid: asAdmin ? "admin" : state.user.uid, ...(text ? { text } : {}), ...(imageData ? { imageData, imageName: String(file.name || "foto").slice(0, 100), imageType: "image/jpeg" } : {}), createdAt: now };
+        const lastMessage = text || (imageData ? "📷 Foto verstuurd" : "Nieuw bericht");
+        await update(ref(db), { [`chats/${id}/messages/${messageId}`]: message, [`chats/${id}/lastMessage`]: lastMessage, [`chats/${id}/lastMessageAt`]: now });
+        messageInput.value = ""; imageInput.value = "";
+        if (pendingObjectUrl) URL.revokeObjectURL(pendingObjectUrl); pendingObjectUrl = ""; pendingImage.hidden = true; pendingImage.innerHTML = "";
+        submit.textContent = "Verstuur"; messageInput.focus();
+      } catch (err) { console.error(err); toast(err.message || "Bericht of foto verzenden mislukt."); }
+      finally { submit.disabled = false; submit.textContent = "Verstuur"; }
     };
     listen(ref(db, `chats/${id}/messages`), snap => {
       const box = $("#messages"); if (!box) return;
       const msgs = toList(snap).sort((a, b) => a.createdAt - b.createdAt);
       const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 70 || !box.children.length;
-      box.innerHTML = msgs.map(m => `<div class="message ${m.sender === "admin" ? "theirs" : m.sender === "system" ? "system" : "mine"}"><p>${formatChatText(m.text)}</p><small>${m.sender === "admin" ? "3D Printed Shop" : m.sender === "system" ? "Systeem" : "Jij"} · ${when(m.createdAt)}</small></div>`).join("");
+      box.innerHTML = msgs.map(m => `<div class="message ${m.sender === "admin" ? "theirs" : m.sender === "system" ? "system" : "mine"}">${chatMessageMarkup(m)}</div>`).join("");
       if (stick) box.scrollTop = box.scrollHeight;
     });
   }).catch(() => toast("Chat laden mislukt."));
@@ -1135,7 +1262,7 @@ async function showQuoteConversion(quoteId) {
     btn.disabled = true; btn.textContent = "Bestelling aanmaken…";
     try {
       const orderId = push(ref(db, "orders")).key, publicToken = randomToken(), now = Date.now(), shipping = method === "delivery" ? SHIPPING : 0, total = price + shipping;
-      const order = { userId: q.userId, username: q.username || "Klant", email: q.email || "", items: [{ id: `maatwerk-${quoteId}`, title: q.title, price, qty: 1, selections: [{ label: "Kleur", value: q.colorName || "Niet opgegeven" }], dimensions: q.dimensions, customDescription: q.description, quoteId }], subtotal: price, shipping, total, address, fulfillmentMethod: method, paymentMethod: "tikkie", paymentStatus: "awaiting_tikkie", status: STATUSES[0], createdAt: now, publicToken, chatId: q.chatId, customQuoteId: quoteId, note: `Maatwerkofferte: ${q.title}. ${q.description}` };
+      const order = { userId: q.userId, username: q.username || "Klant", email: q.email || "", items: [{ id: `maatwerk-${quoteId}`, title: q.title, price, qty: 1, selections: [{ label: "Kleur", value: q.colorName || "Niet opgegeven" }], dimensions: q.dimensions, customDescription: q.description, quoteId }], reviewEligibleProducts: { [`maatwerk-${quoteId}`]: true }, subtotal: price, shipping, total, address, fulfillmentMethod: method, paymentMethod: "tikkie", paymentStatus: "awaiting_tikkie", status: STATUSES[0], createdAt: now, publicToken, chatId: q.chatId, customQuoteId: quoteId, note: `Maatwerkofferte: ${q.title}. ${q.description}` };
       const msgId = push(ref(db, `chats/${q.chatId}/messages`)).key, systemText = `Je offerte is omgezet naar bestelling #${short(orderId)}. Productprijs: ${money(price)}. Verzendkosten: ${money(shipping)}. Totaal: ${money(total)}. De track & trace is beschikbaar via Mijn bestellingen.`;
       const updates = { [`orders/${orderId}`]: order, [`publicTrack/${publicToken}`]: publicTrackPayload({ ...order, id: orderId }), [`quotes/${quoteId}/status`]: "omgezet naar bestelling", [`quotes/${quoteId}/orderId`]: orderId, [`quotes/${quoteId}/convertedAt`]: now, [`chats/${q.chatId}/orderId`]: orderId, [`chats/${q.chatId}/lastMessage`]: systemText, [`chats/${q.chatId}/lastMessageAt`]: now, [`chats/${q.chatId}/messages/${msgId}`]: { sender: "system", text: systemText, createdAt: now } };
       await update(ref(db), updates); closeDialog(); toast("Offerte is omgezet naar een normale bestelling met track & trace."); state.tab = "quotes"; adminTab();
@@ -1168,7 +1295,7 @@ function adminTab() {
   else if (state.tab === "orders" || state.tab === "myorders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
     target.innerHTML = `<h3>${state.tab === "myorders" ? "Mijn bestellingen · overzicht en betaallinks" : "Bestellingen en status"}</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.username || "Klant")}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}<p class="order-note"><b>Afhandeling:</b> ${fulfillmentLabel(o)} · <b>Betaling:</b> ${safe(o.paymentStatus || "Niet geregistreerd")}</p>${o.paymentMethod === "tikkie" ? `<div class="stage-panel"><b>Betaallink voor klant</b><input type="url" data-tikkie-input="${safe(o.id)}" value="${safe(o.tikkieLink || "")}" placeholder="https://tikkie.me/... of https://betaalverzoek.rabobank.nl/..."><div class="admin-actions"><button class="secondary" data-tikkie-save="${safe(o.id)}">Betaallink opslaan</button><button class="secondary" data-tikkie-paid="${safe(o.id)}">Markeer als betaald</button></div></div>` : ""}${o.address ? `<p class="order-note"><b>Verzendadres:</b> ${safe([o.address.firstName, o.address.lastName].filter(Boolean).join(" "))}, ${safe(o.address.street || "")} ${safe(o.address.houseNumber || "")} ${safe(o.address.addition || "")}, ${safe(o.address.postcode || "")} ${safe(o.address.city || "")}, ${safe(o.address.country || "Nederland")}</p>` : ""}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.returnRequestAt ? `<div class="stage-panel"><b>Retouraanvraag ontvangen</b><p class="order-note">Aangevraagd op ${when(o.returnRequestAt)} · ${o.returnStatus === "handled" ? "Afgehandeld" : "Wacht op afhandeling"}</p>${o.returnStatus !== "handled" ? `<button class="secondary" data-return-handled="${safe(o.id)}">Markeer retouraanvraag als afgehandeld</button>` : ""}</div>` : ""}${o.deliveredAt ? `<p class="order-note">${isPickupOrder(o) ? "Opgehaald" : "Afgeleverd"} op ${when(o.deliveredAt)} · retourtermijn eindigt ${when(returnDeadline(o))}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option value="${safe(s)}" ${s === o.status ? "selected" : ""}>${safe(statusLabel(o, s))}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
-    target.querySelectorAll("[data-status]").forEach(s => s.onchange = async () => { try { const id = s.dataset.status, order = os.find(o => o.id === id); const changes = { status: s.value }; if (s.value === "bezorgd" && !order?.deliveredAt) changes.deliveredAt = Date.now(); if (s.value !== "bezorgd" && order?.status === "bezorgd") changes.deliveredAt = null; await update(ref(db, "orders/" + id), changes); await syncPublicTrack(id); toast("Bestelstatus bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
+    target.querySelectorAll("[data-status]").forEach(s => s.onchange = async () => { try { const id = s.dataset.status, order = os.find(o => o.id === id); const changes = { status: s.value }; if (s.value === "bezorgd" && !order?.deliveredAt) changes.deliveredAt = Date.now(); if (s.value === "bezorgd" && order) changes.reviewEligibleProducts = { ...(order.reviewEligibleProducts || {}), ...eligibleProductsForOrder(order) }; if (s.value !== "bezorgd" && order?.status === "bezorgd") changes.deliveredAt = null; await update(ref(db, "orders/" + id), changes); await syncPublicTrack(id); toast("Bestelstatus bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
     target.querySelectorAll("[data-return-handled]").forEach(b => b.onclick = async () => { try { await update(ref(db, `orders/${b.dataset.returnHandled}`), { returnStatus: "handled", returnHandledAt: Date.now() }); toast("Retouraanvraag als afgehandeld gemarkeerd."); } catch { toast("Bijwerken mislukt."); } });
     target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = async () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; try { await update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }); await syncPublicTrack(o.id); toast("Fase bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
     target.querySelectorAll("[data-tikkie-save]").forEach(b => b.onclick = async () => { const id = b.dataset.tikkieSave, input = target.querySelector(`[data-tikkie-input="${id}"]`), link = (input?.value || "").trim(); let url; try { url = new URL(link); } catch { return toast("Vul een geldige Tikkie-link in."); } const allowedPaymentHosts = ["tikkie.me", "www.tikkie.me", "tikkie.nl", "www.tikkie.nl", "betaalverzoek.rabobank.nl"]; if (url.protocol !== "https:" || !allowedPaymentHosts.includes(url.hostname.toLowerCase())) return toast("Gebruik een geldige HTTPS Tikkie- of Rabobank-betaalverzoeklink."); try { await update(ref(db, `orders/${id}`), { tikkieLink: url.href, paymentStatus: "tikkie_link_added" }); toast("Tikkie-link opgeslagen. De klant ziet hem bij Mijn bestellingen."); } catch { toast("Opslaan van Tikkie-link mislukt."); } });

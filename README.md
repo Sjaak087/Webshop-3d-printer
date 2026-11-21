@@ -1,3 +1,28 @@
+# Nieuwe functies: chatfoto's en productreviews
+
+## Foto's in chats
+- In iedere klant- en beheerchat staat een paperclipknop om een foto toe te voegen.
+- JPEG/PNG/WebP en andere door de browser leesbare afbeeldingen worden vóór het opslaan lokaal naar JPEG geconverteerd.
+- Afbeeldingen worden teruggeschaald tot maximaal 760 pixels aan de lange zijde en opnieuw gecomprimeerd tot maximaal circa 65 KB (maximaal 88.000 tekens als data-URL). EXIF-metadata wordt door de canvasconversie verwijderd.
+- Een foto kan samen met tekst of als los bericht worden verstuurd. De beheerder ziet de foto ook in de bestaande chat.
+- De originele upload mag maximaal 12 MB zijn. Er is geen Firebase Storage-upload nodig; de verkleinde afbeelding staat in het bericht in Realtime Database.
+
+## Productreviews
+- Een klant ziet bij **Mijn bestellingen** een reviewknop zodra een bestelling de status **bezorgd** heeft bereikt. Bij ophalen wordt dezelfde eindstatus als **opgehaald** getoond.
+- Per productregel uit een bestelling kan één review worden geplaatst met 1–5 sterren, een titel en een beschrijving.
+- De reviewmogelijkheid controleert bestellingseigenaar, eindstatus en of het product werkelijk in die bestelling staat. Ook vlak vóór opslaan wordt de bestelling opnieuw gelezen.
+- Op productkaarten staat de gemiddelde sterrenwaardering en het aantal reviews. In de productdetails staat een reviewoverzicht met beoordelingen.
+- Bestaande, al bezorgde bestellingen krijgen bij het openen van Mijn bestellingen een eenmalige `reviewEligibleProducts`-lijst zodat ze ook beoordeeld kunnen worden.
+
+### Eenmalig na deze update
+1. Vervang de bestanden van de website door de nieuwe ZIP.
+2. Firebase Console → Realtime Database → Rules: publiceer de nieuwe `database.rules.json`. De regels beperken chatfoto's en controleren bij reviews de bijbehorende bezorgde bestelling en product-ID.
+3. Herlaad de webshop. Voor reviews van oude bestellingen moet de klant Mijn bestellingen openen nadat deze versie actief is, zodat de eenmalige productlijst wordt aangemaakt.
+
+**Belangrijk:** de webshop gebruikt nog het bestaande zelfgebouwde accountsysteem en de bestaande brede permissies voor onder meer chats en bestellingen. De reviewregels controleren de gekoppelde bestelling en productregel, maar dit is geen volledige accountbeveiliging zolang Firebase Authentication en gebruikersgebonden toegangsregels niet zijn ingericht. Deel daarom geen gevoelige persoonsgegevens of privéfoto's in chats.
+
+---
+
 # 3D Printed Shop
 
 ## Nieuwe webshop-update

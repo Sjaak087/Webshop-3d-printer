@@ -37,7 +37,14 @@
       ".write": true,
       ".indexOn": [
         "userId"
-      ]
+      ],
+      "$chatId": {
+        "messages": {
+          "$messageId": {
+            ".validate": "newData.hasChildren(['sender','createdAt']) && newData.child('sender').isString() && newData.child('createdAt').isNumber() && (!newData.hasChild('text') || (newData.child('text').isString() && newData.child('text').val().length <= 1000)) && (!newData.hasChild('imageData') || (newData.child('imageData').isString() && newData.child('imageData').val().length <= 88000 && newData.child('imageData').val().matches(/^data:image\\/jpeg;base64,/))) && (!newData.hasChild('imageName') || (newData.child('imageName').isString() && newData.child('imageName').val().length <= 100))"
+          }
+        }
+      }
     },
     "settings": {
       ".read": true,
@@ -74,6 +81,15 @@
       ".write": true,
       "$id": {
         ".validate": "newData.hasChildren(['name']) && newData.child('name').isString() && newData.child('name').val().length <= 50 && (!newData.hasChild('active') || newData.child('active').isBoolean())"
+      }
+    },
+    "reviews": {
+      ".read": true,
+      "$orderId": {
+        "$productId": {
+          ".write": "!data.exists() && newData.exists() && root.child('orders').child($orderId).child('userId').val() === newData.child('userId').val() && root.child('orders').child($orderId).child('status').val() === 'bezorgd' && root.child('orders').child($orderId).child('reviewEligibleProducts').child($productId).val() === true",
+          ".validate": "newData.hasChildren(['userId','username','orderId','productId','productTitle','stars','title','description','createdAt']) && newData.child('orderId').val() === $orderId && newData.child('productId').val() === $productId && newData.child('userId').isString() && newData.child('username').isString() && newData.child('username').val().length <= 30 && newData.child('productTitle').isString() && newData.child('productTitle').val().length <= 100 && newData.child('stars').isNumber() && newData.child('stars').val() >= 1 && newData.child('stars').val() <= 5 && newData.child('stars').val() % 1 === 0 && newData.child('title').isString() && newData.child('title').val().length >= 1 && newData.child('title').val().length <= 80 && newData.child('description').isString() && newData.child('description').val().length >= 1 && newData.child('description').val().length <= 900 && newData.child('createdAt').isNumber()"
+        }
       }
     }
   }
