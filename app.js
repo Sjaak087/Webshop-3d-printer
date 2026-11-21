@@ -1645,6 +1645,207 @@ async function loadThreeToolkit() {
   ]).then(([THREE, stl, threeMF, controls]) => ({ THREE, STLLoader: stl.STLLoader, ThreeMFLoader: threeMF.ThreeMFLoader, OrbitControls: controls.OrbitControls })).catch(error => { threeToolkitPromise = null; throw error; });
   return threeToolkitPromise;
 }
+
+// Bambu Studio, OrcaSlicer and PrusaSlicer can store the actual meshes in
+// separate 3D/Objects/*.model parts (3MF Production Extension). The stock
+// ThreeMFLoader in older Three.js releases does not follow p:path references.
+// This fallback resolves those references inside the 3MF ZIP and builds the
+// Three.js groups directly, so multi-part projects can still be previewed.
+async function parseProduction3MF(THREE, buffer) {
+  // A 3MF file is a ZIP archive. Read its central directory directly and use
+  // the browser's native DEFLATE stream, avoiding another third-party runtime.
+  const zipBytes = new Uint8Array(buffer);
+  const zipView = new DataView(buffer);
+  const u16 = (offset) => zipView.getUint16(offset, true);
+  const u32 = (offset) => zipView.getUint32(offset, true);
+  let eocd = -1;
+  const searchStart = Math.max(0, zipBytes.length - 22 - 65535);
+  for (let offset = zipBytes.length - 22; offset >= searchStart; offset--) {
+    if (u32(offset) === 0x06054b50) { eocd = offset; break; }
+  }
+  if (eocd < 0) throw new Error("Dit 3MF-bestand is geen geldig ZIP-archief.");
+  const entryCount = u16(eocd + 10);
+  const centralDirectoryOffset = u32(eocd + 16);
+  if (entryCount === 0xffff || centralDirectoryOffset === 0xffffffff) throw new Error("Dit 3MF-bestand gebruikt een niet-ondersteund ZIP64-formaat.");
+  const zipEntries = new Map();
+  let cursor = centralDirectoryOffset;
+  const decoder = new TextDecoder("utf-8");
+  for (let index = 0; index < entryCount; index++) {
+    if (u32(cursor) !== 0x02014b50) throw new Error("De inhoudsopgave van het 3MF-archief is beschadigd.");
+    const flags = u16(cursor + 8);
+    const method = u16(cursor + 10);
+    const compressedSize = u32(cursor + 20);
+    const uncompressedSize = u32(cursor + 24);
+    const nameLength = u16(cursor + 28);
+    const extraLength = u16(cursor + 30);
+    const commentLength = u16(cursor + 32);
+    const localHeaderOffset = u32(cursor + 42);
+    const name = decoder.decode(zipBytes.subarray(cursor + 46, cursor + 46 + nameLength));
+    if (compressedSize === 0xffffffff || uncompressedSize === 0xffffffff || localHeaderOffset === 0xffffffff) throw new Error("Dit 3MF-bestand gebruikt een niet-ondersteund ZIP64-onderdeel.");
+    if (name && !name.endsWith("/")) zipEntries.set(name, { flags, method, compressedSize, uncompressedSize, localHeaderOffset });
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+  const normalizePath = value => {
+    let path = String(value || "").replace(/\\/g, "/").replace(/^\/+/, "");
+    try { path = decodeURIComponent(path); } catch (_) { /* Keep literal ZIP path if it is not URI encoded. */ }
+    return path.replace(/^\.\//, "");
+  };
+  const textCache = new Map();
+  const readZipEntry = async (rawPath) => {
+    const path = normalizePath(rawPath);
+    if (textCache.has(path)) return textCache.get(path);
+    const entry = zipEntries.get(path);
+    if (!entry) throw new Error(`Het 3MF-onderdeel '${path}' ontbreekt in het bestand.`);
+    if (entry.uncompressedSize > 120 * 1024 * 1024) throw new Error(`Het 3MF-onderdeel '${path}' is te groot om veilig in de preview te openen.`);
+    const local = entry.localHeaderOffset;
+    if (u32(local) !== 0x04034b50) throw new Error(`Het 3MF-onderdeel '${path}' heeft een ongeldige ZIP-header.`);
+    const localNameLength = u16(local + 26);
+    const localExtraLength = u16(local + 28);
+    const dataOffset = local + 30 + localNameLength + localExtraLength;
+    const compressed = zipBytes.subarray(dataOffset, dataOffset + entry.compressedSize);
+    let unpacked;
+    if (entry.method === 0) {
+      unpacked = compressed.slice();
+    } else if (entry.method === 8) {
+      if (typeof DecompressionStream === "undefined") throw new Error("Deze browser kan de ZIP-compressie van dit 3MF-bestand niet openen. Gebruik een recente Chrome-, Edge- of Firefox-browser.");
+      try {
+        const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+        unpacked = new Uint8Array(await new Response(stream).arrayBuffer());
+      } catch (error) {
+        throw new Error(`Het 3MF-onderdeel '${path}' kon niet worden uitgepakt: ${error?.message || error}`);
+      }
+    } else {
+      throw new Error(`Het 3MF-onderdeel '${path}' gebruikt een niet-ondersteunde ZIP-compressie (${entry.method}).`);
+    }
+    if (unpacked.byteLength !== entry.uncompressedSize) throw new Error(`De uitgepakte grootte van '${path}' klopt niet.`);
+    textCache.set(path, unpacked);
+    return unpacked;
+  };
+  const decodeText = async path => new TextDecoder("utf-8").decode(await readZipEntry(path));
+  const xmlParser = new DOMParser();
+  const parseXml = async path => {
+    const document = xmlParser.parseFromString(await decodeText(path), "application/xml");
+    if (document.querySelector("parsererror")) throw new Error(`Het 3MF-onderdeel '${path}' bevat ongeldige XML.`);
+    return document;
+  };
+  const children = (node, localName) => Array.from(node?.children || []).filter(child => child.localName === localName);
+  const firstChild = (node, localName) => children(node, localName)[0] || null;
+  const productionNamespace = "http://schemas.microsoft.com/3dmanufacturing/production/2015/06";
+  const pathAttribute = node => node.getAttributeNS?.(productionNamespace, "path") || node.getAttribute("p:path") || node.getAttribute("path") || "";
+  let rootPath = "3D/3dmodel.model";
+  if (zipEntries.has("_rels/.rels")) {
+    const relDoc = await parseXml("_rels/.rels");
+    const startPart = Array.from(relDoc.getElementsByTagName("Relationship")).find(rel => /3dmodel/i.test(rel.getAttribute("Type") || ""));
+    if (startPart?.getAttribute("Target")) rootPath = normalizePath(startPart.getAttribute("Target"));
+  }
+  if (!zipEntries.has(rootPath)) {
+    rootPath = Array.from(zipEntries.keys()).find(path => /^3D\/3dmodel\.model$/i.test(path)) || Array.from(zipEntries.keys()).find(path => /\.model$/i.test(path));
+  }
+  if (!rootPath || !zipEntries.has(rootPath)) throw new Error("In dit 3MF-bestand is geen hoofdmodel gevonden.");
+
+  const parsedParts = new Map();
+  const getPart = async rawPath => {
+    const path = normalizePath(rawPath);
+    if (!parsedParts.has(path)) {
+      parsedParts.set(path, (async () => {
+        const document = await parseXml(path);
+        const model = document.documentElement;
+        const resources = firstChild(model, "resources");
+        const objects = new Map(children(resources, "object").map(object => [String(object.getAttribute("id")), object]));
+        return { objects, build: firstChild(model, "build"), unit: model.getAttribute("unit") || "millimeter" };
+      })());
+    }
+    return await parsedParts.get(path);
+  };
+  const objectCache = new Map();
+  const building = new Set();
+  const readTransform = value => {
+    if (!value) return null;
+    const t = value.trim().split(/\s+/).map(Number);
+    if (t.length !== 12 || !t.every(Number.isFinite)) return null;
+    // 3MF stores an affine transform in row-vector order; Matrix4.set uses
+    // column-vector order, so transpose the 3x3 portion and translation.
+    return new THREE.Matrix4().set(
+      t[0], t[3], t[6], t[9],
+      t[1], t[4], t[7], t[10],
+      t[2], t[5], t[8], t[11],
+      0, 0, 0, 1
+    );
+  };
+  const makeMesh = (objectNode, objectId) => {
+    const meshNode = firstChild(objectNode, "mesh");
+    if (!meshNode) return null;
+    const verticesNode = firstChild(meshNode, "vertices");
+    const trianglesNode = firstChild(meshNode, "triangles");
+    const vertices = children(verticesNode, "vertex");
+    const triangles = children(trianglesNode, "triangle");
+    if (!vertices.length || !triangles.length) return null;
+    const positions = new Float32Array(vertices.length * 3);
+    vertices.forEach((vertex, index) => {
+      positions[index * 3] = Number(vertex.getAttribute("x"));
+      positions[index * 3 + 1] = Number(vertex.getAttribute("y"));
+      positions[index * 3 + 2] = Number(vertex.getAttribute("z"));
+    });
+    const indices = [];
+    triangles.forEach(triangle => {
+      const a = Number(triangle.getAttribute("v1")), b = Number(triangle.getAttribute("v2")), c = Number(triangle.getAttribute("v3"));
+      if ([a, b, c].every(index => Number.isInteger(index) && index >= 0 && index < vertices.length)) indices.push(a, b, c);
+    });
+    if (!indices.length) return null;
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    const name = String(objectNode.getAttribute("name") || `Onderdeel ${objectId}`).slice(0, 70);
+    const mesh = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x9aa7b8, metalness: 0.04, roughness: 0.72 }));
+    mesh.name = name;
+    return mesh;
+  };
+  const resolveObject = async (partPath, objectId) => {
+    partPath = normalizePath(partPath);
+    const cacheKey = `${partPath}#${objectId}`;
+    if (objectCache.has(cacheKey)) return objectCache.get(cacheKey);
+    if (building.has(cacheKey)) throw new Error("Dit 3MF-bestand bevat een kringverwijzing tussen onderdelen.");
+    const part = await getPart(partPath);
+    const objectNode = part.objects.get(String(objectId));
+    if (!objectNode) throw new Error(`3MF-object ${objectId} ontbreekt in '${partPath}'.`);
+    building.add(cacheKey);
+    const group = new THREE.Group();
+    group.name = String(objectNode.getAttribute("name") || `Object ${objectId}`).slice(0, 70);
+    const mesh = makeMesh(objectNode, objectId);
+    if (mesh) group.add(mesh);
+    const componentsNode = firstChild(objectNode, "components");
+    for (const component of children(componentsNode, "component")) {
+      const childPart = normalizePath(pathAttribute(component) || partPath);
+      const childId = component.getAttribute("objectid");
+      const childGroup = (await resolveObject(childPart, childId)).clone(true);
+      const transform = readTransform(component.getAttribute("transform"));
+      if (transform) childGroup.applyMatrix4(transform);
+      group.add(childGroup);
+    }
+    building.delete(cacheKey);
+    objectCache.set(cacheKey, group);
+    return group;
+  };
+
+  const rootPart = await getPart(rootPath);
+  const buildItems = children(rootPart.build, "item");
+  if (!buildItems.length) throw new Error("Het 3MF-hoofdmodel bevat geen plaatsbare onderdelen.");
+  const result = new THREE.Group();
+  result.name = "3MF-model";
+  for (const item of buildItems) {
+    const itemPath = normalizePath(pathAttribute(item) || rootPath);
+    const objectId = item.getAttribute("objectid");
+    const instance = (await resolveObject(itemPath, objectId)).clone(true);
+    const transform = readTransform(item.getAttribute("transform"));
+    if (transform) instance.applyMatrix4(transform);
+    result.add(instance);
+  }
+  let meshCount = 0;
+  result.traverse(child => { if (child.isMesh && child.geometry) meshCount++; });
+  if (!meshCount) throw new Error("Het 3MF-bestand bevat geen meshes die de preview kan weergeven.");
+  return result;
+}
 async function mountProductModelViewer(root, model, availableColors, initialColors, onColorsChange) {
   if (!root || !(model?.data || model?.storagePath || model?.databasePath)) return null;
   const canvas = root.querySelector("canvas"), status = root.querySelector(".model-viewer-state"), controlsRoot = root.querySelector(".model-part-color-controls");
@@ -1664,7 +1865,18 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
       modelRoot = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: 0x9aa7b8, metalness: 0.08, roughness: 0.68 }));
       modelRoot.name = "Volledig model";
     } else {
-      modelRoot = new ThreeMFLoader().parse(buffer);
+      // Use Three.js' standard loader when it can read the file. For
+      // Bambu/Orca/Prusa production-extension archives, fall back to the
+      // multi-part parser which follows external p:path model references.
+      try {
+        modelRoot = new ThreeMFLoader().parse(buffer);
+        let parsedMeshes = 0;
+        modelRoot?.traverse(child => { if (child.isMesh && child.geometry) parsedMeshes++; });
+        if (!modelRoot || !parsedMeshes) modelRoot = await parseProduction3MF(THREE, buffer);
+      } catch (standardLoaderError) {
+        console.warn("Standaard 3MF-loader kon het model niet volledig lezen; productie-3MF-parser wordt gebruikt.", standardLoaderError);
+        modelRoot = await parseProduction3MF(THREE, buffer);
+      }
     }
     if (!modelRoot) throw new Error("Het 3D-model kon niet worden gelezen.");
     modelRoot.rotation.x = -Math.PI / 2; // STL/3MF gebruikt doorgaans Z als boven-as; Three.js gebruikt Y.

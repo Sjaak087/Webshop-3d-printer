@@ -1,4 +1,4 @@
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v12)
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v13)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -50,3 +50,10 @@ De meegeleverde database-regels sluiten aan bij de bestaande webshopstructuur. D
 - Houd de gratis opslag- en downloadquota in de gaten.
 
 De code is lokaal gecontroleerd op JavaScript-syntaxis, JSON-validiteit en ZIP-integriteit. De live verbinding met jouw Firebase-project is niet door deze lokale controle getest.
+
+
+## 3MF-preview voor Bambu Studio, OrcaSlicer en PrusaSlicer
+
+De productpreview bevat nu een aanvullende parser voor 3MF Production Extension-bestanden. Deze volgt onderdelen die in aparte `3D/Objects/*.model`-bestanden staan en leest de `p:path`, `objectid` en transformaties uit het 3MF-archief. De gewone Three.js 3MF-loader blijft de eerste keuze voor standaard 3MF-bestanden; de aanvullende parser wordt gebruikt wanneer die loader geen bruikbare meshes vindt of een fout geeft. STL-preview en de productkleurkeuze blijven ongewijzigd.
+
+De parser gebruikt de ingebouwde browser-API om ZIP/DEFLATE uit te pakken, dus er is geen extra bibliotheek, buildstap of PowerShell nodig. Na het uploaden naar GitHub Pages wordt de gewijzigde `app.js` door de nieuwe versietag `v=13-3mf-production-loader` opnieuw geladen.
