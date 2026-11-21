@@ -15,6 +15,14 @@
         ".validate": "newData.hasChildren(['email','salt','hash'])"
       }
     },
+    "quotes": {
+      ".read": true,
+      ".write": true,
+      ".indexOn": ["userId"],
+      "$id": {
+        ".validate": "newData.hasChildren(['userId','title','description','image','dimensions','colorName','chatId','createdAt']) && newData.child('title').isString() && newData.child('title').val().length <= 90 && newData.child('description').isString() && newData.child('description').val().length <= 1800 && newData.child('image').isString() && newData.child('image').val().length < 450000 && newData.child('dimensions').hasChildren(['length','width','height']) && newData.child('dimensions/length').val() >= 1 && newData.child('dimensions/length').val() <= 180 && newData.child('dimensions/width').val() >= 1 && newData.child('dimensions/width').val() <= 180 && newData.child('dimensions/height').val() >= 1 && newData.child('dimensions/height').val() <= 180"
+      }
+    },
     "orders": {
       ".read": true,
       ".write": true,

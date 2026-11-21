@@ -606,3 +606,48 @@ to{translate:0 -8px;rotate:12deg}}
 .product-image-loader.is-finishing{opacity:0;transition:opacity .22s ease}
 .product-image-loader.is-error{background:#fff!important}
 @media(max-width:620px){.a1-loader-scene{min-height:132px}.a1-loader-brand{color:#627187!important}.a1-loader-caption{font-size:10px!important}.a1-loader-subline{font-size:7px!important}}
+
+/* Offerteaanvraag voor een eigen 3D-product */
+.quote-cta-section{max-width:1320px;margin:0 auto 34px;padding:25px 30px;border:1px solid #e7eaf4;border-radius:20px;background:linear-gradient(120deg,#fff 0%,#f7f8ff 100%);box-shadow:var(--shadow-soft);display:flex;align-items:center;justify-content:space-between;gap:24px}
+.quote-cta-copy{max-width:760px}
+.quote-cta-copy h2{font:800 clamp(21px,3vw,29px)/1.2 Manrope,sans-serif;letter-spacing:-.7px;color:#202b44;margin:5px 0 8px}
+.quote-cta-copy p:not(.eyebrow){font-size:13px;line-height:1.7;color:#66748c;margin:0}
+.quote-cta-button{flex-shrink:0;display:inline-flex;align-items:center;gap:9px;padding:14px 19px}
+.quote-cta-button svg{width:17px;height:17px}
+.quote-form{gap:14px}
+.quote-dimensions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.quote-image-preview{display:flex;align-items:center;gap:12px;padding:10px;border:1px solid #e5eaf2;border-radius:12px;background:#f8fafc;color:#53627a;font-size:12px;overflow:hidden}
+.quote-image-preview img{width:82px;height:72px;object-fit:contain;border-radius:8px;background:#fff}
+.quote-color-manager{margin:10px 0 24px;padding:16px;border:1px solid #e8ebf3;border-radius:14px;background:#fbfcff}
+.quote-color-form{display:grid;grid-template-columns:minmax(0,1fr) 110px auto;align-items:end;gap:10px}
+.quote-color-form input[type=color]{height:43px;padding:4px}
+.quote-color-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:13px}
+.quote-color-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border:1px solid #e8ebf3;border-radius:10px;background:#fff;font-size:12px}
+.quote-color-item code{color:#7a8799;font-size:10px}
+.quote-color-swatch{display:inline-block;flex:0 0 17px;width:17px;height:17px;border:1px solid #0002;border-radius:50%;background:var(--quote-color,#ccc)}
+.quote-color-swatch.inline{vertical-align:middle;margin:0 3px}
+.quote-admin-card{margin:12px 0;padding:16px;border:1px solid #e7eaf2;border-radius:15px;background:#fff;box-shadow:0 4px 14px #1f2e4b08}
+.quote-admin-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.quote-admin-top h4{margin:2px 0 5px;font:800 17px Manrope;color:#23304b}
+.quote-admin-top small{color:#8190a4;font-size:11px}
+.quote-admin-body{display:grid;grid-template-columns:minmax(150px,240px) minmax(0,1fr);gap:16px;margin:14px 0}
+.quote-admin-image{width:100%;max-height:210px;min-height:130px;object-fit:contain;border:1px solid #edf0f5;border-radius:11px;background:#f8fafc;padding:5px}
+.quote-admin-details{font-size:12px;line-height:1.65;color:#66748c;overflow-wrap:anywhere}
+.quote-admin-details p{margin:0 0 8px}
+.quote-admin-details p:first-child{white-space:pre-wrap;color:#394860}
+.quote-admin-details select{max-width:220px;margin-left:5px}
+.quote-order-link{padding:8px 10px;background:#eff8f4;border-radius:9px;color:#22714f!important}
+.quote-admin-card .admin-actions{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:760px){.quote-cta-section{margin:0 14px 30px;padding:22px;align-items:flex-start;flex-direction:column}.quote-cta-button{width:100%;justify-content:center}.quote-admin-body{grid-template-columns:1fr}.quote-admin-image{max-height:220px}.quote-color-form{grid-template-columns:minmax(0,1fr) 90px}.quote-color-form button{grid-column:1/-1}.quote-admin-top{align-items:flex-start}}
+@media(max-width:420px){.quote-dimensions{gap:7px}.quote-dimensions label{font-size:11px}.quote-cta-section{padding:18px}.quote-color-item{flex-wrap:wrap}}
+
+/* Houd de extra beheertabbladen bruikbaar op kleine schermen. */
+.tabs{flex-wrap:wrap}
+
+.quote-color-fieldset{border:0;padding:0;margin:0;min-width:0}
+.quote-color-fieldset legend{font-size:12px;font-weight:750;color:#43516a;margin-bottom:8px}
+.quote-color-choices{display:flex;flex-wrap:wrap;gap:8px}
+.quote-color-choice{display:inline-flex!important;flex-direction:row;align-items:center;gap:8px;padding:9px 11px;border:1px solid #e5e9f1;border-radius:10px;background:#fff;cursor:pointer;font-size:12px!important}
+.quote-color-choice input{width:auto;margin:0;accent-color:#5556db}
+.quote-color-choice:has(input:checked){border-color:#6264dc;background:#f5f5ff;box-shadow:0 0 0 2px #6264dc19}
+.quote-color-choice .quote-color-swatch{width:20px;height:20px}

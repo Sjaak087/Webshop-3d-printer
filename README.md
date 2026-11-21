@@ -145,3 +145,30 @@ Er staat nu een aparte knop **Mijn bestellingen** direct naast **Mijn chats** in
 
 ## Loader-update v4
 De productloader gebruikt nu een opvallender dansend skelet per laadkaart en per productafbeelding. De CSS- en JavaScript-URL hebben een versietag om oude browsercache te omzeilen. Na uploaden kan de browser nog één keer hard vernieuwd worden (Ctrl+Shift+R).
+
+## Nieuw in deze versie: offerte aanvragen voor een eigen product
+
+### Voor klanten
+- Op de beginpagina staat **Offerte aanvragen voor eigen product**.
+- De klant logt in; na het inloggen opent het offerteformulier automatisch.
+- Verplicht zijn een titel, beschrijving, afbeelding, gewenste kleur en afmetingen in millimeters.
+- Lengte, breedte en hoogte moeten elk een geheel getal tussen 1 en 180 mm zijn.
+- De afbeelding wordt in de browser verkleind voordat deze bij de offerte in Realtime Database wordt opgeslagen.
+- Na verzenden wordt tegelijk een offerte en een chat aangemaakt. Het gesprek staat bij **Mijn chats** als **Offerte · [producttitel]**.
+
+### Voor Sitebeheer
+1. Open **Sitebeheer > Offertes**.
+2. Voeg onder **Kleuren voor maatwerk** de kleuren toe die klanten mogen kiezen. Elke kleur heeft een naam en een kleurcode. Verwijderen haalt de kleur uit nieuwe aanvragen; bestaande offertes bewaren hun oorspronkelijke kleurgegevens.
+3. Bekijk bij elke offerte de afbeelding, beschrijving, afmetingen, gekozen kleur, klantgegevens en status.
+4. Open **Offertechat openen** om met de klant te overleggen. Statuswijzigingen worden ook als systeembericht aan de klant getoond.
+5. Als prijs en afhandeling zijn afgesproken, kies **Omzetten naar bestelling**. Vul de afgesproken productprijs in en kies ophalen (gratis) of bezorgen (de bestaande verzendkosten van € 3,95). Bij bezorgen zijn de Nederlandse adresgegevens verplicht.
+
+### Na omzetten naar bestelling
+- Er wordt een normale order aangemaakt met een unieke track-&-trace-token en openbare track-&-trace-projectie.
+- De bestelling verschijnt bij **Mijn bestellingen**, **Sitebeheer > Track & trace**, **Bestellingen** en de printagenda.
+- De bestaande bestelstatussen, productfasen, chat, track-&-trace-deellink en betaalverzoekflow worden gebruikt.
+- De offerte blijft zichtbaar in **Sitebeheer > Offertes** met de oorspronkelijke afbeelding en aanvraagdetails; daar staat ook het gekoppelde bestelnummer.
+- De offertechat blijft bestaan en krijgt de koppeling met de nieuwe bestelling. De klant kan vanuit de chat de bestelling volgen.
+
+### Belangrijke beveiligingswaarschuwing voor offertes
+De bestaande webshop gebruikt een eigen accountsysteem aan de clientzijde. De Realtime Database-regels in deze projectversie bevatten nog brede `.read: true`- en `.write: true`-rechten voor onder meer `quotes`, `chats`, `orders` en `settings`. Daardoor zijn offertegegevens, geüploade ontwerpafbeeldingen, klant-e-mailadressen en chatberichten niet privé afgeschermd voor onbevoegde databasebezoekers. De nieuwe offertefunctie verandert die bestaande beveiligingssituatie niet. **Gebruik dit niet met echte klantgegevens of vertrouwelijke ontwerpen voordat Firebase Authentication en strikt afgeschermde Realtime Database-regels (of een beveiligde backend) zijn ingericht.** Voor productie verdient het ook de voorkeur ontwerpafbeeldingen in Firebase Storage op te slaan met toegangsregels, in plaats van ze als base64 in Realtime Database te bewaren.

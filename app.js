@@ -21,7 +21,7 @@ const showStage = (o, i) => o.status === "in de maak" || hasStage(i);   // ook z
 async function setStage(o, n, u, st) { const it = (o.items || [])[n]; if (!it) return; const arr = unitStages(it); arr[u] = st; await update(ref(db, `orders/${o.id}/items/${n}`), { stages: arr }); await syncPublicTrack(o.id); }
 const stageChips = i => { const u = unitStages(i); return u.length === 1 ? ` ${stageChip(u[0])}` : `<span class="unit-stages">${u.map((st, n) => `<span class="unit-chip">Stuk ${n + 1} ${stageChip(st)}</span>`).join("")}</span>`; };
 const CAMERA_STATUSES = [...STATUSES];   // camera tonen bij alle bestelstatussen
-const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, productsError: false, orderNote: "", plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
+const state = { user: null, admin: false, products: [], cart: [], tab: "products", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 const DEFAULT_CONTACT = { title: "Neem contact met ons op", intro: "Heb je een vraag over een product of bestelling? Neem gerust contact met ons op.", name: "", address: "", email: "", phone: "", hours: "", extra: "" };
 let contactSettings = { ...DEFAULT_CONTACT };
@@ -141,13 +141,16 @@ const selectionsKey = selections => selectionsOf({ selections }).map(s => `${enc
 const itemKey = (id, selections) => id + "|" + (Array.isArray(selections) ? selectionsKey(selections) : (selections || ""));
 const optText = item => {
   const choices = selectionsOf(item);
-  return choices.length ? ` · ${choices.map(s => `${safe(s.label)}: <b>${safe(s.value)}</b>`).join(" · ")}` : "";
+  const choiceText = choices.length ? ` · ${choices.map(s => `${safe(s.label)}: <b>${safe(s.value)}</b>`).join(" · ")}` : "";
+  const d = item?.dimensions;
+  const dims = d ? ` · ${Number(d.length)} × ${Number(d.width)} × ${Number(d.height)} mm (L × B × H)` : "";
+  return choiceText + dims;
 };
 const deltaText = n => Number(n) > 0 ? `+ ${money(n)}` : Number(n) < 0 ? `− ${money(Math.abs(n))}` : "Geen meerprijs";
 const productImages = p => (Array.isArray(p?.images) && p.images.length ? p.images : [p?.image]).filter(Boolean).slice(0, 3);
 const publicTrackPayload = o => ({
   shortId: short(o.id), status: o.status || "ontvangen", createdAt: o.createdAt || Date.now(),
-  items: (o.items || []).map((i, n) => ({ title: i.title, qty: i.qty, selections: selectionsOf(i), stages: unitStages(i), plan: Object.fromEntries(Object.entries(o.plan || {}).filter(([k]) => k.startsWith(`${n}_`))) })),
+  items: (o.items || []).map((i, n) => ({ title: i.title, qty: i.qty, selections: selectionsOf(i), ...(i.dimensions ? { dimensions: i.dimensions } : {}), ...(i.customDescription ? { customDescription: i.customDescription } : {}), stages: unitStages(i), plan: Object.fromEntries(Object.entries(o.plan || {}).filter(([k]) => k.startsWith(`${n}_`))) })),
   subtotal: o.subtotal ?? o.total ?? 0, shipping: o.shipping ?? 0, total: o.total ?? 0,
   estimatedReady: o.estimatedReady || planInfoSafe(o).ready || null
 });
@@ -187,6 +190,7 @@ function locked() { const s = Math.ceil((lockUntil - Date.now()) / 1000); if (s 
 function failed() { if (++fails >= 5) { lockUntil = Date.now() + Math.min(300000, 15000 * 2 ** (fails - 5)); } toast("E-mailadres of wachtwoord klopt niet."); }
 // klant en beheerder zijn twee aparte sessies: inloggen bij Sitebeheer logt je niet uit bij je klantaccount (en andersom)
 function setCustomer(u) { state.user = u; fails = 0; sessionStorage.setItem("novashopUser", JSON.stringify({ uid: u.uid, email: u.email, username: u.username || "", role: "customer" })); refreshNav(); }
+function continuePendingQuoteRequest() { if (!state.pendingQuoteRequest || !state.user) return; state.pendingQuoteRequest = false; startQuoteRequest(); }
 const usernameKey = value => String(value || "").trim().toLowerCase();
 function validUsername(value) { return /^[a-zA-Z0-9._-]{3,20}$/.test(String(value || "").trim()); }
 async function claimUsername(uid, username) {
@@ -199,7 +203,7 @@ async function claimUsername(uid, username) {
 }
 async function activateCustomer(uid, email, suggested = "") {
   const profile = (await get(ref(db, `profiles/${uid}`))).val();
-  if (profile?.username) { setCustomer({ uid, email, username: profile.username, role: "customer" }); closeDialog(); toast("Je bent ingelogd"); return; }
+  if (profile?.username) { setCustomer({ uid, email, username: profile.username, role: "customer" }); closeDialog(); toast("Je bent ingelogd"); continuePendingQuoteRequest(); return; }
   usernamePrompt(uid, email, suggested);
 }
 function usernamePrompt(uid, email, suggested = "") {
@@ -209,7 +213,7 @@ function usernamePrompt(uid, email, suggested = "") {
     e.preventDefault(); const btn = e.submitter; btn.disabled = true;
     try {
       const username = await claimUsername(uid, $("#usernameInput").value);
-      setCustomer({ uid, email, username, role: "customer" }); closeDialog(true); toast("Gebruikersnaam ingesteld!");
+      setCustomer({ uid, email, username, role: "customer" }); closeDialog(true); toast("Gebruikersnaam ingesteld!"); continuePendingQuoteRequest();
     } catch (err) { toast(err.message || "Gebruikersnaam opslaan mislukt"); }
     finally { btn.disabled = false; }
   };
@@ -429,6 +433,75 @@ function showCart() {
   $("#checkout")?.addEventListener("click", () => state.user ? checkoutChoice() : authForm("login", "Log in met een klantaccount om je bestelling af te ronden."));
 }
 
+/* ---------- maatwerkoffertes ---------- */
+function quoteColorsFrom(raw, includeInactive = false) {
+  return Object.entries(raw || {}).map(([id, value]) => ({ id, ...(value || {}) }))
+    .filter(c => c.name && /^#[0-9a-f]{6}$/i.test(String(c.hex || "")) && (includeInactive || c.active !== false))
+    .sort((a, b) => String(a.name).localeCompare(String(b.name), "nl"));
+}
+async function startQuoteRequest() {
+  if (!state.user) { state.pendingQuoteRequest = true; return authForm("login", "Log in met je klantaccount om je eigen product aan te vragen. Na het inloggen opent het offerteformulier automatisch."); }
+  openDialog(`<p class="eyebrow">MAATWERK · EIGEN ONTWERP</p><h2>Vraag een offerte aan</h2><div id="quoteFormBox" class="stack">${firebaseLoadingMarkup("Beschikbare kleuren laden…")}</div>`);
+  try {
+    const colorsSnap = await get(ref(db, "settings/quoteColors"));
+    const colors = quoteColorsFrom(colorsSnap.val());
+    if (!colors.length) {
+      $("#quoteFormBox").innerHTML = `<div class="empty-state">Er zijn nog geen kleuren beschikbaar voor maatwerk. Neem contact op met de webshopbeheerder of probeer het later opnieuw.</div>`;
+      return;
+    }
+    $("#quoteFormBox").innerHTML = `<p class="muted">Beschrijf wat je wilt laten printen. Alle afmetingen zijn in millimeters; elk maximaal 180 mm.</p>
+      <form id="quoteRequestForm" class="stack quote-form">
+        <label>Titel van je product<input name="title" required maxlength="90" placeholder="Bijv. Eigen telefoonhouder"></label>
+        <label>Beschrijving<textarea name="description" required rows="4" maxlength="1800" placeholder="Wat moet het product kunnen en waar moet ik op letten?"></textarea></label>
+        <div class="quote-dimensions"><label>Lengte (mm)<input name="length" type="number" min="1" max="180" step="1" required inputmode="numeric" placeholder="180"></label><label>Breedte (mm)<input name="width" type="number" min="1" max="180" step="1" required inputmode="numeric" placeholder="100"></label><label>Hoogte (mm)<input name="height" type="number" min="1" max="180" step="1" required inputmode="numeric" placeholder="80"></label></div>
+        <small class="hint">Maximaal 180 mm per richting (L, B én H).</small>
+        <fieldset class="quote-color-fieldset"><legend>Gewenste kleur</legend><div class="quote-color-choices">${colors.map(c => `<label class="quote-color-choice"><input type="radio" name="colorId" value="${safe(c.id)}" required><span class="quote-color-swatch" style="--quote-color:${safe(c.hex)}"></span><b>${safe(c.name)}</b></label>`).join("")}</div></fieldset>
+        <label>Afbeelding of ontwerp toevoegen<input name="image" type="file" accept="image/*" required><small class="hint">Upload een duidelijke afbeelding (PNG, JPG of WEBP). De afbeelding wordt automatisch verkleind.</small></label>
+        <div id="quoteImagePreview" class="quote-image-preview" hidden></div>
+        <button type="submit" class="primary full">Offerte aanvragen en chat starten</button>
+      </form>`;
+    const form = $("#quoteRequestForm"), fileInput = form.elements.image, preview = $("#quoteImagePreview");
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (!file) { preview.hidden = true; preview.innerHTML = ""; return; }
+      if (!file.type.startsWith("image/")) { fileInput.value = ""; return toast("Kies een afbeeldingsbestand."); }
+      if (file.size > 12 * 1024 * 1024) { fileInput.value = ""; return toast("Kies een afbeelding kleiner dan 12 MB."); }
+      preview.hidden = false; preview.innerHTML = `<img alt="Voorbeeld van je ontwerp" src="${URL.createObjectURL(file)}"><span>${safe(file.name)}</span>`;
+    });
+    form.onsubmit = async e => {
+      e.preventDefault();
+      const submit = e.submitter; if (!state.user) return authForm("login");
+      const data = new FormData(form), length = Number(data.get("length")), width = Number(data.get("width")), height = Number(data.get("height"));
+      if (![length, width, height].every(n => Number.isInteger(n) && n >= 1 && n <= 180)) return toast("Lengte, breedte en hoogte moeten ieder tussen 1 en 180 mm zijn.");
+      const chosen = colors.find(c => c.id === data.get("colorId")); if (!chosen) return toast("Kies een beschikbare kleur.");
+      const file = fileInput.files?.[0]; if (!file || !file.type.startsWith("image/")) return toast("Voeg een afbeelding van je ontwerp toe.");
+      submit.disabled = true; submit.textContent = "Offerte en chat aanmaken…";
+      try {
+        const image = await shrinkImage(file, 1000, 300000);
+        const quoteId = push(ref(db, "quotes")).key, chatId = push(ref(db, "chats")).key, now = Date.now();
+        const title = String(data.get("title") || "").trim().slice(0, 90), description = String(data.get("description") || "").trim().slice(0, 1800);
+        if (!title || !description) throw new Error("Vul een titel en beschrijving in.");
+        const dimensions = { length, width, height };
+        const quote = { userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, title, description, image, imageName: String(file.name || "ontwerp").slice(0, 120), dimensions, colorId: chosen.id, colorName: chosen.name, colorHex: chosen.hex, status: "ontvangen", createdAt: now, chatId };
+        const msgId = push(ref(db, `chats/${chatId}/messages`)).key;
+        const systemText = `Je offerteaanvraag voor “${title}” is ontvangen. Afmetingen: ${length} × ${width} × ${height} mm (L × B × H). Kleur: ${chosen.name}. We bespreken je aanvraag hier verder.`;
+        await update(ref(db), {
+          [`quotes/${quoteId}`]: quote,
+          [`chats/${chatId}`]: { kind: "quote", quoteId, quoteTitle: title, userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, createdAt: now, lastMessage: systemText, lastMessageAt: now, messages: { [msgId]: { sender: "system", text: systemText, createdAt: now } } }
+        });
+        closeDialog(); toast("Offerteaanvraag verstuurd"); openChat(chatId);
+      } catch (error) {
+        console.error("Quote request failed", error); toast(error.message || "Offerte aanvragen is niet gelukt."); submit.disabled = false; submit.textContent = "Offerte aanvragen en chat starten";
+      }
+    };
+  } catch (error) {
+    console.error("Quote colors could not be loaded", error);
+    $("#quoteFormBox").innerHTML = `<p class="muted">De beschikbare kleuren konden niet worden geladen. Probeer het opnieuw.</p><button type="button" class="secondary" id="retryQuoteColors">Opnieuw proberen</button>`;
+    $("#retryQuoteColors").onclick = startQuoteRequest;
+  }
+}
+$("#requestQuoteBtn").onclick = startQuoteRequest;
+
 /* ---------- klantaccount ---------- */
 function authForm(mode = "login", message = "") {
   const login = mode === "login";
@@ -447,7 +520,7 @@ function authForm(mode = "login", message = "") {
         const claimed = await claimUsername(key, username);
         try { await set(accRef, { email, salt, hash: await hashPw(pw, salt), createdAt: Date.now() }); }
         catch (err) { await set(ref(db, `usernames/${usernameKey(claimed)}`), null); throw err; }
-        setCustomer({ uid: key, email, username: claimed, role: "customer" }); closeDialog(); toast("Account aangemaakt!");
+        setCustomer({ uid: key, email, username: claimed, role: "customer" }); closeDialog(); toast("Account aangemaakt!"); continuePendingQuoteRequest();
       } else {
         if (!acc || await hashPw(pw, acc.salt) !== acc.hash) return failed();
         await activateCustomer(key, email);
@@ -482,7 +555,7 @@ function checkoutForm() {
     <div id="addressFields"><div class="checkout-two"><label>Voornaam<input name="firstName" required maxlength="60" autocomplete="given-name"></label><label>Achternaam<input name="lastName" required maxlength="80" autocomplete="family-name"></label></div>
     <div class="checkout-two"><label>Straat<input name="street" required maxlength="100" autocomplete="address-line1"></label><label>Huisnummer<input name="houseNumber" required maxlength="12"></label></div>
     <label>Toevoeging (optioneel)<input name="addition" maxlength="20" placeholder="Bijv. A"></label>
-    <div class="checkout-two"><label>Postcode<input name="postcode" required maxlength="8" autocomplete="postal-code" placeholder="1234 AB" pattern="[0-9]{4}\s?[A-Za-z]{2}"></label><label>Dorp / stad<input name="city" required maxlength="80" autocomplete="address-level2"></label></div>
+    <div class="checkout-two"><label>Postcode<input name="postcode" required maxlength="8" autocomplete="postal-code" placeholder="1234 AB" pattern="[0-9]{4}\\s?[A-Za-z]{2}"></label><label>Dorp / stad<input name="city" required maxlength="80" autocomplete="address-level2"></label></div>
     <label>Land<input value="Nederland" readonly></label></div>
     <label>Opmerking (optioneel)<textarea name="note" rows="3" maxlength="500">${safe(state.orderNote || "")}</textarea></label>
     <div class="cart-total"><span>Producten</span><b>${money(sub)}</b></div><p id="checkoutTotal" class="checkout-total">Totaal bij bezorgen: <b>${money(sub + SHIPPING)}</b></p>
@@ -656,7 +729,7 @@ function showPublicTracking(token) {
         const units = Math.max(1, Number(item.qty) || 1), stages = item.stages || [];
         const selectionText = (item.selections || []).map(s => `${safe(s.label)}: <b>${safe(s.value)}</b>`).join(" · ");
         const schedules = Object.entries(item.plan || {}).sort(([a],[b]) => a.localeCompare(b)).map(([k, slot]) => slot?.startTs ? `<small>Stuk ${Number(k.split("_").pop()) + 1}: ${whenShort(slot.startTs)} – ${new Date(slot.endTs).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</small>` : "").join("");
-        return `<div class="public-item"><b>${safe(item.title)} × ${units}</b>${selectionText ? `<small>${selectionText}</small>` : ""}${units > 1 || idx >= 2 ? `<div class="unit-stages">${Array.from({length:units},(_,u)=>`<span class="unit-chip">Stuk ${u+1}: ${stageChip(stages[u] || STAGES[0])}</span>`).join("")}</div>` : ""}${schedules}</div>`;
+        return `<div class="public-item"><b>${safe(item.title)} × ${units}</b>${selectionText ? `<small>${selectionText}</small>` : ""}${item.dimensions ? `<small>Afmetingen: ${Number(item.dimensions.length)} × ${Number(item.dimensions.width)} × ${Number(item.dimensions.height)} mm (L × B × H)</small>` : ""}${item.customDescription ? `<small>${safe(item.customDescription)}</small>` : ""}${units > 1 || idx >= 2 ? `<div class="unit-stages">${Array.from({length:units},(_,u)=>`<span class="unit-chip">Stuk ${u+1}: ${stageChip(stages[u] || STAGES[0])}</span>`).join("")}</div>` : ""}${schedules}</div>`;
       }).join("")}
       ${whenReady ? `<div class="plan-box ready"><b>Verwacht klaar met printen:</b> ${safe(whenReady)}</div>` : ""}
       <div class="cart-sum"><div><span>Subtotaal</span><span>${money(o.subtotal)}</span></div><div><span>Verzendkosten</span><span>${money(o.shipping)}</span></div><div><b>Totaal</b><b>${money(o.total)}</b></div></div>
@@ -668,7 +741,7 @@ function showMyChats() {
   openDialog(`<p class="eyebrow">SERVICE</p><h2>Mijn chats</h2><div id="chatsBox" class="stack">${firebaseLoadingMarkup("Chats laden…")}</div>`);
   listen(query(ref(db, "chats"), orderByChild("userId"), equalTo(state.user.uid)), snap => {
     const chats = toList(snap).sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
-    $("#chatsBox").innerHTML = chats.length ? chats.map(c => `<button class="chat-list-item" data-chat="${safe(c.id)}"><b>Bestelling #${short(c.orderId)}</b><small>${safe(c.lastMessage || "Chat openen")}</small></button>`).join("") : "<p class='muted'>Je hebt nog geen chats. Na een bestelling verschijnt hier je gesprek.</p>";
+    $("#chatsBox").innerHTML = chats.length ? chats.map(c => `<button class="chat-list-item" data-chat="${safe(c.id)}"><b>${c.kind === "quote" ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}${c.orderId && c.kind === "quote" ? ` · bestelling #${short(c.orderId)}` : ""}</b><small>${safe(c.lastMessage || "Chat openen")}</small></button>`).join("") : "<p class='muted'>Je hebt nog geen chats. Na een bestelling of offerteaanvraag verschijnt hier je gesprek.</p>";
     content.querySelectorAll("[data-chat]").forEach(b => b.onclick = () => openChat(b.dataset.chat));
   });
 }
@@ -702,8 +775,9 @@ function openChat(id, asAdmin = false) {
   get(ref(db, "chats/" + id)).then(s => {
     const c = s.val(); if (!c) return toast("Chat niet gevonden");
     if (!asAdmin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
-    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>Bestelling #${short(c.orderId)}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div><button class="secondary" id="chatTrack">Bestelling volgen</button></div><div class="chat-notice">Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen.</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
-    $("#chatTrack").onclick = () => c.orderId && showOrderTracking(c.orderId, asAdmin);
+    const isQuoteChat = c.kind === "quote";
+    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>${isQuoteChat ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div>${c.orderId ? `<button class="secondary" id="chatTrack">Bestelling volgen</button>` : `<span class="status-pill">Offertegesprek</span>`}</div><div class="chat-notice">${isQuoteChat ? (c.orderId ? `Deze offerte is omgezet naar bestelling #${short(c.orderId)}. Bespreek hier eventuele vragen over je bestelling.` : "Bespreek hier de mogelijkheden en details van je maatwerkproduct.") : "Deel hier je vraag of een link. Links en Tikkie-betaalverzoeken kun je direct openen."}</div><div id="messages" class="messages" aria-live="polite"></div><form id="sendMessage" class="send-message"><input id="messageText" placeholder="Typ je bericht…" required maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form></div>`);
+    if (c.orderId) $("#chatTrack").onclick = () => showOrderTracking(c.orderId, asAdmin);
     $("#sendMessage").onsubmit = async e => {
       e.preventDefault(); const input = $("#messageText"), text = input.value.trim(); if (!text) return;
       const now = Date.now();
@@ -838,7 +912,7 @@ function openAdminLogin() {
 }
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs"><button data-tab="products">Producten</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
@@ -889,6 +963,74 @@ function contactAdminTab(target) {
   });
 }
 
+function quoteAdminTab(target) {
+  let quotes = [], colors = [];
+  const draw = () => {
+    if (!target.isConnected) return;
+    const colorManager = `<section class="quote-color-manager"><div class="admin-toolbar"><div><h3>Kleuren voor maatwerk</h3><p class="muted">Deze kleuren kunnen klanten kiezen bij een nieuwe offerteaanvraag.</p></div></div><form id="quoteColorForm" class="quote-color-form"><label>Kleurnaam<input name="name" required maxlength="50" placeholder="Bijv. Zwart"></label><label>Kleur<input name="hex" type="color" value="#222222" required></label><button type="submit" class="primary">Kleur toevoegen</button></form><div class="quote-color-list">${colors.length ? colors.map(c => `<div class="quote-color-item"><span class="quote-color-swatch" style="--quote-color:${safe(c.hex)}"></span><b>${safe(c.name)}</b><code>${safe(c.hex)}</code><button type="button" class="remove-item" data-quote-color-delete="${safe(c.id)}">Verwijderen</button></div>`).join("") : `<p class="muted">Er zijn nog geen kleuren toegevoegd.</p>`}</div></section>`;
+    const quoteCards = quotes.length ? quotes.map(q => `<article class="quote-admin-card"><div class="quote-admin-top"><div><p class="eyebrow">OFFERTE #${short(q.id)}</p><h4>${safe(q.title || "Eigen product")}</h4><small>${safe(q.username || "Klant")} · ${when(q.createdAt)}</small></div><span class="status-pill">${safe(q.status || "ontvangen")}</span></div><div class="quote-admin-body"><img src="${safe(q.image || "")}" alt="Aangeleverde afbeelding voor ${safe(q.title || "offerte")}" class="quote-admin-image"><div class="quote-admin-details"><p>${safe(q.description || "Geen beschrijving")}</p><p><b>Afmetingen:</b> ${Number(q.dimensions?.length) || "—"} × ${Number(q.dimensions?.width) || "—"} × ${Number(q.dimensions?.height) || "—"} mm (L × B × H)</p><p><b>Kleur:</b> <span class="quote-color-swatch inline" style="--quote-color:${safe(q.colorHex || "#ccc")}"></span> ${safe(q.colorName || "Niet opgegeven")}</p><p><b>E-mail:</b> ${safe(q.email || "—")}</p><p><b>Status:</b> <select data-quote-status="${safe(q.id)}" ${q.orderId ? "disabled" : ""}>${(q.orderId ? ["ontvangen", "in overleg", "offerte verzonden", "geaccepteerd", "afgewezen", "omgezet naar bestelling"] : ["ontvangen", "in overleg", "offerte verzonden", "geaccepteerd", "afgewezen"]).map(st => `<option value="${safe(st)}" ${(q.status || "ontvangen") === st ? "selected" : ""}>${safe(st)}</option>`).join("")}</select></p>${q.orderId ? `<p class="quote-order-link">Omgezet naar bestelling <b>#${short(q.orderId)}</b></p>` : ""}</div></div><div class="admin-actions"><button type="button" class="secondary" data-quote-chat="${safe(q.chatId || "")}">Offertechat openen</button>${!q.orderId ? `<button type="button" class="primary" data-quote-convert="${safe(q.id)}">Omzetten naar bestelling</button>` : `<button type="button" class="secondary" data-quote-order-chat="${safe(q.chatId || "")}">Bestelchat openen</button>`}</div></article>`).join("") : `<div class="empty-state">Er zijn nog geen offerteaanvragen.</div>`;
+    target.innerHTML = `<div class="admin-toolbar"><div><h3>Offertes beheren</h3><p class="muted">Bekijk de aanvraag, afbeelding, afmetingen en chat. Zet een afgeronde offerte om naar een normale bestelling met track & trace.</p></div><span class="status-pill">${quotes.filter(q => !q.orderId).length} open</span></div>${colorManager}<h3>Offerteaanvragen (${quotes.length})</h3>${quoteCards}`;
+    $("#quoteColorForm")?.addEventListener("submit", async e => {
+      e.preventDefault(); const form = e.currentTarget, data = new FormData(form), name = String(data.get("name") || "").trim(), hex = String(data.get("hex") || "");
+      if (!name || !/^#[0-9a-f]{6}$/i.test(hex)) return toast("Vul een geldige kleurnaam en kleur in.");
+      const id = push(ref(db, "settings/quoteColors")).key;
+      try { await set(ref(db, `settings/quoteColors/${id}`), { name, hex: hex.toUpperCase(), active: true, createdAt: Date.now() }); form.reset(); toast("Kleur toegevoegd"); }
+      catch (err) { console.error(err); toast("Kleur toevoegen mislukt. Controleer de Firebase-regels."); }
+    });
+    target.querySelectorAll("[data-quote-color-delete]").forEach(b => b.onclick = async () => {
+      const c = colors.find(x => x.id === b.dataset.quoteColorDelete); if (!c || !confirm(`Kleur “${c.name}” verwijderen uit de keuzelijst? Bestaande offertes blijven ongewijzigd.`)) return;
+      try { await remove(ref(db, `settings/quoteColors/${c.id}`)); toast("Kleur verwijderd"); } catch (err) { console.error(err); toast("Kleur verwijderen mislukt"); }
+    });
+    target.querySelectorAll("[data-quote-status]").forEach(sel => sel.onchange = async () => {
+      const q = quotes.find(x => x.id === sel.dataset.quoteStatus), now = Date.now();
+      try {
+        const updates = { [`quotes/${sel.dataset.quoteStatus}/status`]: sel.value, [`quotes/${sel.dataset.quoteStatus}/updatedAt`]: now };
+        if (q?.chatId) {
+          const message = `De status van je offerteaanvraag “${q.title || "Eigen product"}” is bijgewerkt naar: ${sel.value}.`;
+          const messageId = push(ref(db, `chats/${q.chatId}/messages`)).key;
+          updates[`chats/${q.chatId}/messages/${messageId}`] = { sender: "system", text: message, createdAt: now };
+          updates[`chats/${q.chatId}/lastMessage`] = message;
+          updates[`chats/${q.chatId}/lastMessageAt`] = now;
+        }
+        await update(ref(db), updates); toast("Offertestatus bijgewerkt");
+      } catch (err) { console.error(err); toast("Status bijwerken mislukt"); }
+    });
+    target.querySelectorAll("[data-quote-chat], [data-quote-order-chat]").forEach(b => b.onclick = () => b.dataset.quoteChat || b.dataset.quoteOrderChat ? openChat(b.dataset.quoteChat || b.dataset.quoteOrderChat, true) : toast("Geen chat gekoppeld."));
+    target.querySelectorAll("[data-quote-convert]").forEach(b => b.onclick = () => showQuoteConversion(b.dataset.quoteConvert));
+  };
+  listen(ref(db, "quotes"), snap => { quotes = toList(snap).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)); draw(); });
+  listen(ref(db, "settings/quoteColors"), snap => { colors = quoteColorsFrom(snap.val(), true); draw(); });
+}
+async function showQuoteConversion(quoteId) {
+  const q = (await get(ref(db, `quotes/${quoteId}`))).val();
+  if (!q || q.orderId) return toast("Deze offerte bestaat niet of is al omgezet.");
+  openDialog(`<p class="eyebrow">OFFERTE AFRONDEN</p><h2>Omzetten naar bestelling</h2><p class="muted">${safe(q.title)} · ${Number(q.dimensions?.length)} × ${Number(q.dimensions?.width)} × ${Number(q.dimensions?.height)} mm</p><form id="quoteConvertForm" class="stack"><label>Afgesproken productprijs (€)<input name="price" type="number" min="0.01" max="100000" step="0.01" required placeholder="Bijv. 12,50"></label><label>Afhandeling<select name="fulfillment"><option value="pickup">Ophalen · gratis</option><option value="delivery">Bezorgen · ${money(SHIPPING)} verzendkosten</option></select></label><div id="quoteDeliveryFields" class="stack" hidden><p class="hint">Vul het bezorgadres in zodat de bestelling op dezelfde manier kan worden afgehandeld als een gewone bezorgbestelling.</p><div class="checkout-two"><label>Voornaam<input name="firstName" maxlength="60"></label><label>Achternaam<input name="lastName" maxlength="80"></label></div><div class="checkout-two"><label>Straat<input name="street" maxlength="100"></label><label>Huisnummer<input name="houseNumber" maxlength="12"></label></div><label>Toevoeging<input name="addition" maxlength="20"></label><div class="checkout-two"><label>Postcode<input name="postcode" maxlength="8" pattern="[0-9]{4}\\s?[A-Za-z]{2}"></label><label>Plaats<input name="city" maxlength="80"></label></div></div><p class="muted" id="quoteConvertTotal">Totaal wordt berekend na keuze.</p><button class="primary full">Offerte omzetten naar bestelling en track &amp; trace aanmaken</button></form>`);
+  const form = $("#quoteConvertForm"), addressBox = $("#quoteDeliveryFields"), totalLine = $("#quoteConvertTotal");
+  const updateTotal = () => {
+    const method = form.elements.fulfillment.value, price = Number(form.elements.price.value) || 0, shipping = method === "delivery" ? SHIPPING : 0;
+    totalLine.innerHTML = `Verzendkosten: <b>${money(shipping)}</b> · Totaal: <b>${money(price + shipping)}</b>`;
+    addressBox.hidden = method !== "delivery";
+    addressBox.querySelectorAll("input").forEach(el => el.required = method === "delivery" && !["addition"].includes(el.name));
+  };
+  form.elements.fulfillment.addEventListener("change", updateTotal); form.elements.price.addEventListener("input", updateTotal); updateTotal();
+  form.onsubmit = async e => {
+    e.preventDefault(); const btn = e.submitter, data = new FormData(form), price = Number(data.get("price")), method = String(data.get("fulfillment"));
+    if (!Number.isFinite(price) || price <= 0 || price > 100000) return toast("Vul een geldige prijs in.");
+    let address = null;
+    if (method === "delivery") {
+      address = { firstName: String(data.get("firstName") || "").trim(), lastName: String(data.get("lastName") || "").trim(), street: String(data.get("street") || "").trim(), houseNumber: String(data.get("houseNumber") || "").trim(), addition: String(data.get("addition") || "").trim(), postcode: String(data.get("postcode") || "").trim().toUpperCase(), city: String(data.get("city") || "").trim(), country: "Nederland" };
+      if (!/^[0-9]{4}\s?[A-Z]{2}$/.test(address.postcode)) return toast("Vul een geldige Nederlandse postcode in.");
+    }
+    btn.disabled = true; btn.textContent = "Bestelling aanmaken…";
+    try {
+      const orderId = push(ref(db, "orders")).key, publicToken = randomToken(), now = Date.now(), shipping = method === "delivery" ? SHIPPING : 0, total = price + shipping;
+      const order = { userId: q.userId, username: q.username || "Klant", email: q.email || "", items: [{ id: `maatwerk-${quoteId}`, title: q.title, price, qty: 1, selections: [{ label: "Kleur", value: q.colorName || "Niet opgegeven" }], dimensions: q.dimensions, customDescription: q.description, quoteId }], subtotal: price, shipping, total, address, fulfillmentMethod: method, paymentMethod: "tikkie", paymentStatus: "awaiting_tikkie", status: STATUSES[0], createdAt: now, publicToken, chatId: q.chatId, customQuoteId: quoteId, note: `Maatwerkofferte: ${q.title}. ${q.description}` };
+      const msgId = push(ref(db, `chats/${q.chatId}/messages`)).key, systemText = `Je offerte is omgezet naar bestelling #${short(orderId)}. Productprijs: ${money(price)}. Verzendkosten: ${money(shipping)}. Totaal: ${money(total)}. De track & trace is beschikbaar via Mijn bestellingen.`;
+      const updates = { [`orders/${orderId}`]: order, [`publicTrack/${publicToken}`]: publicTrackPayload({ ...order, id: orderId }), [`quotes/${quoteId}/status`]: "omgezet naar bestelling", [`quotes/${quoteId}/orderId`]: orderId, [`quotes/${quoteId}/convertedAt`]: now, [`chats/${q.chatId}/orderId`]: orderId, [`chats/${q.chatId}/lastMessage`]: systemText, [`chats/${q.chatId}/lastMessageAt`]: now, [`chats/${q.chatId}/messages/${msgId}`]: { sender: "system", text: systemText, createdAt: now } };
+      await update(ref(db), updates); closeDialog(); toast("Offerte is omgezet naar een normale bestelling met track & trace."); state.tab = "quotes"; adminTab();
+    } catch (err) { console.error("Quote conversion failed", err); toast("Omzetten naar bestelling is niet gelukt."); btn.disabled = false; btn.textContent = "Offerte omzetten naar bestelling en track & trace aanmaken"; }
+  };
+}
 function adminTab() {
   content.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab === state.tab));
   cleanup(); const target = $("#adminContent"); if (!target) return;
@@ -912,6 +1054,7 @@ function adminTab() {
     target.querySelectorAll("[data-tikkie-paid]").forEach(b => b.onclick = async () => { if (!confirm("Heb je gecontroleerd dat deze Tikkie-betaling binnen is?")) return; try { await update(ref(db, `orders/${b.dataset.tikkiePaid}`), { paymentStatus: "paid", paidAt: Date.now() }); toast("Bestelling als betaald gemarkeerd."); } catch { toast("Bijwerken mislukt."); } });
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
   });
+  else if (state.tab === "quotes") quoteAdminTab(target);
   else if (state.tab === "camera") cameraTab(target);
   else if (state.tab === "contact") contactAdminTab(target);
   else if (state.tab === "agenda") listen(ref(db, "orders"), snap => agendaTab(target, toList(snap)));
@@ -928,7 +1071,7 @@ function adminTab() {
   });
   else listen(ref(db, "chats"), snap => {
     const cs = toList(snap).sort((a, b) => (b.lastMessageAt || b.createdAt) - (a.lastMessageAt || a.createdAt));
-    target.innerHTML = `<h3>Klantenchats</h3>${cs.length ? cs.map(c => `<button class="chat-list-item" data-achat="${safe(c.id)}"><b>${safe(c.username || "Klant")} · #${short(c.orderId)}</b><small>${safe(c.lastMessage || "Nieuw gesprek")}</small></button>`).join("") : "<p class='muted'>Er zijn nog geen chats.</p>"}`;
+    target.innerHTML = `<h3>Klantenchats</h3>${cs.length ? cs.map(c => `<button class="chat-list-item" data-achat="${safe(c.id)}"><b>${safe(c.username || "Klant")} · ${c.kind === "quote" ? `Offerte: ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</b><small>${safe(c.lastMessage || "Nieuw gesprek")}</small></button>`).join("") : "<p class='muted'>Er zijn nog geen chats.</p>"}`;
     target.querySelectorAll("[data-achat]").forEach(b => b.onclick = () => openChat(b.dataset.achat, true));
   });
 }

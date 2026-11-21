@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111827"><meta name="description" content="Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen."><title>3D Printed Shop</title>
-  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=6-white-screen-progress"><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
+  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=6-offertes-20261121-v2"><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <header class="topbar">
@@ -16,6 +16,10 @@
   <section class="hero flex items-center">
     <div><p class="eyebrow">ONTDEK JOUW FAVORIETEN</p><h1>Goed gekozen.<br><em>Goed geregeld.</em></h1><p>Bekijk onze producten en bestel eenvoudig online.</p><a href="#producten" class="primary-link">Bekijk producten <i data-lucide="arrow-right"></i></a></div>
     <div class="hero-art"><div class="orb"></div><div class="hero-card">✦<strong>3D prints</strong><small>Nieuwe favorieten<br>ontdekken</small></div><div class="hero-spark">✳</div></div>
+  </section>
+  <section class="quote-cta-section" aria-labelledby="quoteCtaTitle">
+    <div class="quote-cta-copy"><p class="eyebrow">HELEMAAL OP MAAT</p><h2 id="quoteCtaTitle">Offerte aanvragen voor eigen product</h2><p>Heb je zelf een idee voor een 3D-print? Stuur je ontwerp, afmetingen en kleurwens op. We bespreken de mogelijkheden met je in een persoonlijk offertegesprek.</p></div>
+    <button type="button" id="requestQuoteBtn" class="primary quote-cta-button"><i data-lucide="messages-square"></i> Offerte aanvragen</button>
   </section>
   <section id="producten" class="products-section"><div class="section-head"><div><p class="eyebrow">ONS ASSORTIMENT</p><h2>Populaire producten</h2></div><span id="productTotal" class="muted"></span></div><div id="products" class="product-grid" aria-live="polite" aria-busy="true">
       <article class="skeleton-card" aria-hidden="true"><div class="skeleton-image"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div><svg class="a1-mini-printer-svg" viewBox="0 0 260 190" role="presentation" focusable="false" aria-hidden="true">
@@ -164,5 +168,5 @@
  <section class="dialog"><button class="close" id="closeDialog" aria-label="Sluiten">×</button><div id="dialogContent"></div></section>
 </div>
 <div id="toast" class="toast"></div>
-<script type="module" src="./app.js?v=6-white-screen-progress"></script>
+<script type="module" src="./app.js?v=6-offertes-20261121-v2"></script>
 </body></html>
