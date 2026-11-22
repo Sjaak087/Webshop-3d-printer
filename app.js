@@ -1384,7 +1384,15 @@ function filamentTab(target) {
         if (!name || !validColorHex(hex) || !Number.isFinite(gramsAvailable) || gramsAvailable < 0 || !Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) return toast("Controleer de ingevulde filamentgegevens.");
         if (filaments.some(item => item.id !== id && String(item.name).toLocaleLowerCase("nl") === name.toLocaleLowerCase("nl") && item.active !== false)) return toast("Een andere actieve kleur heeft deze naam al.");
         const button = form.querySelector("button[type=submit]"); button.disabled = true;
-        try { await update(ref(db, `settings/filaments/${id}`), { name, hex, gramsAvailable: Math.round(gramsAvailable * 10) / 10, lowStockThreshold, material, updatedAt: Date.now() }); toast("Filamentvoorraad opgeslagen."); }
+        try {
+          // Save only this filament's fields. The live Firebase listener can update
+          // the local list while a form is being edited; avoid replacing the form
+          // DOM until this save finishes so user input is not lost mid-edit.
+          await update(ref(db, `settings/filaments/${id}`), { name, hex, gramsAvailable: Math.round(gramsAvailable * 10) / 10, lowStockThreshold, material, updatedAt: Date.now() });
+          toast("Filamentvoorraad opgeslagen.");
+          // Render the latest snapshot after the confirmed write.
+          draw();
+        }
         catch (error) { console.error("Filament opslaan mislukt", error); toast("Filament opslaan mislukt. Controleer de Firebase-regels."); }
         finally { button.disabled = false; }
       };
@@ -1401,7 +1409,12 @@ function filamentTab(target) {
       catch (error) { console.error(error); toast("Filamentkleur verwijderen mislukt."); }
     });
   };
-  listen(ref(db, "settings/filaments"), snap => { filaments = toList(snap).sort((a,b) => String(a.name).localeCompare(String(b.name), "nl")); draw(); });
+  listen(ref(db, "settings/filaments"), snap => {
+    filaments = toList(snap).sort((a,b) => String(a.name).localeCompare(String(b.name), "nl"));
+    // Firebase emits snapshots for any update. Rebuilding this list while a user
+    // is typing in a filament row discards their unsaved input, so defer redraw.
+    if (!target.querySelector("[data-filament-form]:focus-within")) draw();
+  });
 }
 
 function adminPanel() {
