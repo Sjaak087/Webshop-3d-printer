@@ -95,3 +95,31 @@ Vervang bij publiceren alle bestanden uit de ZIP in de GitHub-repository. Er is 
 - De camera berekent automatisch de juiste afstand op basis van de afmetingen van het model.
 - Het previewcanvas wordt pas gerenderd met de werkelijk beschikbare breedte en hoogte; bij het zichtbaar worden van de productdialoog wordt opnieuw geschaald.
 - De statusmelding zegt nu expliciet wanneer het model daadwerkelijk gerenderd wordt.
+
+
+## Versie 18 — filamentbeheer en automatische kleurvoorraad
+
+De oude tab **Voorraad** is vervangen door **Filamentbeheer**.
+
+### Filamentkleuren beheren
+
+1. Open Sitebeheer → Filamentbeheer.
+2. Vul de kleurnaam in en kies de kleur met de kleurkiezer (het kleurvak). Je hoeft geen HEX-code te typen.
+3. Vul de huidige voorraad in grammen in, kies het materiaal en stel desgewenst een waarschuwingsgrens in.
+4. Klik op Kleur toevoegen. Actieve filamentkleuren verschijnen automatisch als kleurkeuze bij alle normale producten.
+
+De offertefunctie gebruikt nog steeds de afzonderlijke lijst onder `settings/quoteColors`; filamentkleuren worden niet aan offertes toegevoegd.
+
+### Gramverbruik per product
+
+Open Sitebeheer → Producten → Bewerken en vul bij **Filamentverbruik per productstuk (gram)** het verbruik in. Dit veld wordt niet op productpagina's of in winkelwagen-/besteloverzichten getoond. Wanneer een bestelling wordt geplaatst, boekt de webshop `gramverbruik × aantal` af van de gekozen filamentkleur. Bij een mislukte bestelling wordt de reservering teruggedraaid.
+
+Als er minder filament over is dan één productstuk nodig heeft, wordt die kleur voor dat product automatisch uitgeschakeld. Als geen enkele actieve kleur genoeg heeft, wordt het product als uitverkocht behandeld. Na het aanvullen van gramvoorraad wordt de kleur automatisch weer beschikbaar.
+
+### Firebase Rules publiceren
+
+GitHub Pages publiceert de Realtime Database-regels niet automatisch. Open Firebase Console → Realtime Database → Rules, vervang de regels door de bijgewerkte `database.rules.json` uit deze ZIP en klik op **Publiceren**. Dit voegt validatie toe voor filamentkleuren en `filamentGramsPerUnit`.
+
+### Let op over privégegevens
+
+Het gramverbruik wordt niet in de webshopinterface aan klanten getoond. In deze bestaande projectconfiguratie zijn Realtime Database-productgegevens echter publiek leesbaar volgens de huidige Firebase-regels. Iemand die de database technisch rechtstreeks uitleest, kan productmetadata zien. Voor echte beveiliging tegen database-uitlezen is Firebase Authentication met afgeschermde adminregels nodig; deze versie verandert het bestaande aanmeldsysteem daarvoor niet.

@@ -27,7 +27,7 @@ const statusLabel = (order, status = order?.status) => {
   return status || "ontvangen";
 };
 const fulfillmentLabel = order => isPickupOrder(order) ? "Ophalen" : "Verzenden";
-const state = { user: null, admin: false, products: [], categories: [], optionSets: {}, reviews: {}, favoriteIds: new Set(), categoryFilter: "all", cart: [], tab: "dashboard", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
+const state = { user: null, admin: false, products: [], categories: [], optionSets: {}, filaments: [], reviews: {}, favoriteIds: new Set(), categoryFilter: "all", cart: [], tab: "dashboard", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 const DEFAULT_CONTACT = { title: "Neem contact met ons op", intro: "Heb je een vraag over een product of bestelling? Neem gerust contact met ons op.", name: "", address: "", email: "", phone: "", hours: "", extra: "" };
 let contactSettings = { ...DEFAULT_CONTACT };
@@ -145,9 +145,9 @@ function productColorChoices(product) {
   return optionGroupsOf(product).flatMap(group => group.options.map(option => ({ name: option.name, hex: String(option.colorHex || "").toLowerCase(), soldOut: !!option.soldOut, group: group.label })))
     .filter(option => validColorHex(option.hex) && !option.soldOut && !seen.has(option.hex) && seen.add(option.hex));
 }
-const optionGroupsOf = p => {
-  // Een optionSetId verwijst naar één gedeelde set in Firebase. Daardoor zien
-  // alle gekoppelde producten dezelfde opties na iedere Realtime Database-update.
+const storedOptionGroupsOf = p => {
+  // Alleen de eigen/gedeelde productopties. De globale filamentkleuren worden
+  // hieronder runtime toegevoegd en mogen nooit in productopties worden opgeslagen.
   const sharedSet = p?.optionSetId ? state.optionSets?.[p.optionSetId] : null;
   const source = sharedSet && sharedSet.groups != null ? sharedSet.groups : p?.optionGroups;
   const raw = Array.isArray(source) ? source : Object.values(source || {});
@@ -161,6 +161,24 @@ const optionGroupsOf = p => {
   if (groups.length || (sharedSet && sharedSet.groups != null)) return groups;
   const old = legacyOptions(p);
   return old.length ? [{ id: "legacy", label: p.optionLabel || "Keuze", options: old.map(normalizeOption) }] : [];
+};
+const activeFilaments = () => (state.filaments || []).filter(f => f && f.active !== false && validColorHex(f.hex));
+const filamentGramsFor = p => Math.max(0, Number(p?.filamentGramsPerUnit) || 0);
+const optionGroupsOf = p => {
+  const groups = storedOptionGroupsOf(p);
+  const colors = activeFilaments();
+  if (colors.length) {
+    const gramsNeeded = filamentGramsFor(p);
+    groups.push({
+      id: "filament-colors", filamentGroup: true, label: groups.some(group => String(group.label).toLowerCase() === "filamentkleur") ? "Filamentkleur (voorraad)" : "Filamentkleur",
+      options: colors.map(color => ({
+        name: String(color.name), priceDelta: 0,
+        colorHex: String(color.hex).toLowerCase(), filamentId: color.id,
+        soldOut: Number(color.gramsAvailable || 0) <= 0 || (gramsNeeded > 0 && Number(color.gramsAvailable || 0) < gramsNeeded)
+      }))
+    });
+  }
+  return groups;
 };
 const serializableOptionGroups = groups => groups.map(g => ({
   label: String(g.label || "").trim(),
@@ -178,7 +196,7 @@ async function ensureSharedOptionSet(product) {
       return product.optionSetId;
     }
   }
-  const groups = serializableOptionGroups(optionGroupsOf(product));
+  const groups = serializableOptionGroups(storedOptionGroupsOf(product));
   if (!groups.length) throw new Error("Dit product heeft geen keuzes om live te koppelen.");
   const setId = push(ref(db, "settings/productOptionSets")).key;
   const now = Date.now();
@@ -195,7 +213,12 @@ async function ensureSharedOptionSet(product) {
   return setId;
 }
 const optList = p => optionGroupsOf(p).flatMap(g => g.options);
-const isSoldOut = p => !!p.soldOut || (p?.stockTracked === true && Number(p.stockQuantity || 0) <= 0) || optionGroupsOf(p).some(g => g.options.length > 0 && g.options.every(o => o.soldOut));
+const isSoldOut = p => {
+  if (p?.soldOut) return true;
+  const groups = optionGroupsOf(p);
+  if (filamentGramsFor(p) > 0 && !activeFilaments().length) return true;
+  return groups.some(g => g.options.length > 0 && g.options.every(o => o.soldOut));
+};
 const selectionsOf = item => Array.isArray(item?.selections) ? item.selections : (item?.option ? [{ label: item.optionLabel || "Keuze", value: item.option, priceDelta: 0 }] : []);
 const selectionsKey = selections => selectionsOf({ selections }).map(s => `${encodeURIComponent(s.label)}=${encodeURIComponent(s.value)}`).join("|");
 const modelColorsOf = item => Array.isArray(item?.modelColors) ? item.modelColors : [];
@@ -373,7 +396,14 @@ function saveCart() { try { localStorage.setItem("novashopCart", JSON.stringify(
 function cartIssue(c) {
   const p = state.products.find(x => x.id === c.id); if (!p) return "Niet meer beschikbaar";
   if (isSoldOut(p)) return "Uitverkocht";
-  if (p.stockTracked === true && Number(p.stockQuantity || 0) < Number(c.qty || 1)) return `Niet genoeg voorraad (beschikbaar: ${Math.max(0, Number(p.stockQuantity) || 0)})`;;
+  const requiredGrams = filamentGramsFor(p) * Math.max(1, Number(c.qty) || 1);
+  if (requiredGrams > 0) {
+    const filamentChoice = selectionsOf(c).find(choice => choice.filamentId);
+    if (!filamentChoice) return "Kies een filamentkleur";
+    const filament = state.filaments.find(item => item.id === filamentChoice.filamentId && item.active !== false);
+    if (!filament) return "De gekozen filamentkleur is niet meer beschikbaar";
+    if (Number(filament.gramsAvailable || 0) < requiredGrams) return `Niet genoeg ${filament.name}-filament (nodig: ${requiredGrams} g, beschikbaar: ${Math.max(0, Number(filament.gramsAvailable) || 0)} g)`;
+  }
   const allowedModelHexes = new Set(productColorChoices(p).map(c => c.hex.toLowerCase()));
   if (modelColorsOf(c).some(c => !allowedModelHexes.has(String(c.colorHex || "").toLowerCase()))) return "Een gekozen 3D-kleur is niet meer beschikbaar";
   const groups = optionGroupsOf(p), selected = selectionsOf(c);
@@ -393,7 +423,6 @@ function addCart(id, selections = [], modelColors = []) {
   const allowedHexes = new Set(productColorChoices(p).map(c => c.hex.toLowerCase()));
   const normalizedModelColors = modelColorsOf({ modelColors }).filter(c => allowedHexes.has(String(c.colorHex || "").toLowerCase())).map(c => ({ partIndex: Math.max(0, Number(c.partIndex) || 0), partName: String(c.partName || "Onderdeel"), colorName: String(c.colorName || "Kleur"), colorHex: String(c.colorHex).toLowerCase() }));
   if (modelColors.length && normalizedModelColors.length !== modelColors.length) return toast("Kies alleen kleuren die bij dit product zijn ingesteld");
-  if (p.stockTracked === true) { const existingQty = state.cart.filter(x => x.id === id).reduce((n,x) => n + (Number(x.qty)||0), 0); if (Number(p.stockQuantity || 0) < existingQty + 1) return toast("Niet genoeg voorraad voor dit product"); }
   if (groups.length !== chosen.length) return toast("Kies eerst alle productopties");
   let delta = 0;
   for (const group of groups) {
@@ -406,7 +435,14 @@ function addCart(id, selections = [], modelColors = []) {
   const itemPrice = Math.max(0, Number(p.price) + delta);
   const key = itemKey(id, chosen, normalizedModelColors);
   const it = state.cart.find(x => itemKey(x.id, selectionsOf(x), modelColorsOf(x)) === key);
-  if (it) it.qty++;
+  const nextQty = (it?.qty || 0) + 1;
+  const gramNeed = filamentGramsFor(p) * nextQty;
+  const selectedFilament = chosen.find(choice => choice.filamentId);
+  if (gramNeed > 0) {
+    const filament = state.filaments.find(item => item.id === selectedFilament?.filamentId && item.active !== false);
+    if (!filament || Number(filament.gramsAvailable || 0) < gramNeed) return toast(`Niet genoeg filament voor ${nextQty} stuk(s) van dit product.`);
+  }
+  if (it) it.qty = nextQty;
   else state.cart.push({ id, title: p.title, basePrice: Number(p.price), price: itemPrice, selections: chosen.map(x => ({ ...x })), ...(normalizedModelColors.length ? { modelColors: normalizedModelColors } : {}), qty: 1 });
   saveCart(); toast("Toegevoegd aan je winkelwagen");
 }
@@ -418,8 +454,9 @@ let pendingProductSnapshot = [];
 let productSnapshotReceived = false;
 let pendingProductError = false;
 let optionSetSnapshotReceived = false;
+let filamentSnapshotReceived = false;
 function completeInitialProductLoad() {
-  if (state.loaded || !productSnapshotReceived || !optionSetSnapshotReceived || productLoadTimer !== null) return;
+  if (state.loaded || !productSnapshotReceived || !optionSetSnapshotReceived || !filamentSnapshotReceived || productLoadTimer !== null) return;
   const remaining = Math.max(0, PRODUCT_LOADING_MIN_MS - (Date.now() - productLoadingStartedAt));
   productLoadTimer = setTimeout(() => {
     state.products = pendingProductSnapshot;
@@ -437,6 +474,17 @@ onValue(ref(db, "settings/productOptionSets"), snap => {
   console.error("Firebase shared product options could not be loaded", error);
   state.optionSets = {};
   optionSetSnapshotReceived = true;
+  completeInitialProductLoad();
+});
+onValue(ref(db, "settings/filaments"), snap => {
+  state.filaments = toList(snap).sort((a, b) => String(a.name).localeCompare(String(b.name), "nl"));
+  filamentSnapshotReceived = true;
+  if (state.loaded) renderProducts();
+  completeInitialProductLoad();
+}, error => {
+  console.error("Firebase filament inventory could not be loaded", error);
+  state.filaments = [];
+  filamentSnapshotReceived = true;
   completeInitialProductLoad();
 });
 onValue(ref(db, "products"), snap => {
@@ -599,7 +647,7 @@ function showProduct(id) {
     content.querySelectorAll("[data-image]").forEach(b => b.onclick = () => { activeImage = Number(b.dataset.image); render(); });
     content.querySelectorAll("[data-choice]").forEach(b => b.onclick = () => {
       const option = current.options[Number(b.dataset.choice)];
-      chosen[step] = { label: current.label, value: option.name, priceDelta: Number(option.priceDelta) || 0, ...(validColorHex(option.colorHex) ? { colorHex: option.colorHex } : {}) };
+      chosen[step] = { label: current.label, value: option.name, priceDelta: Number(option.priceDelta) || 0, ...(validColorHex(option.colorHex) ? { colorHex: option.colorHex } : {}), ...(option.filamentId ? { filamentId: option.filamentId } : {}) };
       chosen = chosen.slice(0, step + 1); render();
     });
     $("#optionBack")?.addEventListener("click", () => { step = Math.max(0, step - 1); render(); });
@@ -622,8 +670,11 @@ function showCart() {
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, selectionsOf(x), modelColorsOf(x)) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => itemKey(x.id, selectionsOf(x), modelColorsOf(x)) === b.dataset.qty); if (!it) return;
-    const nextQty = it.qty + Number(b.dataset.delta), product = state.products.find(x => x.id === it.id);
-    if (nextQty > it.qty && product?.stockTracked === true && state.cart.filter(x => x.id === it.id).reduce((n, x) => n + Number(x.qty || 0), 0) + 1 > Number(product.stockQuantity || 0)) return toast("Niet genoeg voorraad voor extra stuks.");
+    const nextQty = it.qty + Number(b.dataset.delta);
+    if (nextQty > 0) {
+      const issue = cartIssue({ ...it, qty: nextQty });
+      if (issue) return toast(issue);
+    }
     it.qty = nextQty; if (it.qty <= 0) state.cart = state.cart.filter(x => x !== it);
     saveCart(); showCart();
   });
@@ -745,22 +796,37 @@ function logoutAdmin() { state.admin = false; sessionStorage.removeItem("novasho
 
 /* ---------- voorraad reserveren bij bestelling ---------- */
 async function reserveInventory(items) {
-  const quantities = new Map();
-  (items || []).forEach(item => quantities.set(String(item.id), (quantities.get(String(item.id)) || 0) + Math.max(1, Number(item.qty) || 1)));
+  // Filament wordt per kleur gereserveerd. Maatwerkoffertes hebben geen
+  // filamentId en vallen bewust buiten deze voorraadadministratie.
+  const requiredByFilament = new Map();
+  for (const item of (items || [])) {
+    if (!item?.id || String(item.id).startsWith("maatwerk-")) continue;
+    const productSnap = await get(ref(db, `products/${item.id}`));
+    const product = productSnap.val();
+    if (!product) throw new Error(`Product ${item.title || "onbekend"} bestaat niet meer.`);
+    const gramsPerUnit = Math.max(0, Number(product.filamentGramsPerUnit) || 0);
+    if (!gramsPerUnit) continue;
+    const selected = selectionsOf(item).find(choice => choice.filamentId);
+    if (!selected?.filamentId) throw new Error(`Kies eerst een filamentkleur voor ${product.title || item.title}.`);
+    const grams = gramsPerUnit * Math.max(1, Number(item.qty) || 1);
+    const current = requiredByFilament.get(selected.filamentId) || { grams: 0, name: selected.value || "Filament" };
+    current.grams += grams;
+    requiredByFilament.set(selected.filamentId, current);
+  }
   const reservations = [];
   try {
-    for (const [productId, qty] of quantities) {
-      const productSnap = await get(ref(db, `products/${productId}`));
-      const product = productSnap.val();
-      if (!product || product.stockTracked !== true) continue;
-      const stockRef = ref(db, `products/${productId}/stockQuantity`);
+    for (const [filamentId, requirement] of requiredByFilament) {
+      const filamentSnap = await get(ref(db, `settings/filaments/${filamentId}`));
+      const filament = filamentSnap.val();
+      if (!filament || filament.active === false) throw new Error(`De kleur ${requirement.name} is niet meer beschikbaar.`);
+      const stockRef = ref(db, `settings/filaments/${filamentId}/gramsAvailable`);
       const tx = await runTransaction(stockRef, current => {
         const available = Number(current);
-        if (!Number.isFinite(available) || available < qty) return;
-        return available - qty;
+        if (!Number.isFinite(available) || available < requirement.grams) return;
+        return Math.round((available - requirement.grams) * 100) / 100;
       }, { applyLocally: false });
-      if (!tx.committed) throw new Error(`Onvoldoende voorraad voor ${product.title || "een product"}.`);
-      reservations.push({ productId, qty });
+      if (!tx.committed) throw new Error(`Niet genoeg ${filament.name || requirement.name}-filament. Nodig: ${requirement.grams} g.`);
+      reservations.push({ filamentId, grams: requirement.grams });
     }
     return reservations;
   } catch (error) {
@@ -771,8 +837,12 @@ async function reserveInventory(items) {
 async function releaseInventory(reservations) {
   for (const reservation of reservations || []) {
     try {
-      await runTransaction(ref(db, `products/${reservation.productId}/stockQuantity`), current => (Number.isFinite(Number(current)) ? Number(current) : 0) + reservation.qty, { applyLocally: false });
-    } catch (error) { console.error("Voorraadreservering kon niet worden teruggedraaid", error); }
+      await runTransaction(ref(db, `settings/filaments/${reservation.filamentId}/gramsAvailable`), current => {
+        const available = Number(current);
+        if (!Number.isFinite(available)) return;
+        return Math.round((available + reservation.grams) * 100) / 100;
+      }, { applyLocally: false });
+    } catch (error) { console.error("Filamentreservering kon niet worden teruggedraaid", error); }
   }
 }
 
@@ -1242,13 +1312,13 @@ function openAdminLogin() {
   };
 }
 function dashboardTab(target) {
-  let orders = [], products = [];
+  let orders = [], products = [], filaments = [];
   const draw = () => {
     if (!target.isConnected) return;
     const totalRevenue = orders.reduce((sum, order) => sum + (Number(order.total) || 0), 0);
     const received = orders.filter(order => order.paymentStatus === "paid").reduce((sum, order) => sum + (Number(order.total) || 0), 0);
     const openOrders = orders.filter(order => order.status !== "bezorgd").length;
-    const lowStock = products.filter(product => product.stockTracked === true && Number(product.stockQuantity || 0) <= Number(product.lowStockThreshold ?? 3));
+    const lowStock = filaments.filter(filament => filament.active !== false && Number(filament.gramsAvailable || 0) <= Number(filament.lowStockThreshold ?? 100));
     const daily = Array.from({ length: 7 }, (_, index) => {
       const date = new Date(); date.setHours(0, 0, 0, 0); date.setDate(date.getDate() - (6 - index));
       const next = new Date(date); next.setDate(next.getDate() + 1);
@@ -1262,55 +1332,81 @@ function dashboardTab(target) {
       current.quantity += Number(item.qty) || 1; current.revenue += (Number(item.price) || 0) * (Number(item.qty) || 1); topProducts.set(item.id || item.title, current);
     }));
     const topList = [...topProducts.values()].sort((a,b) => b.quantity - a.quantity).slice(0, 5);
-    target.innerHTML = `<div class="dashboard-welcome"><div><p class="eyebrow">OVERZICHT · 3D PRINTED SHOP</p><h3>Jouw webshop in één oogopslag</h3><p class="muted">Live overzicht van bestellingen, omzet en voorraad.</p></div><span class="dashboard-live"><i></i> Live gegevens</span></div>
+    target.innerHTML = `<div class="dashboard-welcome"><div><p class="eyebrow">OVERZICHT · 3D PRINTED SHOP</p><h3>Jouw webshop in één oogopslag</h3><p class="muted">Live overzicht van bestellingen, omzet en filamentvoorraad.</p></div><span class="dashboard-live"><i></i> Live gegevens</span></div>
       <div class="dashboard-kpis">
         <article class="dashboard-kpi"><span>Totale bestelwaarde</span><strong>${money(totalRevenue)}</strong><small>Alle geregistreerde bestellingen</small></article>
         <article class="dashboard-kpi"><span>Ontvangen betalingen</span><strong>${money(received)}</strong><small>Als betaald of niet van toepassing gemarkeerd</small></article>
         <article class="dashboard-kpi"><span>Bestellingen open</span><strong>${openOrders}</strong><small>Wachten nog op afronding</small></article>
-        <article class="dashboard-kpi ${lowStock.length ? "warning" : ""}"><span>Lage voorraad</span><strong>${lowStock.length}</strong><small>${lowStock.length ? "Producten vragen aandacht" : "Geen voorraadwaarschuwingen"}</small></article>
+        <article class="dashboard-kpi ${lowStock.length ? "warning" : ""}"><span>Filament bijna op</span><strong>${lowStock.length}</strong><small>${lowStock.length ? "Kleuren vragen aandacht" : "Geen filamentwaarschuwingen"}</small></article>
       </div>
       <div class="dashboard-grid"><section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Bestelwaarde · afgelopen 7 dagen</h3><p class="muted">Op basis van de besteldatum</p></div><span class="dashboard-total">${money(daily.reduce((sum,d)=>sum+d.value,0))}</span></div><div class="dashboard-bars">${daily.map(day => `<div class="dashboard-bar-col"><strong>${day.value ? money(day.value) : "—"}</strong><div class="dashboard-bar-track"><i style="height:${Math.max(day.value ? 8 : 2, day.value / maxDaily * 100)}%"></i></div><small>${day.label}</small></div>`).join("")}</div></section>
       <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Meest verkochte producten</h3><p class="muted">Op basis van aantal bestelde stuks</p></div></div>${topList.length ? `<div class="dashboard-top-list">${topList.map((item,index)=>`<div><span class="dashboard-rank">${index+1}</span><span class="dashboard-product-name">${safe(item.title)}</span><b>${item.quantity}×</b></div>`).join("")}</div>` : `<p class="muted">Er zijn nog geen productverkopen geregistreerd.</p>`}</section>
-      <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Voorraadmeldingen</h3><p class="muted">Producten op of onder hun ingestelde minimum</p></div><button type="button" class="secondary" id="dashboardStockLink">Voorraad beheren</button></div>${lowStock.length ? `<div class="dashboard-top-list">${lowStock.slice(0,6).map(product=>`<div><span class="stock-alert-dot"></span><span class="dashboard-product-name">${safe(product.title)}</span><b>${Math.max(0,Number(product.stockQuantity)||0)} over</b></div>`).join("")}</div>` : `<p class="muted">Alle bijgehouden voorraden zijn op peil.</p>`}</section>
+      <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Filamentmeldingen</h3><p class="muted">Kleuren op of onder hun voorraadgrens</p></div><button type="button" class="secondary" id="dashboardStockLink">Filament beheren</button></div>${lowStock.length ? `<div class="dashboard-top-list">${lowStock.slice(0,6).map(filament=>`<div><span class="stock-alert-dot"></span><span class="dashboard-product-name"><i class="product-option-swatch inline" style="--option-color:${safe(filament.hex)}"></i> ${safe(filament.name)}</span><b>${Math.max(0,Number(filament.gramsAvailable)||0)} g</b></div>`).join("")}</div>` : `<p class="muted">Alle filamentkleuren zijn op peil.</p>`}</section>
       <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Recente bestellingen</h3><p class="muted">De vijf nieuwste aanvragen</p></div><button type="button" class="secondary" id="dashboardOrdersLink">Bestellingen bekijken</button></div>${orders.length ? `<div class="dashboard-top-list">${[...orders].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,5).map(order=>`<div><span class="dashboard-order-dot"></span><span class="dashboard-product-name">${safe(order.username||"Klant")} · #${short(order.id)}</span><b>${money(order.total)}</b></div>`).join("")}</div>` : `<p class="muted">Nog geen bestellingen.</p>`}</section></div>`;
-    $("#dashboardStockLink")?.addEventListener("click", () => { state.tab = "inventory"; adminTab(); });
+    $("#dashboardStockLink")?.addEventListener("click", () => { state.tab = "filament"; adminTab(); });
     $("#dashboardOrdersLink")?.addEventListener("click", () => { state.tab = "orders"; adminTab(); });
   };
   listen(ref(db, "orders"), snap => { orders = toList(snap); draw(); });
   listen(ref(db, "products"), snap => { products = toList(snap); draw(); });
+  listen(ref(db, "settings/filaments"), snap => { filaments = toList(snap); draw(); });
 }
-function inventoryTab(target) {
-  let products = [];
+function filamentTab(target) {
+  let filaments = [];
   const draw = () => {
     if (!target.isConnected) return;
-    const tracked = products.filter(product => product.stockTracked === true);
-    const low = tracked.filter(product => Number(product.stockQuantity || 0) <= Number(product.lowStockThreshold ?? 3));
-    target.innerHTML = `<div class="admin-toolbar"><div><h3>Voorraadbeheer</h3><p class="muted">Houd aantallen bij. Bij nul voorraad wordt het product automatisch niet bestelbaar.</p></div><span class="status-pill">${low.length} waarschuwingen</span></div>
-      <div class="inventory-summary"><div><small>Voorraad bijgehouden</small><b>${tracked.length}</b></div><div><small>Lage voorraad</small><b>${low.length}</b></div><div><small>Producten totaal</small><b>${products.length}</b></div></div>
-      <div class="inventory-list">${products.length ? products.map(product => {
-        const enabled = product.stockTracked === true, quantity = Math.max(0, Number(product.stockQuantity) || 0), threshold = Math.max(0, Number(product.lowStockThreshold ?? 3) || 0), isLow = enabled && quantity <= threshold;
-        return `<form class="inventory-row ${isLow ? "is-low" : ""}" data-inventory-form="${safe(product.id)}"><div class="inventory-product"><img src="${safe(product.image || "")}" alt=""><div><b>${safe(product.title)}</b><small>${enabled ? (isLow ? "Voorraad bijna op" : "Voorraad wordt bijgehouden") : "Geen voorraadlimiet ingesteld"}</small></div></div><label class="inventory-track"><input type="checkbox" name="tracked" ${enabled ? "checked" : ""}> Voorraad bijhouden</label><label>Voorraad<input name="quantity" type="number" min="0" max="100000" step="1" value="${quantity}" ${enabled ? "" : "disabled"}></label><label>Waarschuw bij<input name="threshold" type="number" min="0" max="100000" step="1" value="${threshold}" ${enabled ? "" : "disabled"}></label><button type="submit" class="primary">Opslaan</button></form>`;
-      }).join("") : `<p class="empty-state">Er zijn nog geen producten.</p>`}</div>`;
-    target.querySelectorAll("[data-inventory-form]").forEach(form => {
-      const trackedInput = form.elements.tracked, quantityInput = form.elements.quantity, thresholdInput = form.elements.threshold;
-      trackedInput.onchange = () => { quantityInput.disabled = !trackedInput.checked; thresholdInput.disabled = !trackedInput.checked; };
+    const active = filaments.filter(item => item.active !== false);
+    const totalGrams = active.reduce((sum, item) => sum + Math.max(0, Number(item.gramsAvailable) || 0), 0);
+    const low = active.filter(item => Number(item.gramsAvailable || 0) <= Number(item.lowStockThreshold ?? 100));
+    target.innerHTML = `<div class="admin-toolbar"><div><h3>Filamentbeheer</h3><p class="muted">Beheer je kleurenpalet en gramvoorraad. Actieve kleuren verschijnen automatisch bij alle gewone producten; offertes gebruiken hun eigen kleurenlijst.</p></div><span class="status-pill">${active.length} actieve kleuren</span></div>
+      <div class="inventory-summary filament-summary"><div><small>Actieve kleuren</small><b>${active.length}</b></div><div><small>Filament op voorraad</small><b>${Math.round(totalGrams * 10) / 10} g</b></div><div><small>Lage voorraad</small><b>${low.length}</b></div></div>
+      <form id="filamentCreateForm" class="filament-create-form"><label>Naam van de kleur<input name="name" maxlength="50" required placeholder="Bijv. Mat zwart"></label><label>Kies een kleur<div class="filament-color-picker"><input name="hex" type="color" value="#222222" aria-label="Kleur kiezen"><span>Gebruik het kleurenpalet</span></div></label><label>Hoeveelheid op voorraad (gram)<input name="gramsAvailable" type="number" min="0" max="1000000" step="0.1" value="1000" required></label><label>Materiaal<select name="material"><option>PLA</option><option>PETG</option><option>ABS</option><option>TPU</option><option>Andere</option></select></label><label>Waarschuwingsgrens (gram)<input name="lowStockThreshold" type="number" min="0" max="1000000" step="1" value="100" required></label><button type="submit" class="primary">Kleur toevoegen</button></form>
+      <div class="filament-list">${filaments.length ? filaments.map(item => {
+        const grams = Math.max(0, Number(item.gramsAvailable) || 0), threshold = Math.max(0, Number(item.lowStockThreshold ?? 100) || 0), isLow = item.active !== false && grams <= threshold;
+        return `<form class="filament-row ${isLow ? "is-low" : ""} ${item.active === false ? "is-inactive" : ""}" data-filament-form="${safe(item.id)}"><div class="filament-color-preview"><span style="--filament-color:${safe(item.hex || "#808080")}"></span></div><label>Naam<input name="name" maxlength="50" required value="${safe(item.name || "")}"></label><label>Kleurpalet<input name="hex" type="color" value="${safe(validColorHex(item.hex) ? item.hex : "#808080")}" aria-label="${safe(item.name || "Filamentkleur")} kleur kiezen"></label><label>Voorraad (gram)<input name="gramsAvailable" type="number" min="0" max="1000000" step="0.1" value="${grams}" required></label><label>Materiaal<select name="material">${["PLA","PETG","ABS","TPU","Andere"].map(m => `<option ${String(item.material || "PLA") === m ? "selected" : ""}>${m}</option>`).join("")}</select></label><label>Waarschuw bij (gram)<input name="lowStockThreshold" type="number" min="0" max="1000000" step="1" value="${threshold}" required></label><div class="filament-row-actions"><small>${item.active === false ? "Niet zichtbaar bij producten" : isLow ? "Bijna op" : "Actief bij producten"} · ${grams} g</small><button type="submit" class="primary">Opslaan</button><button type="button" class="secondary" data-filament-toggle="${safe(item.id)}">${item.active === false ? "Activeren" : "Pauzeren"}</button><button type="button" class="remove-item" data-filament-delete="${safe(item.id)}">Verwijderen</button></div></form>`;
+      }).join("") : `<p class="empty-state">Je hebt nog geen filamentkleuren toegevoegd. Voeg hierboven je eerste kleur toe.</p>`}</div>
+      <p class="hint filament-private-note">Het gramverbruik per product is alleen zichtbaar in Sitebeheer. Bij een bestelling wordt het opgegeven aantal gram automatisch van de gekozen kleur afgehaald. Een kleur wordt automatisch uitverkocht voor een product zodra er minder gram over is dan dat product nodig heeft.</p>`;
+    const createForm = target.querySelector("#filamentCreateForm");
+    createForm.onsubmit = async event => {
+      event.preventDefault(); const form = event.currentTarget, data = new FormData(form);
+      const name = String(data.get("name") || "").trim(), hex = String(data.get("hex") || "").toLowerCase(), gramsAvailable = Number(data.get("gramsAvailable")), lowStockThreshold = Number(data.get("lowStockThreshold")), material = String(data.get("material") || "PLA");
+      if (!name || !validColorHex(hex) || !Number.isFinite(gramsAvailable) || gramsAvailable < 0 || !Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) return toast("Controleer de kleurnaam, kleur en gramhoeveelheden.");
+      if (filaments.some(item => String(item.name).toLocaleLowerCase("nl") === name.toLocaleLowerCase("nl") && item.active !== false)) return toast("Deze filamentkleur bestaat al.");
+      const id = push(ref(db, "settings/filaments")).key;
+      const button = form.querySelector("button[type=submit]"); button.disabled = true;
+      try { await set(ref(db, `settings/filaments/${id}`), { name, hex, gramsAvailable: Math.round(gramsAvailable * 10) / 10, lowStockThreshold, material, active: true, createdAt: Date.now(), updatedAt: Date.now() }); toast("Filamentkleur toegevoegd. De kleur verschijnt automatisch bij producten."); }
+      catch (error) { console.error("Filamentkleur toevoegen mislukt", error); toast("Filamentkleur toevoegen mislukt. Controleer de Firebase-regels."); }
+      finally { button.disabled = false; }
+    };
+    target.querySelectorAll("[data-filament-form]").forEach(form => {
       form.onsubmit = async event => {
-        event.preventDefault(); const id = form.dataset.inventoryForm;
-        const quantity = Number(quantityInput.value), threshold = Number(thresholdInput.value);
-        if (trackedInput.checked && (!Number.isInteger(quantity) || quantity < 0 || !Number.isInteger(threshold) || threshold < 0)) return toast("Vul hele, positieve voorraadgetallen in.");
-        const button = form.querySelector("button[type=submit]"); button.disabled = true; button.textContent = "Opslaan…";
-        try { await update(ref(db, `products/${id}`), { stockTracked: trackedInput.checked, stockQuantity: trackedInput.checked ? quantity : null, lowStockThreshold: trackedInput.checked ? threshold : null, stockUpdatedAt: Date.now() }); toast("Voorraad bijgewerkt"); }
-        catch (error) { console.error(error); toast("Voorraad opslaan mislukt. Controleer de Firebase-regels."); }
-        finally { button.disabled = false; button.textContent = "Opslaan"; }
+        event.preventDefault(); const id = form.dataset.filamentForm, data = new FormData(form);
+        const name = String(data.get("name") || "").trim(), hex = String(data.get("hex") || "").toLowerCase(), gramsAvailable = Number(data.get("gramsAvailable")), lowStockThreshold = Number(data.get("lowStockThreshold")), material = String(data.get("material") || "PLA");
+        if (!name || !validColorHex(hex) || !Number.isFinite(gramsAvailable) || gramsAvailable < 0 || !Number.isFinite(lowStockThreshold) || lowStockThreshold < 0) return toast("Controleer de ingevulde filamentgegevens.");
+        if (filaments.some(item => item.id !== id && String(item.name).toLocaleLowerCase("nl") === name.toLocaleLowerCase("nl") && item.active !== false)) return toast("Een andere actieve kleur heeft deze naam al.");
+        const button = form.querySelector("button[type=submit]"); button.disabled = true;
+        try { await update(ref(db, `settings/filaments/${id}`), { name, hex, gramsAvailable: Math.round(gramsAvailable * 10) / 10, lowStockThreshold, material, updatedAt: Date.now() }); toast("Filamentvoorraad opgeslagen."); }
+        catch (error) { console.error("Filament opslaan mislukt", error); toast("Filament opslaan mislukt. Controleer de Firebase-regels."); }
+        finally { button.disabled = false; }
       };
     });
+    target.querySelectorAll("[data-filament-toggle]").forEach(button => button.onclick = async () => {
+      const item = filaments.find(value => value.id === button.dataset.filamentToggle); if (!item) return;
+      try { await update(ref(db, `settings/filaments/${item.id}`), { active: item.active === false, updatedAt: Date.now() }); toast(item.active === false ? "Filamentkleur weer actief" : "Filamentkleur gepauzeerd"); }
+      catch (error) { console.error(error); toast("Filamentkleur bijwerken mislukt."); }
+    });
+    target.querySelectorAll("[data-filament-delete]").forEach(button => button.onclick = async () => {
+      const item = filaments.find(value => value.id === button.dataset.filamentDelete); if (!item) return;
+      if (!confirm(`Filamentkleur ${item.name} definitief verwijderen? Deze kleur verdwijnt dan ook uit de productkeuzes.`)) return;
+      try { await remove(ref(db, `settings/filaments/${item.id}`)); toast("Filamentkleur verwijderd"); }
+      catch (error) { console.error(error); toast("Filamentkleur verwijderen mislukt."); }
+    });
   };
-  listen(ref(db, "products"), snap => { products = toList(snap).sort((a,b)=>String(a.title).localeCompare(String(b.title),"nl")); draw(); });
+  listen(ref(db, "settings/filaments"), snap => { filaments = toList(snap).sort((a,b) => String(a.name).localeCompare(String(b.name), "nl")); draw(); });
 }
 
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="products">Producten</button><button data-tab="inventory">Voorraad</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="products">Producten</button><button data-tab="filament">Filamentbeheer</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
@@ -1465,18 +1561,18 @@ function adminTab() {
   cleanup(); const target = $("#adminContent"); if (!target) return;
   target.innerHTML = firebaseLoadingMarkup("Firebase-gegevens laden…");
   if (state.tab === "dashboard") dashboardTab(target);
-  else if (state.tab === "inventory") inventoryTab(target);
+  else if (state.tab === "filament") filamentTab(target);
   else if (state.tab === "products") {
     let ps = [];
     const drawProducts = () => {
       if (!target.isConnected) return;
-      target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = optionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${p.soldOut ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}${p.optionSetId ? ` <span class="status-pill" title="Deze productkeuzes worden gedeeld met andere producten">LIVE GEKOPPELD</span>` : ""}${p.model3d ? ` <span class="status-pill">3D MODEL</span>` : ""}<small>${money(p.price)}${p.categoryId && categoryLabel(p.categoryId) ? ` · ${safe(categoryLabel(p.categoryId))}` : ""}${p.stockTracked === true ? ` · voorraad ${Math.max(0, Number(p.stockQuantity)||0)}` : ""}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
+      target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = storedOptionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${isSoldOut(p) ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}${p.optionSetId ? ` <span class="status-pill" title="Deze productkeuzes worden gedeeld met andere producten">LIVE GEKOPPELD</span>` : ""}${p.model3d ? ` <span class="status-pill">3D MODEL</span>` : ""}<small>${money(p.price)}${p.categoryId && categoryLabel(p.categoryId) ? ` · ${safe(categoryLabel(p.categoryId))}` : ""}${filamentGramsFor(p) ? ` · ${filamentGramsFor(p)} g filament per stuk` : ""}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
       $("#newProduct").onclick = () => productEditor();
       target.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => productEditor(b.dataset.edit));
       target.querySelectorAll("[data-delete]").forEach(b => b.onclick = async () => { if (confirm("Dit product verwijderen?")) { await remove(ref(db, "products/" + b.dataset.delete)); toast("Product verwijderd"); } });
       target.querySelectorAll("[data-soldout]").forEach(b => b.onclick = () => { const p = ps.find(x => x.id === b.dataset.soldout); if (p) update(ref(db, "products/" + p.id), { soldOut: !p.soldOut }).then(() => toast(p.soldOut ? "Product weer beschikbaar" : "Product op uitverkocht gezet")).catch(() => toast("Opslaan mislukt")); });
       target.querySelectorAll("[data-optout]").forEach(b => b.onclick = () => {
-        const p = ps.find(x => x.id === b.dataset.optout), gIndex = Number(b.dataset.g), oIndex = Number(b.dataset.i), g = p && optionGroupsOf(p)[gIndex], o = g && g.options[oIndex];
+        const p = ps.find(x => x.id === b.dataset.optout), gIndex = Number(b.dataset.g), oIndex = Number(b.dataset.i), g = p && storedOptionGroupsOf(p)[gIndex], o = g && g.options[oIndex];
         if (!o) return;
         const path = p.optionSetId ? `settings/productOptionSets/${p.optionSetId}/groups/${gIndex}/options/${oIndex}` : (p.optionGroups ? `products/${p.id}/optionGroups/${gIndex}/options/${oIndex}` : `products/${p.id}/options/${oIndex}`);
         update(ref(db, path), { soldOut: !o.soldOut }).then(() => toast(o.soldOut ? `${o.name} weer beschikbaar` : `${o.name} op uitverkocht gezet`)).catch(() => toast("Opslaan mislukt"));
@@ -2026,7 +2122,7 @@ async function productEditor(id = null) {
   let model3d = p.model3d || null;
   const draftProductId = id || push(ref(db, "products")).key;
   let linkedOptionSetId = p.optionSetId || null;
-  let groups = optionGroupsOf(p).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
+  let groups = storedOptionGroupsOf(p).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
   openDialog(`<p class="eyebrow">CATALOGUS</p><h2>${id ? "Product bewerken" : "Nieuw product"}</h2>
     <form id="productForm" class="stack">
       <label>Titel<input id="pTitle" required maxlength="100" value="${safe(p.title || "")}"></label>
@@ -2044,12 +2140,12 @@ async function productEditor(id = null) {
         <div id="modelFileStatus" class="model-file-status">${p.model3d ? `<b>${safe(p.model3d.name || "3D-model")}</b><small>${safe(String(p.model3d.format || "").toUpperCase())} · ${formatFileSize(p.model3d.originalBytes || 0)} origineel · ${formatFileSize(p.model3d.storedBytes || 0)} opgeslagen (${p.model3d.databasePath ? "gratis database-opslag" : p.model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd."}</div>
         <button type="button" class="secondary" id="remove3DModel" ${p.model3d ? "" : "hidden"}>3D-model verwijderen</button>
       </fieldset>
-      <fieldset class="opt-editor"><legend>Voorraadbeheer</legend>
-        <label class="check"><input type="checkbox" id="pStockTracked" ${p.stockTracked === true ? "checked" : ""}> Voorraad bijhouden voor dit product</label>
-        <div class="inventory-editor-fields" id="pStockFields" ${p.stockTracked === true ? "" : "hidden"}><label>Huidige voorraad<input id="pStockQuantity" type="number" min="0" max="100000" step="1" value="${Math.max(0, Number(p.stockQuantity) || 0)}"></label><label>Waarschuw bij voorraad van<input id="pStockThreshold" type="number" min="0" max="100000" step="1" value="${Math.max(0, Number(p.lowStockThreshold ?? 3))}"></label><small class="hint">Bij voorraad 0 wordt het product automatisch uitverkocht en kan het niet worden besteld. Voorraad wordt bij iedere geslaagde bestelling afgeboekt.</small></div>
+      <fieldset class="opt-editor"><legend>Filamentverbruik · alleen zichtbaar in Sitebeheer</legend>
+        <label>Filamentverbruik per productstuk (gram)<input id="pFilamentGrams" type="number" min="0" max="100000" step="0.1" value="${Math.max(0, Number(p.filamentGramsPerUnit) || 0)}" placeholder="Bijv. 85"></label>
+        <small class="hint">Dit aantal is nooit zichtbaar voor klanten. Bij elke bestelling wordt dit aantal gram afgetrokken van de voorraad van de gekozen filamentkleur. Een kleur is automatisch uitverkocht als er minder gram beschikbaar is dan dit product nodig heeft.</small>
       </fieldset>
       <fieldset class="opt-editor"><legend>Productopties en prijsaanpassingen</legend>
-        <div class="choice-copy-row"><label>Product om live mee te koppelen<select id="copyOptionsFrom"><option value="">Selecteer een product…</option>${availableProducts.filter(source => source.id !== id && optionGroupsOf(source).length).map(source => `<option value="${safe(source.id)}">${safe(source.title)}</option>`).join("")}</select></label><button type="button" class="secondary" id="copyOptionsBtn">Live koppelen</button></div>
+        <div class="choice-copy-row"><label>Product om live mee te koppelen<select id="copyOptionsFrom"><option value="">Selecteer een product…</option>${availableProducts.filter(source => source.id !== id && storedOptionGroupsOf(source).length).map(source => `<option value="${safe(source.id)}">${safe(source.title)}</option>`).join("")}</select></label><button type="button" class="secondary" id="copyOptionsBtn">Live koppelen</button></div>
         <p id="optionLinkStatus" class="hint">${linkedOptionSetId ? "Dit product gebruikt een gedeelde keuzeset. Wijzigingen worden voor alle gekoppelde producten gepubliceerd zodra je opslaat." : "Dit product heeft eigen keuzes. Kies een ander product en gebruik Live koppelen om dezelfde keuzes voortaan samen te beheren."}</p>
         <button type="button" class="secondary" id="unlinkOptionSet" ${linkedOptionSetId ? "" : "hidden"}>Loskoppelen en zelfstandig maken</button>
         <div id="optionGroupsEditor" class="choice-groups-editor"></div>
@@ -2106,7 +2202,6 @@ async function productEditor(id = null) {
     if (box) box.innerHTML = model3d ? `<b>${safe(model3d.name || "3D-model")}</b><small>${safe(String(model3d.format || "").toUpperCase())} · ${formatFileSize(model3d.originalBytes || 0)} origineel · ${formatFileSize(model3d.storedBytes || 0)} opgeslagen (${model3d.databasePath ? "gratis database-opslag" : model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd.";
     if (removeButton) removeButton.hidden = !model3d;
   };
-  $("#pStockTracked").onchange = () => { $("#pStockFields").hidden = !$("#pStockTracked").checked; };
   $("#remove3DModel").onclick = () => { model3d = null; modelFileInput.value = ""; refreshModelFileStatus(); toast("3D-model wordt verwijderd na opslaan"); };
   modelFileInput.onchange = async () => {
     const file = modelFileInput.files?.[0]; if (!file) return;
@@ -2134,7 +2229,7 @@ async function productEditor(id = null) {
       const setData = setSnap.val();
       state.optionSets[setId] = setData;
       linkedOptionSetId = setId;
-      groups = optionGroupsOf({ optionSetId: setId }).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
+      groups = storedOptionGroupsOf({ optionSetId: setId }).map(g => ({ label: g.label, options: g.options.map(o => ({ ...o })) }));
       drawGroups(); updateOptionLinkStatus();
       toast(`Live gekoppeld aan “${source.title}”. Sla dit product op om de koppeling vast te leggen.`);
     } catch (err) {
@@ -2167,9 +2262,9 @@ async function productEditor(id = null) {
     if (!allNamesValid) return toast("Binnen een optiestap moeten de optienamen uniek zijn");
     const btn = $("#pSave"); btn.disabled = true; btn.textContent = "Opslaan…";
     const now = Date.now();
-    const stockTracked = $("#pStockTracked").checked, stockQuantity = Number($("#pStockQuantity").value), lowStockThreshold = Number($("#pStockThreshold").value);
-    if (stockTracked && (!Number.isInteger(stockQuantity) || stockQuantity < 0 || !Number.isInteger(lowStockThreshold) || lowStockThreshold < 0)) return toast("Vul hele, niet-negatieve voorraadaantallen in");
-    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), model3d: model3d || null, active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, stockTracked, stockQuantity: stockTracked ? stockQuantity : null, lowStockThreshold: stockTracked ? lowStockThreshold : null, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
+    const filamentGramsPerUnit = Number($("#pFilamentGrams").value || 0);
+    if (!Number.isFinite(filamentGramsPerUnit) || filamentGramsPerUnit < 0 || filamentGramsPerUnit > 100000) return toast("Vul een geldig gramverbruik in (0 tot 100.000 gram).");
+    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), model3d: model3d || null, active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, filamentGramsPerUnit: Math.round(filamentGramsPerUnit * 10) / 10, stockTracked: null, stockQuantity: null, lowStockThreshold: null, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
     try {
       const productId = draftProductId;
       const writes = Object.fromEntries(Object.entries(data).map(([key, value]) => [`products/${productId}/${key}`, value]));
