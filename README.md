@@ -1,4 +1,4 @@
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v20)
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v21)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -134,3 +134,14 @@ Het gramverbruik wordt niet in de webshopinterface aan klanten getoond. In deze 
 - De cacheversies van `app.js` en `styles.css` zijn verhoogd zodat GitHub Pages de nieuwe bestanden opnieuw ophaalt.
 
 Publiceer de inhoud van deze ZIP in dezelfde GitHub-repository. De live Firebase-koppeling kan alleen met jouw eigen projectgegevens worden gecontroleerd; deze lokale controles simuleren geen echte bestelling of Firebase-write.
+
+
+## Versie 21 — laptopweergave, offertewaarschuwing en visuele verbetering
+
+- De navigatie schaalt op laptopbreedtes terug naar compacte pictogramknoppen zodat de zoekbalk en navigatie samen binnen de schermbreedte blijven. De knoppen behouden toegankelijke labels en titels.
+- De inhoud, beheerpanelen en dialoogvensters krijgen maximale breedtes en hoogtes op basis van de viewport. Op lagere laptopschermen kunnen lange formulieren binnen het venster scrollen in plaats van buiten beeld te vallen.
+- Direct onder de kleurkeuze in het offerteformulier staat de waarschuwing: “Let op! De kleuren kunnen op zijn voor sommige producten als het veel filament kost. Ik hoop dat jullie hier begrip voor hebben.”
+- De hero, offertekaart, productkaarten en focusstijlen zijn subtiel opgefrist voor een consistenter geheel. De bestaande functies en gegevensstructuur zijn niet bewust gewijzigd.
+- De cacheversies zijn verhoogd naar `v=21-laptop-fit-quote-warning` zodat GitHub Pages de bijgewerkte bestanden opnieuw laadt.
+
+De lokale controles controleren JavaScript-syntaxis, HTML-structuur en ZIP-integriteit. De weergave kan niet op ieder fysiek laptopscherm worden geverifieerd; test de gepubliceerde site ook even op jouw laptop.
