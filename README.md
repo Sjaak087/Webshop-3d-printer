@@ -1,4 +1,4 @@
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v14)
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v20)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -123,3 +123,14 @@ GitHub Pages publiceert de Realtime Database-regels niet automatisch. Open Fireb
 ### Let op over privégegevens
 
 Het gramverbruik wordt niet in de webshopinterface aan klanten getoond. In deze bestaande projectconfiguratie zijn Realtime Database-productgegevens echter publiek leesbaar volgens de huidige Firebase-regels. Iemand die de database technisch rechtstreeks uitleest, kan productmetadata zien. Voor echte beveiliging tegen database-uitlezen is Firebase Authentication met afgeschermde adminregels nodig; deze versie verandert het bestaande aanmeldsysteem daarvoor niet.
+
+
+## Versie 20 — filamentkleuren gelijk tonen en eigen klanttekst
+
+- Filamentbeheer is nu de enige bron voor de globale filamentkleurkeuze. Een oude productgroep met de naam **Filamentkleur** wordt vervangen door het actuele filamentpalet, zodat er geen dubbele of afwijkende filamentkleurstappen op productpagina's verschijnen. Als alle filamentkleuren gepauzeerd of verwijderd zijn, blijft ook geen verouderde filamentkeuzelijst zichtbaar.
+- HEX-kleuren worden op één manier genormaliseerd (ook oudere waarden zonder `#` of in de korte 3-tekensnotatie). Filamentbeheer, productkeuzes, winkelwagen, dashboard en 3D-kleurkeuze gebruiken zo dezelfde kleurwaarde. De kleurstaaltjes hebben dezelfde vlakke kleurweergave.
+- In Sitebeheer → Producten → Bewerken kun je **Klant mag zelf tekst invoeren** aanzetten en een eigen titel invoeren, bijvoorbeeld “Welke naam mag erop?”. De klant krijgt dan tijdens het kiezen van het product een tekstveld (maximaal 160 tekens). Een niet-lege tekst is vereist voordat het product in de winkelwagen kan. De tekst wordt bij de productkeuzes in de winkelwagen en bestelling bewaard.
+- De tekstinstelling staat per product en wordt apart opgeslagen; offerte-/maatwerkkeuzes en de bestaande filamentvoorraadboekingen worden hierdoor niet aangepast.
+- De cacheversies van `app.js` en `styles.css` zijn verhoogd zodat GitHub Pages de nieuwe bestanden opnieuw ophaalt.
+
+Publiceer de inhoud van deze ZIP in dezelfde GitHub-repository. De live Firebase-koppeling kan alleen met jouw eigen projectgegevens worden gecontroleerd; deze lokale controles simuleren geen echte bestelling of Firebase-write.

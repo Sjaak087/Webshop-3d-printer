@@ -139,10 +139,17 @@ function closeDialog(force = false) { if (lockDialog && force !== true) return; 
 function listen(q, cb) { unsubs.push(onValue(q, cb)); }   // wordt automatisch opgeruimd
 const toList = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
 const legacyOptions = p => (Array.isArray(p?.options) ? p.options : Object.values(p?.options || {})).filter(o => o && o.name);
-const validColorHex = value => /^#[0-9a-f]{6}$/i.test(String(value || ""));
+const normalizeColorHex = value => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (/^#[0-9a-f]{3}$/.test(raw)) return "#" + [...raw.slice(1)].map(ch => ch + ch).join("");
+  if (/^#?[0-9a-f]{6}$/.test(raw)) return raw.startsWith("#") ? raw : `#${raw}`;
+  return "";
+};
+const validColorHex = value => !!normalizeColorHex(value);
+const filamentHexOf = filament => normalizeColorHex(filament?.hex) || normalizeColorHex(filament?.colorHex) || normalizeColorHex(filament?.color);
 function productColorChoices(product) {
   const seen = new Set();
-  return optionGroupsOf(product).flatMap(group => group.options.map(option => ({ name: option.name, hex: String(option.colorHex || "").toLowerCase(), soldOut: !!option.soldOut, group: group.label })))
+  return optionGroupsOf(product).flatMap(group => (group.options || []).map(option => ({ name: option.name, hex: normalizeColorHex(option.colorHex), soldOut: !!option.soldOut, group: group.label })))
     .filter(option => validColorHex(option.hex) && !option.soldOut && !seen.has(option.hex) && seen.add(option.hex));
 }
 const storedOptionGroupsOf = p => {
@@ -153,16 +160,20 @@ const storedOptionGroupsOf = p => {
   const raw = Array.isArray(source) ? source : Object.values(source || {});
   const normalizeOption = o => ({
     name: String(o.name), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut,
-    ...(validColorHex(o.colorHex) ? { colorHex: String(o.colorHex).toLowerCase() } : {})
+    ...(validColorHex(o.colorHex) ? { colorHex: normalizeColorHex(o.colorHex) } : {})
   });
   const groups = raw.filter(g => g && g.label && (Array.isArray(g.options) || g.options)).map((g, i) => ({
     id: g.id || `group-${i}`, label: String(g.label), options: (Array.isArray(g.options) ? g.options : Object.values(g.options || {})).filter(o => o && o.name).map(normalizeOption)
   }));
-  if (groups.length || (sharedSet && sharedSet.groups != null)) return groups;
+  // Filamentkleur is managed centrally in Filamentbeheer. Old product-level
+  // copies must not appear as a second, conflicting customer choice.
+  const isFilamentGroup = label => /^filamentkleur(?:\s|$)/i.test(String(label || "").trim());
+  const productGroups = groups.filter(group => !isFilamentGroup(group.label));
+  if (groups.length || (sharedSet && sharedSet.groups != null)) return productGroups;
   const old = legacyOptions(p);
-  return old.length ? [{ id: "legacy", label: p.optionLabel || "Keuze", options: old.map(normalizeOption) }] : [];
+  return old.length && !isFilamentGroup(p.optionLabel || "Keuze") ? [{ id: "legacy", label: p.optionLabel || "Keuze", options: old.map(normalizeOption) }] : [];
 };
-const activeFilaments = () => (state.filaments || []).filter(f => f && f.active !== false && validColorHex(f.hex));
+const activeFilaments = () => (state.filaments || []).filter(f => f && f.active !== false && !!filamentHexOf(f));
 const filamentGramsFor = p => Math.max(0, Number(p?.filamentGramsPerUnit) || 0);
 const optionGroupsOf = p => {
   const groups = storedOptionGroupsOf(p);
@@ -170,13 +181,17 @@ const optionGroupsOf = p => {
   if (colors.length) {
     const gramsNeeded = filamentGramsFor(p);
     groups.push({
-      id: "filament-colors", filamentGroup: true, label: groups.some(group => String(group.label).toLowerCase() === "filamentkleur") ? "Filamentkleur (voorraad)" : "Filamentkleur",
+      id: "filament-colors", filamentGroup: true, label: "Filamentkleur",
       options: colors.map(color => ({
-        name: String(color.name), priceDelta: 0,
-        colorHex: String(color.hex).toLowerCase(), filamentId: color.id,
+        name: String(color.name || "Filamentkleur").trim(), priceDelta: 0,
+        colorHex: filamentHexOf(color), filamentId: color.id,
         soldOut: Number(color.gramsAvailable || 0) <= 0 || (gramsNeeded > 0 && Number(color.gramsAvailable || 0) < gramsNeeded)
       }))
     });
+  }
+  const customTextLabel = String(p?.customTextLabel || "").trim();
+  if (p?.customTextEnabled === true && customTextLabel) {
+    groups.push({ id: "customer-text", inputType: "text", label: customTextLabel, options: [] });
   }
   return groups;
 };
@@ -184,7 +199,7 @@ const serializableOptionGroups = groups => groups.map(g => ({
   label: String(g.label || "").trim(),
   options: (Array.isArray(g.options) ? g.options : []).map(o => ({
     name: String(o.name || "").trim(), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut,
-    ...(validColorHex(o.colorHex) ? { colorHex: String(o.colorHex).toLowerCase() } : {})
+    ...(validColorHex(o.colorHex) ? { colorHex: normalizeColorHex(o.colorHex) } : {})
   })).filter(o => o.name)
 })).filter(g => g.label || g.options.length);
 async function ensureSharedOptionSet(product) {
@@ -226,10 +241,10 @@ const modelColorsKey = colors => modelColorsOf({ modelColors: colors }).map(c =>
 const itemKey = (id, selections, modelColors = []) => id + "|" + (Array.isArray(selections) ? selectionsKey(selections) : (selections || "")) + "|3d:" + modelColorsKey(modelColors);
 const optText = item => {
   const choices = selectionsOf(item);
-  const choiceText = choices.length ? ` · ${choices.map(s => `${safe(s.label)}: ${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(s.value)}</b>`).join(" · ")}` : "";
+  const choiceText = choices.length ? ` · ${choices.map(s => `${safe(s.label)}: ${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(s.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(s.value)}</b>`).join(" · ")}` : "";
   const d = item?.dimensions;
   const dims = d ? ` · ${Number(d.length)} × ${Number(d.width)} × ${Number(d.height)} mm (L × B × H)` : "";
-  const modelText = modelColorsOf(item).map(c => `3D ${safe(c.partName || "onderdeel")}: <i class="product-option-swatch inline" style="--option-color:${safe(c.colorHex || "#808080")}"></i> ${safe(c.colorName || c.colorHex || "kleur")}`).join(" · ");
+  const modelText = modelColorsOf(item).map(c => `3D ${safe(c.partName || "onderdeel")}: <i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(c.colorHex) || "#808080")}"></i> ${safe(c.colorName || c.colorHex || "kleur")}`).join(" · ");
   return choiceText + dims + (modelText ? ` · ${modelText}` : "");
 };
 const deltaText = n => Number(n) > 0 ? `+ ${money(n)}` : Number(n) < 0 ? `− ${money(Math.abs(n))}` : "Geen meerprijs";
@@ -410,7 +425,11 @@ function cartIssue(c) {
   if (groups.length !== selected.length) return "Kies de productopties opnieuw";
   for (const group of groups) {
     const s = selected.find(x => x.label === group.label);
-    const choice = group.options.find(o => o.name === s?.value);
+    if (group.inputType === "text") {
+      if (!String(s?.value || "").trim()) return `Vul ${group.label.toLowerCase()} in`;
+      continue;
+    }
+    const choice = (group.options || []).find(o => o.name === s?.value);
     if (!choice) return `Kies opnieuw een ${group.label.toLowerCase()}`;
     if (choice.soldOut) return `De optie ${choice.name} is uitverkocht`;
   }
@@ -427,7 +446,11 @@ function addCart(id, selections = [], modelColors = []) {
   let delta = 0;
   for (const group of groups) {
     const selected = chosen.find(x => x.label === group.label);
-    const option = group.options.find(o => o.name === selected?.value);
+    if (group.inputType === "text") {
+      if (!String(selected?.value || "").trim()) return toast(`Vul ${group.label.toLowerCase()} in`);
+      continue;
+    }
+    const option = (group.options || []).find(o => o.name === selected?.value);
     if (!option) return toast(`Kies eerst een ${group.label.toLowerCase()}`);
     if (option.soldOut) return toast("Deze optie is uitverkocht");
     delta += Number(option.priceDelta) || 0;
@@ -477,7 +500,7 @@ onValue(ref(db, "settings/productOptionSets"), snap => {
   completeInitialProductLoad();
 });
 onValue(ref(db, "settings/filaments"), snap => {
-  state.filaments = toList(snap).sort((a, b) => String(a.name).localeCompare(String(b.name), "nl"));
+  state.filaments = toList(snap).map(f => ({ ...f, hex: filamentHexOf(f) || "" })).sort((a, b) => String(a.name).localeCompare(String(b.name), "nl"));
   filamentSnapshotReceived = true;
   if (state.loaded) renderProducts();
   completeInitialProductLoad();
@@ -586,6 +609,7 @@ function showProduct(id) {
   const groups = optionGroupsOf(p), images = productImages(p), out = isSoldOut(p), availableModelColors = productColorChoices(p);
   let chosen = [], step = 0, activeImage = 0, modelColors = [], modelReady = !p.model3d || !availableModelColors.length, modelViewerCleanup = null, modelViewerGeneration = 0;
   const selectedPrice = () => Number(p.price) + chosen.reduce((sum, x) => sum + (Number(x?.priceDelta) || 0), 0);
+  const stepComplete = (group, selection) => group?.inputType === "text" ? !!String(selection?.value || "").trim() : !!selection;
   const render = () => {
     modelViewerGeneration++;
     modelViewerCleanup?.(); modelViewerCleanup = null;
@@ -608,24 +632,26 @@ function showProduct(id) {
         ${groups.length && !out ? `<div class="option-wizard">
           <div class="option-wizard-top"><b>${safe(current.label)}</b><span>STAP ${step + 1} / ${groups.length}</span></div>
           <div class="option-progress">${groups.map((g, i) => `<span class="${i <= step ? "done" : ""}"></span>`).join("")}</div>
-          <div class="option-choices">${current.options.map((o, i) => {
-            const active = currentChoice === o.name;
-            return `<button type="button" class="option-choice ${active ? "active" : ""}" data-choice="${i}" ${o.soldOut ? "disabled" : ""}>
-              <span class="option-choice-title">${validColorHex(o.colorHex) ? `<i class="product-option-swatch" style="--option-color:${safe(o.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(o.name)}</b></span>
-              <small>${deltaText(o.priceDelta)}${o.soldOut ? " · Uitverkocht" : ""}</small>
-            </button>`;
-          }).join("")}</div>
+          ${current.inputType === "text"
+            ? `<div class="option-text-entry"><input id="productCustomText" type="text" maxlength="160" autocomplete="off" aria-label="${safe(current.label)}" placeholder="Typ hier je tekst…" value="${safe(currentChoice || "")}"><small>Vul de tekst in die je op dit product wilt laten zetten.</small></div>`
+            : `<div class="option-choices">${(current.options || []).map((o, i) => {
+                const active = currentChoice === o.name;
+                return `<button type="button" class="option-choice ${active ? "active" : ""}" data-choice="${i}" ${o.soldOut ? "disabled" : ""}>
+                  <span class="option-choice-title">${validColorHex(o.colorHex) ? `<i class="product-option-swatch" style="--option-color:${safe(normalizeColorHex(o.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(o.name)}</b></span>
+                  <small>${deltaText(o.priceDelta)}${o.soldOut ? " · Uitverkocht" : ""}</small>
+                </button>`;
+              }).join("")}</div>`}
           <div class="option-wizard-actions">
             <button type="button" class="secondary" id="optionBack" ${step === 0 ? "disabled" : ""}><i data-lucide="chevron-left"></i> Vorige</button>
             ${step < groups.length - 1
-              ? `<button type="button" class="primary" id="optionNext" ${!chosen[step] ? "disabled" : ""}>Volgende stap <i data-lucide="arrow-right"></i></button>`
-              : `<button type="button" class="primary" id="detailAdd" ${(!chosen[step] || (p.model3d && !modelReady)) ? "disabled" : ""}><i data-lucide="shopping-bag"></i> Toevoegen aan winkelwagen</button>`}
+              ? `<button type="button" class="primary" id="optionNext" ${!stepComplete(current, chosen[step]) ? "disabled" : ""}>Volgende stap <i data-lucide="arrow-right"></i></button>`
+              : `<button type="button" class="primary" id="detailAdd" ${(!stepComplete(current, chosen[step]) || (p.model3d && !modelReady)) ? "disabled" : ""}><i data-lucide="shopping-bag"></i> Toevoegen aan winkelwagen</button>`}
           </div>
           <div class="option-summary"><span>Prijs tot nu toe</span><b>${money(total)}</b></div>
-          ${chosen.some(Boolean) ? `<div class="config-summary">${chosen.filter(Boolean).map(s => `<div class="config-summary-row"><span>${safe(s.label)}</span><b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)} · ${deltaText(s.priceDelta)}</b></div>`).join("")}</div>` : ""}
+          ${chosen.some(Boolean) ? `<div class="config-summary">${chosen.filter(Boolean).map(s => `<div class="config-summary-row"><span>${safe(s.label)}</span><b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(s.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)} · ${deltaText(s.priceDelta)}</b></div>`).join("")}</div>` : ""}
         </div>` : ""}
         ${!groups.length && !out ? `<button class="primary full" id="detailAdd" ${p.model3d && !modelReady ? "disabled" : ""}><i data-lucide="shopping-bag"></i> Toevoegen aan winkelwagen · ${money(p.price)}</button>` : ""}
-        ${groups.length && !out && step === groups.length - 1 && chosen.every(Boolean) ? `<p class="hint">Je hebt alle ${groups.length} keuzes gemaakt. De prijs hierboven is inclusief alle toeslagen en kortingen.</p>` : ""}
+        ${groups.length && !out && step === groups.length - 1 && groups.every((group, index) => stepComplete(group, chosen[index])) ? `<p class="hint">Je hebt alle ${groups.length} keuzes gemaakt. De prijs hierboven is inclusief alle toeslagen en kortingen.</p>` : ""}
         ${out ? `<button class="primary full" disabled>Momenteel niet beschikbaar</button>` : ""}
       </div>
     </div>
@@ -637,7 +663,7 @@ function showProduct(id) {
           modelColors = colors;
           modelReady = true;
           const addButton = $("#detailAdd");
-          if (addButton && (!groups.length || chosen.length === groups.length)) addButton.disabled = false;
+          if (addButton) addButton.disabled = (groups.length ? !stepComplete(groups[step], chosen[step]) : false);
         }
       }).then(cleanupViewer => {
         if (thisGeneration === modelViewerGeneration && viewerRoot?.isConnected) modelViewerCleanup = cleanupViewer;
@@ -647,13 +673,21 @@ function showProduct(id) {
     content.querySelectorAll("[data-image]").forEach(b => b.onclick = () => { activeImage = Number(b.dataset.image); render(); });
     content.querySelectorAll("[data-choice]").forEach(b => b.onclick = () => {
       const option = current.options[Number(b.dataset.choice)];
-      chosen[step] = { label: current.label, value: option.name, priceDelta: Number(option.priceDelta) || 0, ...(validColorHex(option.colorHex) ? { colorHex: option.colorHex } : {}), ...(option.filamentId ? { filamentId: option.filamentId } : {}) };
+      chosen[step] = { label: current.label, value: option.name, priceDelta: Number(option.priceDelta) || 0, ...(validColorHex(option.colorHex) ? { colorHex: normalizeColorHex(option.colorHex) } : {}), ...(option.filamentId ? { filamentId: option.filamentId } : {}) };
       chosen = chosen.slice(0, step + 1); render();
     });
+    $("#productCustomText")?.addEventListener("input", event => {
+      const value = event.currentTarget.value;
+      chosen[step] = { label: current.label, value, priceDelta: 0, inputType: "text" };
+      const complete = stepComplete(current, chosen[step]);
+      const nextButton = $("#optionNext"), addButton = $("#detailAdd");
+      if (nextButton) nextButton.disabled = !complete;
+      if (addButton) addButton.disabled = !complete || (p.model3d && !modelReady);
+    });
     $("#optionBack")?.addEventListener("click", () => { step = Math.max(0, step - 1); render(); });
-    $("#optionNext")?.addEventListener("click", () => { if (!chosen[step]) return; step = Math.min(groups.length - 1, step + 1); render(); });
+    $("#optionNext")?.addEventListener("click", () => { if (!stepComplete(current, chosen[step])) return; step = Math.min(groups.length - 1, step + 1); render(); });
     $("#detailAdd")?.addEventListener("click", () => {
-      if (groups.length && chosen.length !== groups.length) return toast("Maak eerst alle keuzes af");
+      if (groups.some((group, index) => !stepComplete(group, chosen[index]))) return toast("Maak eerst alle keuzes af");
       addCart(id, chosen, modelColors); closeDialog();
     });
   };
@@ -666,7 +700,7 @@ function showProduct(id) {
 $("#cartBtn").onclick = showCart;
 function showCart() {
   const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x), modelColorsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}${modelColorsOf(x).map(c => `<small>3D ${safe(c.partName || "onderdeel")}: <i class="product-option-swatch inline" style="--option-color:${safe(c.colorHex || "#808080")}"></i> ${safe(c.colorName || c.colorHex || "kleur")}</small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)} bij verzenden · ophalen gratis</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x), modelColorsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(s.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}${modelColorsOf(x).map(c => `<small>3D ${safe(c.partName || "onderdeel")}: <i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(c.colorHex) || "#808080")}"></i> ${safe(c.colorName || c.colorHex || "kleur")}</small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)} bij verzenden · ophalen gratis</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, selectionsOf(x), modelColorsOf(x)) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => itemKey(x.id, selectionsOf(x), modelColorsOf(x)) === b.dataset.qty); if (!it) return;
@@ -1076,7 +1110,7 @@ function showPublicTracking(token) {
       <h3>Bestellingsoverzicht</h3>
       ${(o.items || []).map((item, n) => {
         const units = Math.max(1, Number(item.qty) || 1), stages = item.stages || [];
-        const selectionText = (item.selections || []).map(s => `${safe(s.label)}: ${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(s.colorHex)}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(s.value)}</b>`).join(" · ");
+        const selectionText = (item.selections || []).map(s => `${safe(s.label)}: ${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(s.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(s.value)}</b>`).join(" · ");
         const schedules = Object.entries(item.plan || {}).sort(([a],[b]) => a.localeCompare(b)).map(([k, slot]) => slot?.startTs ? `<small>Stuk ${Number(k.split("_").pop()) + 1}: ${whenShort(slot.startTs)} – ${new Date(slot.endTs).toLocaleTimeString("nl-NL",{hour:"2-digit",minute:"2-digit"})}</small>` : "").join("");
         return `<div class="public-item"><b>${safe(item.title)} × ${units}</b>${selectionText ? `<small>${selectionText}</small>` : ""}${item.dimensions ? `<small>Afmetingen: ${Number(item.dimensions.length)} × ${Number(item.dimensions.width)} × ${Number(item.dimensions.height)} mm (L × B × H)</small>` : ""}${item.customDescription ? `<small>${safe(item.customDescription)}</small>` : ""}${units > 1 || idx >= 2 ? `<div class="unit-stages">${Array.from({length:units},(_,u)=>`<span class="unit-chip">Stuk ${u+1}: ${stageChip(stages[u] || STAGES[0])}</span>`).join("")}</div>` : ""}${schedules}</div>`;
       }).join("")}
@@ -1341,14 +1375,14 @@ function dashboardTab(target) {
       </div>
       <div class="dashboard-grid"><section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Bestelwaarde · afgelopen 7 dagen</h3><p class="muted">Op basis van de besteldatum</p></div><span class="dashboard-total">${money(daily.reduce((sum,d)=>sum+d.value,0))}</span></div><div class="dashboard-bars">${daily.map(day => `<div class="dashboard-bar-col"><strong>${day.value ? money(day.value) : "—"}</strong><div class="dashboard-bar-track"><i style="height:${Math.max(day.value ? 8 : 2, day.value / maxDaily * 100)}%"></i></div><small>${day.label}</small></div>`).join("")}</div></section>
       <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Meest verkochte producten</h3><p class="muted">Op basis van aantal bestelde stuks</p></div></div>${topList.length ? `<div class="dashboard-top-list">${topList.map((item,index)=>`<div><span class="dashboard-rank">${index+1}</span><span class="dashboard-product-name">${safe(item.title)}</span><b>${item.quantity}×</b></div>`).join("")}</div>` : `<p class="muted">Er zijn nog geen productverkopen geregistreerd.</p>`}</section>
-      <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Filamentmeldingen</h3><p class="muted">Kleuren op of onder hun voorraadgrens</p></div><button type="button" class="secondary" id="dashboardStockLink">Filament beheren</button></div>${lowStock.length ? `<div class="dashboard-top-list">${lowStock.slice(0,6).map(filament=>`<div><span class="stock-alert-dot"></span><span class="dashboard-product-name"><i class="product-option-swatch inline" style="--option-color:${safe(filament.hex)}"></i> ${safe(filament.name)}</span><b>${Math.max(0,Number(filament.gramsAvailable)||0)} g</b></div>`).join("")}</div>` : `<p class="muted">Alle filamentkleuren zijn op peil.</p>`}</section>
+      <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Filamentmeldingen</h3><p class="muted">Kleuren op of onder hun voorraadgrens</p></div><button type="button" class="secondary" id="dashboardStockLink">Filament beheren</button></div>${lowStock.length ? `<div class="dashboard-top-list">${lowStock.slice(0,6).map(filament=>`<div><span class="stock-alert-dot"></span><span class="dashboard-product-name"><i class="product-option-swatch inline" style="--option-color:${safe(filamentHexOf(filament) || "#808080")}"></i> ${safe(filament.name)}</span><b>${Math.max(0,Number(filament.gramsAvailable)||0)} g</b></div>`).join("")}</div>` : `<p class="muted">Alle filamentkleuren zijn op peil.</p>`}</section>
       <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Recente bestellingen</h3><p class="muted">De vijf nieuwste aanvragen</p></div><button type="button" class="secondary" id="dashboardOrdersLink">Bestellingen bekijken</button></div>${orders.length ? `<div class="dashboard-top-list">${[...orders].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,5).map(order=>`<div><span class="dashboard-order-dot"></span><span class="dashboard-product-name">${safe(order.username||"Klant")} · #${short(order.id)}</span><b>${money(order.total)}</b></div>`).join("")}</div>` : `<p class="muted">Nog geen bestellingen.</p>`}</section></div>`;
     $("#dashboardStockLink")?.addEventListener("click", () => { state.tab = "filament"; adminTab(); });
     $("#dashboardOrdersLink")?.addEventListener("click", () => { state.tab = "orders"; adminTab(); });
   };
   listen(ref(db, "orders"), snap => { orders = toList(snap); draw(); });
   listen(ref(db, "products"), snap => { products = toList(snap); draw(); });
-  listen(ref(db, "settings/filaments"), snap => { filaments = toList(snap); draw(); });
+  listen(ref(db, "settings/filaments"), snap => { filaments = toList(snap).map(f => ({ ...f, hex: filamentHexOf(f) || "" })); draw(); });
 }
 function filamentTab(target) {
   let filaments = [];
@@ -1362,7 +1396,7 @@ function filamentTab(target) {
       <form id="filamentCreateForm" class="filament-create-form"><label>Naam van de kleur<input name="name" maxlength="50" required placeholder="Bijv. Mat zwart"></label><label>Kies een kleur<div class="filament-color-picker"><input name="hex" type="color" value="#222222" aria-label="Kleur kiezen"><span>Gebruik het kleurenpalet</span></div></label><label>Hoeveelheid op voorraad (gram)<input name="gramsAvailable" type="number" min="0" max="1000000" step="0.1" value="1000" required></label><label>Materiaal<select name="material"><option>PLA</option><option>PETG</option><option>ABS</option><option>TPU</option><option>Andere</option></select></label><label>Waarschuwingsgrens (gram)<input name="lowStockThreshold" type="number" min="0" max="1000000" step="1" value="100" required></label><button type="submit" class="primary">Kleur toevoegen</button></form>
       <div class="filament-list">${filaments.length ? filaments.map(item => {
         const grams = Math.max(0, Number(item.gramsAvailable) || 0), threshold = Math.max(0, Number(item.lowStockThreshold ?? 100) || 0), isLow = item.active !== false && grams <= threshold;
-        return `<form class="filament-row ${isLow ? "is-low" : ""} ${item.active === false ? "is-inactive" : ""}" data-filament-form="${safe(item.id)}"><div class="filament-color-preview"><span style="--filament-color:${safe(item.hex || "#808080")}"></span></div><label>Naam<input name="name" maxlength="50" required value="${safe(item.name || "")}"></label><label>Kleurpalet<input name="hex" type="color" value="${safe(validColorHex(item.hex) ? item.hex : "#808080")}" aria-label="${safe(item.name || "Filamentkleur")} kleur kiezen"></label><label>Voorraad (gram)<input name="gramsAvailable" type="number" min="0" max="1000000" step="0.1" value="${grams}" required></label><label>Materiaal<select name="material">${["PLA","PETG","ABS","TPU","Andere"].map(m => `<option ${String(item.material || "PLA") === m ? "selected" : ""}>${m}</option>`).join("")}</select></label><label>Waarschuw bij (gram)<input name="lowStockThreshold" type="number" min="0" max="1000000" step="1" value="${threshold}" required></label><div class="filament-row-actions"><small>${item.active === false ? "Niet zichtbaar bij producten" : isLow ? "Bijna op" : "Actief bij producten"} · ${grams} g</small><button type="submit" class="primary">Opslaan</button><button type="button" class="secondary" data-filament-toggle="${safe(item.id)}">${item.active === false ? "Activeren" : "Pauzeren"}</button><button type="button" class="remove-item" data-filament-delete="${safe(item.id)}">Verwijderen</button></div></form>`;
+        return `<form class="filament-row ${isLow ? "is-low" : ""} ${item.active === false ? "is-inactive" : ""}" data-filament-form="${safe(item.id)}"><div class="filament-color-preview"><span style="--filament-color:${safe(filamentHexOf(item) || "#808080")}"></span></div><label>Naam<input name="name" maxlength="50" required value="${safe(item.name || "")}"></label><label>Kleurpalet<input name="hex" type="color" value="${safe(filamentHexOf(item) || "#808080")}" aria-label="${safe(item.name || "Filamentkleur")} kleur kiezen"></label><label>Voorraad (gram)<input name="gramsAvailable" type="number" min="0" max="1000000" step="0.1" value="${grams}" required></label><label>Materiaal<select name="material">${["PLA","PETG","ABS","TPU","Andere"].map(m => `<option ${String(item.material || "PLA") === m ? "selected" : ""}>${m}</option>`).join("")}</select></label><label>Waarschuw bij (gram)<input name="lowStockThreshold" type="number" min="0" max="1000000" step="1" value="${threshold}" required></label><div class="filament-row-actions"><small>${item.active === false ? "Niet zichtbaar bij producten" : isLow ? "Bijna op" : "Actief bij producten"} · ${grams} g</small><button type="submit" class="primary">Opslaan</button><button type="button" class="secondary" data-filament-toggle="${safe(item.id)}">${item.active === false ? "Activeren" : "Pauzeren"}</button><button type="button" class="remove-item" data-filament-delete="${safe(item.id)}">Verwijderen</button></div></form>`;
       }).join("") : `<p class="empty-state">Je hebt nog geen filamentkleuren toegevoegd. Voeg hierboven je eerste kleur toe.</p>`}</div>
       <p class="hint filament-private-note">Het gramverbruik per product is alleen zichtbaar in Sitebeheer. Bij een bestelling wordt het opgegeven aantal gram automatisch van de gekozen kleur afgehaald. Een kleur wordt automatisch uitverkocht voor een product zodra er minder gram over is dan dat product nodig heeft.</p>`;
     const createForm = target.querySelector("#filamentCreateForm");
@@ -1410,7 +1444,7 @@ function filamentTab(target) {
     });
   };
   listen(ref(db, "settings/filaments"), snap => {
-    filaments = toList(snap).sort((a,b) => String(a.name).localeCompare(String(b.name), "nl"));
+    filaments = toList(snap).map(f => ({ ...f, hex: filamentHexOf(f) || "" })).sort((a,b) => String(a.name).localeCompare(String(b.name), "nl"));
     // Firebase emits snapshots for any update. Rebuilding this list while a user
     // is typing in a filament row discards their unsaved input, so defer redraw.
     if (!target.querySelector("[data-filament-form]:focus-within")) draw();
@@ -1579,7 +1613,7 @@ function adminTab() {
     let ps = [];
     const drawProducts = () => {
       if (!target.isConnected) return;
-      target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = storedOptionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${isSoldOut(p) ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}${p.optionSetId ? ` <span class="status-pill" title="Deze productkeuzes worden gedeeld met andere producten">LIVE GEKOPPELD</span>` : ""}${p.model3d ? ` <span class="status-pill">3D MODEL</span>` : ""}<small>${money(p.price)}${p.categoryId && categoryLabel(p.categoryId) ? ` · ${safe(categoryLabel(p.categoryId))}` : ""}${filamentGramsFor(p) ? ` · ${filamentGramsFor(p)} g filament per stuk` : ""}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
+      target.innerHTML = `<div class="admin-toolbar"><h3>Producten beheren</h3><button class="primary" id="newProduct"><i data-lucide="plus"></i> Product toevoegen</button></div>${ps.length ? ps.map(p => { const groups = storedOptionGroupsOf(p); return `<div class="admin-row"><div class="admin-product">${p.image ? `<img src="${safe(p.image)}" alt="">` : "✦"}<div><b>${safe(p.title)}</b>${isSoldOut(p) ? ` <span class="badge-out">UITVERKOCHT</span>` : ""}${p.optionSetId ? ` <span class="status-pill" title="Deze productkeuzes worden gedeeld met andere producten">LIVE GEKOPPELD</span>` : ""}${p.model3d ? ` <span class="status-pill">3D MODEL</span>` : ""}<small>${money(p.price)}${p.categoryId && categoryLabel(p.categoryId) ? ` · ${safe(categoryLabel(p.categoryId))}` : ""}${filamentGramsFor(p) ? ` · ${filamentGramsFor(p)} g filament per stuk` : ""}${p.customTextEnabled && p.customTextLabel ? ` · eigen tekst: ${safe(p.customTextLabel)}` : ""}</small>${groups.map((g, gi) => `<div class="opt-admin"><small>${safe(g.label)}:</small>${g.options.map((o, oi) => `<button type="button" class="opt-toggle ${o.soldOut ? "out" : ""}" data-optout="${safe(p.id)}" data-g="${gi}" data-i="${oi}" title="Klik om uitverkocht aan/uit te zetten">${safe(o.name)} · ${deltaText(o.priceDelta)}${o.soldOut ? " · uitverkocht" : ""}</button>`).join("")}</div>`).join("")}</div></div><div class="admin-actions"><button class="secondary" data-soldout="${safe(p.id)}">${p.soldOut ? "Weer beschikbaar" : "Uitverkocht"}</button> <button class="secondary" data-edit="${safe(p.id)}">Bewerken</button> <button class="remove-item" data-delete="${safe(p.id)}">Verwijderen</button></div></div>`; }).join("") : "<p class='muted'>Je hebt nog geen producten toegevoegd.</p>"}`;
       $("#newProduct").onclick = () => productEditor();
       target.querySelectorAll("[data-edit]").forEach(b => b.onclick = () => productEditor(b.dataset.edit));
       target.querySelectorAll("[data-delete]").forEach(b => b.onclick = async () => { if (confirm("Dit product verwijderen?")) { await remove(ref(db, "products/" + b.dataset.delete)); toast("Product verwijderd"); } });
@@ -2165,6 +2199,12 @@ async function productEditor(id = null) {
         <button type="button" class="secondary" id="addOptionGroup"><i data-lucide="plus"></i> Optiegroep toevoegen</button>
         <p class="hint">Elke optiegroep wordt één stap in de productconfigurator. Kleurvoorbeelden, prijsverschillen en uitverkocht-statussen worden gedeeld. Na opslaan zien alle gekoppelde producten de update automatisch via Firebase.</p>
       </fieldset>
+      <fieldset class="opt-editor">
+        <legend>Eigen tekst van de klant</legend>
+        <label class="check"><input type="checkbox" id="pCustomTextEnabled" ${p.customTextEnabled === true ? "checked" : ""}> Klant mag zelf tekst invoeren</label>
+        <label>Titel van het tekstveld<input id="pCustomTextLabel" maxlength="60" value="${safe(p.customTextLabel || "")}" placeholder="Bijv. Welke naam mag erop?" ${p.customTextEnabled === true ? "" : "disabled"}></label>
+        <small class="hint">Als je dit aanzet, verschijnt bij het product een extra stap met dit opschrift. De klant kan daar zelf een tekst invullen (maximaal 160 tekens).</small>
+      </fieldset>
       <label class="check"><input type="checkbox" id="pSoldOut" ${p.soldOut ? "checked" : ""}> Hele product uitverkocht</label>
       <button class="primary full" id="pSave">Product opslaan</button>
     </form>`);
@@ -2210,6 +2250,8 @@ async function productEditor(id = null) {
     if (unlink) unlink.hidden = !linkedOptionSetId;
   };
   drawImages(); drawGroups(); updateOptionLinkStatus();
+  const customTextToggle = $("#pCustomTextEnabled"), customTextTitle = $("#pCustomTextLabel");
+  customTextToggle.onchange = () => { customTextTitle.disabled = !customTextToggle.checked; };
   const refreshModelFileStatus = () => {
     const box = $("#modelFileStatus"), removeButton = $("#remove3DModel");
     if (box) box.innerHTML = model3d ? `<b>${safe(model3d.name || "3D-model")}</b><small>${safe(String(model3d.format || "").toUpperCase())} · ${formatFileSize(model3d.originalBytes || 0)} origineel · ${formatFileSize(model3d.storedBytes || 0)} opgeslagen (${model3d.databasePath ? "gratis database-opslag" : model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd.";
@@ -2268,16 +2310,21 @@ async function productEditor(id = null) {
   $("#productForm").onsubmit = async e => {
     e.preventDefault();
     const price = Number($("#pPrice").value); if (!Number.isFinite(price) || price < 0) return toast("Vul een geldige basisprijs in");
-    const optionGroups = groups.map(g => ({ label: String(g.label || "").trim(), options: g.options.map(o => ({ name: String(o.name || "").trim(), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut, ...(validColorHex(o.colorHex) ? { colorHex: String(o.colorHex).toLowerCase() } : {}) })).filter(o => o.name) })).filter(g => g.label || g.options.length);
+    const optionGroups = groups.map(g => ({ label: String(g.label || "").trim(), options: g.options.map(o => ({ name: String(o.name || "").trim(), priceDelta: Number(o.priceDelta) || 0, soldOut: !!o.soldOut, ...(validColorHex(o.colorHex) ? { colorHex: normalizeColorHex(o.colorHex) } : {}) })).filter(o => o.name) })).filter(g => g.label || g.options.length);
     if (optionGroups.some(g => !g.label || !g.options.length)) return toast("Geef elke optiestap een naam en voeg minimaal één optie toe");
     if (new Set(optionGroups.map(g => g.label.toLowerCase())).size !== optionGroups.length) return toast("Elke optiestap moet een eigen naam hebben");
     const allNamesValid = optionGroups.every(g => new Set(g.options.map(o => o.name.toLowerCase())).size === g.options.length);
     if (!allNamesValid) return toast("Binnen een optiestap moeten de optienamen uniek zijn");
-    const btn = $("#pSave"); btn.disabled = true; btn.textContent = "Opslaan…";
-    const now = Date.now();
+    const customTextEnabled = $("#pCustomTextEnabled").checked;
+    const customTextLabel = String($("#pCustomTextLabel").value || "").trim();
+    if (customTextEnabled && !customTextLabel) return toast("Vul een titel in voor het tekstveld van de klant.");
+    if (customTextEnabled && optionGroups.some(group => group.label.toLocaleLowerCase("nl") === customTextLabel.toLocaleLowerCase("nl"))) return toast("De titel van het tekstveld moet anders zijn dan de andere keuzestappen.");
+    if (customTextEnabled && customTextLabel.toLocaleLowerCase("nl") === "filamentkleur") return toast("Gebruik voor het tekstveld een andere titel dan Filamentkleur.");
     const filamentGramsPerUnit = Number($("#pFilamentGrams").value || 0);
     if (!Number.isFinite(filamentGramsPerUnit) || filamentGramsPerUnit < 0 || filamentGramsPerUnit > 100000) return toast("Vul een geldig gramverbruik in (0 tot 100.000 gram).");
-    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), model3d: model3d || null, active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, filamentGramsPerUnit: Math.round(filamentGramsPerUnit * 10) / 10, stockTracked: null, stockQuantity: null, lowStockThreshold: null, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
+    const btn = $("#pSave"); btn.disabled = true; btn.textContent = "Opslaan…";
+    const now = Date.now();
+    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), model3d: model3d || null, active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, filamentGramsPerUnit: Math.round(filamentGramsPerUnit * 10) / 10, customTextEnabled, customTextLabel: customTextEnabled ? customTextLabel : "", stockTracked: null, stockQuantity: null, lowStockThreshold: null, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
     try {
       const productId = draftProductId;
       const writes = Object.fromEntries(Object.entries(data).map(([key, value]) => [`products/${productId}/${key}`, value]));

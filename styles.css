@@ -545,7 +545,7 @@ body.privacy-open{overflow:hidden}
 @keyframes arm-party-right{from{transform:rotate(48deg)}to{transform:rotate(-50deg)}}
 @keyframes leg-party-left{from{transform:rotate(25deg)}to{transform:rotate(-25deg)}}
 @keyframes leg-party-right{from{transform:rotate(-25deg)}to{transform:rotate(25deg)}}
-to{translate:0 -8px;rotate:12deg}}
+/* Removed an orphaned keyframe tail from the previous stylesheet. */
 /* De expliciete dansloader blijft dansen; dit overschrijft de globale reduced-motion reset alleen voor dit onderdeel. */
 @media(prefers-reduced-motion:reduce){
  .dancing-skeleton .dancer-head{animation:skull-bop .42s ease-in-out infinite alternate!important}
@@ -700,7 +700,7 @@ to{translate:0 -8px;rotate:12deg}}
 
 /* Kleurvoorbeelden bij productopties */
 .option-choice-title{display:flex;align-items:center;gap:9px;min-width:0}
-.product-option-swatch{display:inline-block;flex:0 0 20px;width:20px;height:20px;border:1px solid rgba(20,30,50,.18);border-radius:50%;background:var(--option-color,#888);box-shadow:inset 0 0 0 2px #ffffff35;vertical-align:middle}
+.product-option-swatch{display:inline-block;flex:0 0 20px;width:20px;height:20px;border:1px solid rgba(15,23,42,.22);border-radius:50%;background:var(--option-color,#808080);box-shadow:none;vertical-align:middle}
 .product-option-swatch.inline{width:16px;height:16px;min-width:16px;flex-basis:16px;margin-right:5px}
 .choice-option-row{grid-template-columns:minmax(0,1fr) 105px minmax(135px,auto) minmax(88px,auto) auto}
 .choice-option-row .choice-color-field{display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:10px;color:#59657b}
@@ -896,10 +896,13 @@ to{translate:0 -8px;rotate:12deg}}
 .filament-row.is-low { border-color:#f2d8a5; background:#fffdf7; }
 .filament-row.is-inactive { opacity:.68; background:#f7f8fa; }
 .filament-color-preview { display:flex; align-items:center; justify-content:center; height:40px; }
-.filament-color-preview span { width:31px; height:31px; border-radius:50%; border:1px solid rgba(15,23,42,.18); background:var(--filament-color,#808080); box-shadow:inset 0 0 0 3px rgba(255,255,255,.28); }
+.filament-color-preview span { width:31px; height:31px; border-radius:50%; border:1px solid rgba(15,23,42,.22); background:var(--filament-color,#808080); box-shadow:none; }
 .filament-row-actions { grid-column:1/-1; display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; }
 .filament-row-actions small { margin-right:auto; color:#718096; font-size:10px; }
 .filament-row-actions button { min-height:36px; }
 .filament-private-note { margin-top:14px; padding:12px; border-radius:10px; background:#f1f5f9; }
 @media(max-width:900px){.filament-create-form{grid-template-columns:repeat(2,minmax(0,1fr))}.filament-row{grid-template-columns:40px repeat(2,minmax(0,1fr))}.filament-color-preview{grid-row:span 2}.filament-row-actions{grid-column:1/-1}}
 @media(max-width:580px){.filament-create-form{grid-template-columns:1fr}.filament-row{grid-template-columns:42px minmax(0,1fr) minmax(75px,.7fr);gap:9px}.filament-row>label:nth-of-type(3),.filament-row>label:nth-of-type(4),.filament-row>label:nth-of-type(5){grid-column:2/-1}.filament-row-actions{grid-column:1/-1;justify-content:flex-start}.filament-row-actions small{flex-basis:100%}}
+
+/* Klant kan bij een product zelf een tekst invullen. */
+.option-text-entry{display:grid;gap:8px;margin:14px 0}.option-text-entry label{font-size:13px;font-weight:800;color:#26334d}.option-text-entry input{width:100%;min-height:46px;border:1px solid #dfe3ef;border-radius:11px;padding:11px 13px;background:#fff;color:#202b43;font:inherit;outline:none}.option-text-entry input:focus{border-color:#5a5bcc;box-shadow:0 0 0 3px rgba(90,91,204,.12)}.option-text-entry small{color:#68738a;font-size:11px}
