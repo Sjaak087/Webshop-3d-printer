@@ -1,5 +1,6 @@
 import { db } from "./firebase.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
+import { ASSISTANT_EXTRA_FAQ } from "./assistant-faq-extra.js";
 import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const $ = s => document.querySelector(s);
@@ -2600,6 +2601,8 @@ const ASSISTANT_FAQ = [
   { id: "terms", terms: ["voorwaarden", "algemene voorwaarden", "regels webshop", "juridisch", "rechten en plichten"], answer: () => "De algemene voorwaarden zijn te openen via de link onderaan de webshop. Daar vind je de formele afspraken over bestellen, betalen, levering en retouren. Bij een verschil tussen een korte chatuitleg en de gepubliceerde voorwaarden zijn de voorwaarden leidend." },
   { id: "admin", terms: ["beheerder", "sitebeheer", "admin", "beheeromgeving", "voorraadbeheer", "dashboard"], answer: () => "De beheeromgeving is alleen voor de webshopbeheerder. Deze klantenassistent kan geen beheeracties uitvoeren en deelt geen beheerwachtwoorden, interne voorraadgrammen, waarschuwingsgrenzen of afgeschermde dashboardinformatie." },
   { id: "chatbot", terms: ["chatbot", "assistent", "werkt de bot", "kunstmatige intelligentie", "ai bot", "faq bot"], answer: () => "Je kunt gewone vragen stellen of gewoon even praten. Voor webshopvragen gebruik ik de webshopuitleg en actuele openbare productinformatie. Je kiest zelf via het pijltje naast de verzendknop of ik in de webshop of op internet zoek. Voor internetvragen gebruik ik Wikipedia en DuckDuckGo. Ik ben geen vrij generatief AI-model zoals ChatGPT; ik combineer gesprekshulp met gevonden informatie. Deel nooit wachtwoorden, adressen, betaalgegevens of persoonlijke bestelgegevens in deze chat." }
+  ...ASSISTANT_EXTRA_FAQ
+  ...ASSISTANT_EXTRA_FAQ
 ];
 
 function assistantIsProductCountQuestion(question) {
@@ -2870,16 +2873,52 @@ function assistantFindFaq(question) {
   if (productMatches[0]?.score >= 6) {
     return { id: "dynamic-product", answer: () => assistantProductAnswer(productMatches[0].product, question) };
   }
+
+  const queryTokens = normalized.split(/\s+/).filter(token => token.length >= 3);
+  const stopTokens = new Set(["wat", "hoe", "waar", "welke", "welk", "kan", "kun", "jullie", "willen", "voor", "met", "een", "het", "de", "van", "dan", "ook", "heb", "heeft", "zijn", "was", "ben", "mijn", "jouw", "dit", "dat", "deze", "daar", "hier", "graag"]);
+  const meaningful = queryTokens.filter(token => !stopTokens.has(token));
   let best = null;
   let bestScore = 0;
+
   for (const entry of ASSISTANT_FAQ) {
-    let score = 0;
-    for (const phrase of entry.terms) {
-      if (normalized.includes(assistantNormalize(phrase))) score += phrase.includes(" ") ? 3 : 1;
+    let entryScore = 0;
+    for (const rawTerm of entry.terms || []) {
+      const term = assistantNormalize(rawTerm);
+      if (!term) continue;
+      if (normalized.includes(term)) {
+        const words = term.split(/\s+/).filter(Boolean);
+        const phraseScore = words.length >= 2 ? 3.5 + Math.min(words.length, 5) * 0.45 + Math.min(term.length, 36) * 0.025 : 1.5 + Math.min(term.length, 12) * 0.12;
+        entryScore = Math.max(entryScore, phraseScore);
+        continue;
+      }
+
+      // Typfouten: vergelijk elk woord van een FAQ-term met de woorden in de vraag.
+      const termTokens = term.split(/\s+/).filter(token => token.length >= 4);
+      if (!termTokens.length) continue;
+      let matched = 0;
+      for (const termToken of termTokens) {
+        const found = meaningful.some(queryToken => {
+          if (queryToken === termToken) return true;
+          const shorter = Math.min(queryToken.length, termToken.length);
+          if (shorter < 5) return false;
+          const distance = assistantEditDistance(queryToken, termToken);
+          const allowed = Math.max(queryToken.length, termToken.length) >= 9 ? 2 : 1;
+          return distance <= allowed && (1 - distance / Math.max(queryToken.length, termToken.length)) >= 0.76;
+        });
+        if (found) matched++;
+      }
+      const coverage = matched / termTokens.length;
+      if (coverage >= (termTokens.length === 1 ? 1 : 0.66)) {
+        const fuzzyScore = (termTokens.length === 1 ? 1.65 : 2.8 + coverage * 2.3) + Math.min(termTokens.length, 4) * 0.2;
+        entryScore = Math.max(entryScore, fuzzyScore);
+      }
     }
-    if (score > bestScore) { best = entry; bestScore = score; }
+    if (entryScore > bestScore) {
+      best = entry;
+      bestScore = entryScore;
+    }
   }
-  return bestScore >= 1 ? best : null;
+  return bestScore >= 2.05 ? best : null;
 }
 function assistantIsSafetyRestricted(question) {
   const q = assistantNormalize(question);

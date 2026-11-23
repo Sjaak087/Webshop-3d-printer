@@ -322,3 +322,41 @@ Zie `TEST-CHATBOT.md` voor de v30-controles. De externe Wikipedia/DuckDuckGo-ver
 - De gewone gesprekmodus is uitgebreid met natuurlijkere reacties voor hobby's, sport, games, muziek, school, gevoelens, films, dieren, ruimte, geschiedenis, techniek, meningen, grappen en weetjes.
 - De standaardmodus blijft offline en zoekt niet automatisch op internet. Voor willekeurige feitelijke vragen gebruikt de bezoeker expliciet de internetzoekoptie.
 - De chatbot blijft regelgestuurd en is geen generatief taalmodel; reacties zijn breder en contextgevoeliger maar niet gelijk aan ChatGPT.
+
+
+## Versie 33 — uitgebreide FAQ-kennisbank
+
+- De chatbot bevat nu de oorspronkelijke 43 webshoponderwerpen plus 150 aanvullende kennisbankonderwerpen.
+- De aanvullende onderwerpen behandelen onder meer: de basis van 3D-printen, FDM, materialen PLA/PETG/ABS/TPU, sterkte, hitte, water, voedselveiligheid, laaglijnen, supports, infill, tolerantie, nabewerking, bestandsformaten STL/3MF, slicers, ontwerpbestanden, offertes, productopties, bestelling, betaling, verzending, retouren, reviews, accounts, privacy, storingen en algemene wetenschap/techniekvragen.
+- De antwoorden zijn uitgebreider en geven aan wanneer iets afhangt van product, materiaal, voorraad of beheerinstellingen. Onbekende bedrijfsregels, prijzen, klantgegevens en verborgen voorraad worden niet verzonnen.
+- De FAQ-herkenning vergelijkt ook woorden met kleine typefouten en herkent meer natuurlijke vraagformuleringen.
+- Productaantallen, prijzen, kleuren, productopties en beschikbaarheid blijven waar mogelijk uit de actuele openbare productgegevens komen; de extra kennisbank vervangt deze dynamische gegevens niet.
+- De twee bestaande handmatige zoekopties bij het pijltje naast de verzendknop blijven behouden.
+- Dit blijft een FAQ-/regelgestuurde assistent, geen vrij generatief AI-model. Een FAQ kan nooit letterlijk iedere willekeurige vraag beantwoorden; onbekende of actuele feiten moeten via de internetzoekoptie worden gecontroleerd.
+
+### Testen versie 33
+
+- Test algemene vragen zoals “Wat is 3D-printen?”, “Wat is infill?”, “Wat is het verschil tussen PLA en PETG?” en “Wat is een STL-bestand?”.
+- Test webshopvragen zoals levertijd, verzendkosten, account, betaling, retouren, offerte, maatwerk, eigen tekst, kleuren, productaantal en voorraad.
+- Test typefouten zoals “wat is filaament?” en “hoe werkt 3d prinen?”.
+- Test dat er bij een vraag over persoonlijke bestellingen, wachtwoorden, adressen of betaalgegevens geen persoonlijke informatie wordt opgehaald of verstuurd.
+- Test “Zoek in mijn webshop” en “Zoek op het internet” apart; deze handmatige opties blijven buiten de gewone FAQ-modus.
+
+
+## Versie 33 — uitgebreide FAQ-kennisbank
+
+- De chatbot bevat nu de oorspronkelijke 43 webshoponderwerpen plus 150 aanvullende kennisbankonderwerpen.
+- De aanvullende onderwerpen behandelen onder meer: de basis van 3D-printen, FDM, materialen PLA/PETG/ABS/TPU, sterkte, hitte, water, voedselveiligheid, laaglijnen, supports, infill, tolerantie, nabewerking, bestandsformaten STL/3MF, slicers, ontwerpbestanden, offertes, productopties, bestelling, betaling, verzending, retouren, reviews, accounts, privacy, storingen en algemene wetenschap/techniekvragen.
+- De antwoorden zijn uitgebreider en geven aan wanneer iets afhangt van product, materiaal, voorraad of beheerinstellingen. Onbekende bedrijfsregels, prijzen, klantgegevens en verborgen voorraad worden niet verzonnen.
+- De FAQ-herkenning vergelijkt ook woorden met kleine typefouten en herkent meer natuurlijke vraagformuleringen.
+- Productaantallen, prijzen, kleuren, productopties en beschikbaarheid blijven waar mogelijk uit de actuele openbare productgegevens komen; de extra kennisbank vervangt deze dynamische gegevens niet.
+- De twee bestaande handmatige zoekopties bij het pijltje naast de verzendknop blijven behouden.
+- Dit blijft een FAQ-/regelgestuurde assistent, geen vrij generatief AI-model. Een FAQ kan nooit letterlijk iedere willekeurige vraag beantwoorden; onbekende of actuele feiten moeten via de internetzoekoptie worden gecontroleerd.
+
+### Testen versie 33
+
+- Test algemene vragen zoals “Wat is 3D-printen?”, “Wat is infill?”, “Wat is het verschil tussen PLA en PETG?” en “Wat is een STL-bestand?”.
+- Test webshopvragen zoals levertijd, verzendkosten, account, betaling, retouren, offerte, maatwerk, eigen tekst, kleuren, productaantal en voorraad.
+- Test typefouten zoals “wat is filaament?” en “hoe werkt 3d prinen?”.
+- Test dat er bij een vraag over persoonlijke bestellingen, wachtwoorden, adressen of betaalgegevens geen persoonlijke informatie wordt opgehaald of verstuurd.
+- Test “Zoek in mijn webshop” en “Zoek op het internet” apart; deze handmatige opties blijven buiten de gewone FAQ-modus.

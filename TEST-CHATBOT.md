@@ -48,3 +48,27 @@ Deze versie is geen volledig generatief taalmodel. De standaardmodus gebruikt de
 - Opinievragen zoals “Wat vind jij van ...?” krijgen een afgewogen reactie zonder te doen alsof de bot persoonlijke ervaringen heeft.
 - Extra gespreksthema’s: favoriete dieren/kleuren/games, “hoe was je dag?”, gevoelens/hobby’s, vakantieplannen, grappen, raadsels, weetjes, een korte verhaalstarter en een mini-quiz.
 - Dit blijft regelgestuurde gespreksondersteuning; voor werkelijk willekeurige, contextueel redenerende antwoorden is een generatief AI-model nodig.
+
+
+## v33 — uitgebreide FAQ-kennisbank
+
+- [x] Extra FAQ-module toegevoegd met 150 aanvullende onderwerpen.
+- [x] FAQ-zoekmatch uitgebreid met fuzzy matching voor kleine typefouten.
+- [x] Actuele catalogus-/prijs-/kleur-/voorraadfuncties blijven dynamisch.
+- [x] Twee expliciete zoekopties blijven aanwezig bij de verzendknop.
+- [ ] Test in een echte browser op GitHub Pages met live Firebase-productgegevens.
+- [ ] Controleer dat externe Wikipedia/DuckDuckGo-aanroepen vanuit het gepubliceerde domein blijven werken.
+
+Aanbevolen controlevragen: “Wat is 3D-printen?”, “Waarom zie je laagjes?”, “Wat is infill?”, “Wat is het verschil tussen PLA en PETG?”, “Kan een print tegen hitte?”, “Kan ik een foto laten printen?”, “Wat moet er in een offerte?”, “Hoe lang duurt een print?”, “Wat is STL?”, “Hoe werkt een slicer?”, “Wat betekent in de maak?”, “Hoe werkt retourneren?”, “Wat als mijn kleur uitverkocht is?”, “Wat is Firebase?” en “Wat is zwaartekracht?”.
+
+
+## v33 — uitgebreide FAQ-kennisbank
+
+- [x] Extra FAQ-module toegevoegd met 150 aanvullende onderwerpen.
+- [x] FAQ-zoekmatch uitgebreid met fuzzy matching voor kleine typefouten.
+- [x] Actuele catalogus-/prijs-/kleur-/voorraadfuncties blijven dynamisch.
+- [x] Twee expliciete zoekopties blijven aanwezig bij de verzendknop.
+- [ ] Test in een echte browser op GitHub Pages met live Firebase-productgegevens.
+- [ ] Controleer dat externe Wikipedia/DuckDuckGo-aanroepen vanuit het gepubliceerde domein blijven werken.
+
+Aanbevolen controlevragen: “Wat is 3D-printen?”, “Waarom zie je laagjes?”, “Wat is infill?”, “Wat is het verschil tussen PLA en PETG?”, “Kan een print tegen hitte?”, “Kan ik een foto laten printen?”, “Wat moet er in een offerte?”, “Hoe lang duurt een print?”, “Wat is STL?”, “Hoe werkt een slicer?”, “Wat betekent in de maak?”, “Hoe werkt retourneren?”, “Wat als mijn kleur uitverkocht is?”, “Wat is Firebase?” en “Wat is zwaartekracht?”.
