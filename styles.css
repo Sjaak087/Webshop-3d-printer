@@ -1016,7 +1016,6 @@ button:disabled{cursor:not-allowed;opacity:.62}
 .shop-assistant-form input{min-width:0;flex:1;border:1px solid #dce5f1;border-radius:11px;padding:11px 12px;color:#182b45;font-size:13px;outline:none}
 .shop-assistant-form input:focus{border-color:#75a5e8;box-shadow:0 0 0 3px #0756c916}
 .shop-assistant-form button{width:42px;flex:0 0 42px;border:0;border-radius:11px;background:#0756c9;color:white;font-size:20px;font-weight:800}
-.shop-assistant-footnote{padding:0 13px 11px;background:#fff;color:#8290a3;font-size:9px;line-height:1.4;flex-shrink:0}
 @media(max-width:620px){
  .shop-assistant{right:max(12px,env(safe-area-inset-right));bottom:max(12px,env(safe-area-inset-bottom))}
  .shop-assistant-toggle{padding:11px 15px 11px 12px;font-size:12px}

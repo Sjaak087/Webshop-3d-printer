@@ -1,4 +1,4 @@
-# Testchecklist chatbot v27 — uitgebreide webshop-FAQ + online zoeken
+# Testchecklist chatbot v28 — uitgebreide webshop-FAQ + online zoeken
 
 ## Start en apparaat
 - Open de webshop in een recente browser op desktop en mobiel.
@@ -36,3 +36,10 @@
 - `node --check --input-type=module < app.js`
 - `unzip -t` op de uiteindelijke ZIP.
 - Test de Tavily-fetch in de echte gepubliceerde GitHub Pages-omgeving; externe diensten kunnen CORS, rate-limits of tijdelijke storingen hebben.
+
+
+## Reparatie online zoeken v28
+- Test een niet-FAQ webshopvraag: de bot probeert Tavily keyless en valt bij fouten terug op DuckDuckGo/Bing via de openbare GET-proxy.
+- Controleer dat zoekresultaatkaarten titels, samenvattingen en externe bronlinks tonen.
+- Herhaal dezelfde zoekvraag binnen drie minuten: de tijdelijke browsercache moet onnodige herhaalverzoeken beperken.
+- Controleer dat de lange tekst onder het chat-invoerveld verwijderd is.

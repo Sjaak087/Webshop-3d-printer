@@ -1,4 +1,4 @@
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v27)
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v28)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -146,7 +146,7 @@ Publiceer de inhoud van deze ZIP in dezelfde GitHub-repository. De live Firebase
 
 De lokale controles controleren JavaScript-syntaxis, HTML-structuur en ZIP-integriteit. De weergave kan niet op ieder fysiek laptopscherm worden geverifieerd; test de gepubliceerde site ook even op jouw laptop.
 
-> **Let op bij de versiegeschiedenis:** versie 27 vervangt de lokale AI uit versie 26 door een uitgebreide webshop-FAQ met online zoeken zonder installatie, WebGPU of API-sleutel. Alleen de sectie **Versie 27** beschrijft de huidige chatbot; de onderdelen over versies 22–26 zijn historie.
+> **Let op bij de versiegeschiedenis:** versie 27 vervangt de lokale AI uit versie 26 door een uitgebreide webshop-FAQ met online zoeken zonder installatie, WebGPU of API-sleutel. Versie 28 repareert de online zoekfallback en verwijdert de lange tekst onder het chat-invoerveld; de secties **Versie 27** en **Versie 28** beschrijven de huidige chatbot.
 
 ## Versie 22 – webshopassistent
 
@@ -251,3 +251,19 @@ De chatbot is opnieuw opgebouwd zodat bezoekers niets hoeven te downloaden of te
 ### Testen versie 27
 
 Zie `TEST-CHATBOT.md` voor de uitgebreide checklist. Controleer in elk geval dat er geen WebGPU-download verschijnt, dat webshopantwoorden kloppen met de live catalogus, dat onbekende algemene vragen online worden opgezocht, dat bronlinks werken en dat de chatbot geen privégegevens uit Firebase kan ophalen. Test de sleutelvrije Tavily-aanroep ook op de gepubliceerde GitHub Pages-site; externe diensten kunnen hun voorwaarden, CORS-instellingen of gebruikslimieten wijzigen.
+
+
+## Versie 28 — reparatie online zoeken en opschonen chatbot
+
+- De Tavily-aanroep gebruikt nu alleen de kernparameters voor de sleutelvrije Search API; optionele velden die een foutieve aanvraag konden veroorzaken zijn verwijderd.
+- Als Tavily niet reageert, probeert de chatbot automatisch openbare HTML-zoekresultaten van DuckDuckGo en Bing op te halen via een gratis CORS-proxy voor openbare GET-verzoeken. Resultaten worden in de chat getoond met titel, samenvatting en bronlink.
+- De zoekresultaten worden maximaal drie minuten tijdelijk in het geheugen van de browser gecachet om dubbele verzoeken te beperken. Er worden geen Firebase-account-, order-, adres- of chatsessies meegestuurd. De bestaande invoerfilter blijft vóór online zoeken actief.
+- De uitgebreide tekst onder het chat-invoerveld is verwijderd.
+- Externe zoekdiensten en de gratis proxy blijven afhankelijk van hun eigen beschikbaarheid en limieten; als beide zoekroutes mislukken, blijven directe links naar zoekmachines beschikbaar.
+
+### Testen versie 28
+
+- Test een bekende FAQ-vraag, een onbekende webshopvraag en een algemene internetzoekvraag.
+- Controleer dat een mislukte Tavily-aanroep automatisch DuckDuckGo/Bing probeert en dat gevonden resultaten met klikbare bronlinks verschijnen.
+- Controleer dat er geen kleine uitleg-/privacytekst meer onder het chat-invoerveld staat.
+- Controleer dat de privacyfilter persoonlijke gegevens tegenhoudt voordat een externe zoekopdracht wordt uitgevoerd.

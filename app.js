@@ -2719,28 +2719,139 @@ function assistantSearchEngineLinks(query) {
     { label: "Brave", url: `https://search.brave.com/search?q=${q}` }
   ];
 }
-async function assistantSearchOnline(question, scope = "general") {
-  const queryText = assistantSearchQuery(question, scope);
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 20000);
+const ASSISTANT_WEB_CACHE = new Map();
+function assistantUnwrapSearchResultUrl(rawHref) {
   try {
-    const response = await fetch("https://api.tavily.com/search", {
-      method: "POST",
-      mode: "cors",
-      credentials: "omit",
-      headers: { "Content-Type": "application/json", "X-Tavily-Access-Mode": "keyless" },
-      body: JSON.stringify({ query: queryText, topic: "general", search_depth: "basic", max_results: 5, include_answer: "basic", include_raw_content: false, include_favicon: false, include_published_date: true, safe_search: true, language: "nl" }),
+    let candidate = String(rawHref || '').trim();
+    if (!candidate) return '';
+    if (candidate.startsWith('//')) candidate = `https:${candidate}`;
+    let parsed = new URL(candidate, window.location.href);
+    if (/(^|\.)duckduckgo\.com$/i.test(parsed.hostname)) {
+      const redirected = parsed.searchParams.get('uddg') || parsed.searchParams.get('url');
+      if (redirected) parsed = new URL(redirected);
+    } else if (/(^|\.)bing\.com$/i.test(parsed.hostname) && /\/ck\/a$/.test(parsed.pathname)) {
+      const encoded = parsed.searchParams.get('u') || '';
+      if (encoded.startsWith('a1')) {
+        try {
+          const base64 = encoded.slice(2).replace(/-/g, '+').replace(/_/g, '/');
+          const binary = atob(base64);
+          const decoded = decodeURIComponent(Array.from(binary, char => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`).join(''));
+          parsed = new URL(decoded);
+        } catch { /* Leave an unrecognized tracking URL blocked below. */ }
+      }
+    }
+    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
+    if (/(^|\.)(duckduckgo|bing|google|brave)\.com$/i.test(parsed.hostname)) return '';
+    return parsed.href;
+  } catch {
+    return '';
+  }
+}
+function assistantParseSearchHtml(html, engine) {
+  const documentResult = new DOMParser().parseFromString(String(html || ''), 'text/html');
+  const selector = engine === 'bing' ? 'li.b_algo h2 a' : 'a.result__a';
+  const anchors = [...documentResult.querySelectorAll(selector)];
+  const seen = new Set();
+  const results = [];
+  for (const anchor of anchors) {
+    const url = assistantUnwrapSearchResultUrl(anchor.getAttribute('href'));
+    const title = String(anchor.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!url || title.length < 5 || seen.has(url)) continue;
+    const container = anchor.closest(engine === 'bing' ? 'li.b_algo' : '.result') || anchor.parentElement?.parentElement;
+    const snippetNode = container?.querySelector(engine === 'bing' ? '.b_caption p, p' : '.result__snippet, .result__body, .result__snippet');
+    const snippet = String(snippetNode?.textContent || '').replace(/\s+/g, ' ').trim();
+    // Ignore navigation links and other page furniture, not result titles.
+    if (!snippet && title.length < 12) continue;
+    seen.add(url);
+    results.push({ title: title.slice(0, 150), url, content: snippet.slice(0, 500), source: engine });
+    if (results.length >= 6) break;
+  }
+  return results;
+}
+async function assistantFetchPublicSearchPage(targetUrl, engine) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 10000);
+  try {
+    // Free public GET proxy: search-page HTML only; no cookies, account data or Firebase data.
+    const response = await fetch(`https://proxy.cors.dev/${targetUrl}`, {
+      method: 'GET', mode: 'cors', credentials: 'omit', signal: controller.signal
+    });
+    if (!response.ok) throw new Error(`${engine} HTTP ${response.status}`);
+    const html = await response.text();
+    if (!html || html.length < 500) throw new Error(`${engine} gaf geen zoekpagina terug`);
+    return assistantParseSearchHtml(html, engine);
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
+async function assistantFallbackWebSearch(queryText) {
+  const cached = ASSISTANT_WEB_CACHE.get(queryText);
+  if (cached && Date.now() - cached.savedAt < 3 * 60 * 1000) return cached.data;
+  const encoded = encodeURIComponent(queryText);
+  const requests = [
+    assistantFetchPublicSearchPage(`https://html.duckduckgo.com/html/?q=${encoded}`, 'DuckDuckGo'),
+    assistantFetchPublicSearchPage(`https://www.bing.com/search?q=${encoded}&count=8`, 'Bing')
+  ];
+  const settled = await Promise.allSettled(requests);
+  const results = [];
+  for (const item of settled) {
+    if (item.status === 'fulfilled') results.push(...item.value);
+  }
+  const unique = [...new Map(results.map(item => [item.url, item])).values()].slice(0, 6);
+  if (!unique.length) {
+    const errors = settled.filter(item => item.status === 'rejected').map(item => String(item.reason?.message || 'zoekfout'));
+    throw new Error(errors.join('; ').slice(0, 240) || 'Geen openbare zoekresultaten gevonden');
+  }
+  const data = { query: queryText, answer: '', results: unique, responseTime: null, searchProvider: 'DuckDuckGo / Bing' };
+  ASSISTANT_WEB_CACHE.set(queryText, { savedAt: Date.now(), data });
+  return data;
+}
+async function assistantSearchOnline(question, scope = 'general') {
+  const queryText = assistantSearchQuery(question, scope);
+  const cached = ASSISTANT_WEB_CACHE.get(queryText);
+  if (cached && Date.now() - cached.savedAt < 3 * 60 * 1000) return cached.data;
+
+  // Try Tavily keyless first. Keep the request minimal so unsupported optional
+  // parameters cannot make every request fail on the public keyless tier.
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 12000);
+  let tavilyError = null;
+  try {
+    const response = await fetch('https://api.tavily.com/search', {
+      method: 'POST', mode: 'cors', credentials: 'omit',
+      headers: { 'Content-Type': 'application/json', 'X-Tavily-Access-Mode': 'keyless' },
+      body: JSON.stringify({
+        query: queryText, topic: 'general', search_depth: 'basic', max_results: 5,
+        include_answer: 'basic', include_raw_content: false
+      }),
       signal: controller.signal
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       const detail = data?.detail?.error || data?.detail || data?.message || data?.error || `HTTP ${response.status}`;
-      throw new Error(String(detail).slice(0, 240));
+      throw new Error(String(detail).slice(0, 200));
     }
-    const results = Array.isArray(data?.results) ? data.results.filter(item => item && /^https:\/\//i.test(String(item.url || ""))).slice(0, 5) : [];
-    return { query: queryText, answer: String(data?.answer || "").trim(), results, responseTime: data?.response_time || null };
+    const results = Array.isArray(data?.results)
+      ? data.results.filter(item => item && /^https:\/\//i.test(String(item.url || ''))).slice(0, 5)
+      : [];
+    const answer = String(data?.answer || '').trim();
+    if (answer || results.length) {
+      const normalized = { query: queryText, answer, results, responseTime: data?.response_time || null, searchProvider: 'Tavily' };
+      ASSISTANT_WEB_CACHE.set(queryText, { savedAt: Date.now(), data: normalized });
+      return normalized;
+    }
+    tavilyError = new Error('Tavily gaf geen zoekresultaten terug');
+  } catch (error) {
+    tavilyError = error;
   } finally {
     window.clearTimeout(timeout);
+  }
+
+  try {
+    return await assistantFallbackWebSearch(queryText);
+  } catch (fallbackError) {
+    const message = [tavilyError?.message, fallbackError?.message].filter(Boolean).join(' | ');
+    throw new Error(message.slice(0, 240) || 'Online zoeken is tijdelijk niet beschikbaar');
   }
 }
 function assistantAddOnlineResults(question, data, shopSearch = false) {
@@ -2830,7 +2941,7 @@ async function sendShopAssistantQuestion(value) {
     const rateLimited = /429|rate|limit|quota|capacity/i.test(detail);
     const fallback = assistantAddMessage(rateLimited
       ? "De gratis sleutelvrije zoekdienst heeft tijdelijk zijn gebruikslimiet bereikt. Probeer het later opnieuw. Je kunt dezelfde vraag hieronder ook rechtstreeks in een zoekmachine openen."
-      : "De online zoekdienst is op dit moment niet bereikbaar. Je kunt dezelfde vraag hieronder rechtstreeks in een zoekmachine openen.", "bot");
+      : "Ik kan de zoekresultaten nu niet automatisch tonen. Je kunt dezelfde vraag hieronder rechtstreeks in een zoekmachine openen.", "bot");
     if (fallback) {
       const engines = document.createElement("div"); engines.className = "assistant-search-engines";
       const label = document.createElement("span"); label.textContent = "Zoek verder via:"; engines.append(label);
