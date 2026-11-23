@@ -2448,7 +2448,8 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#priva
 /* ---------- uitgebreide webshopassistent ----------
    Volledig lokaal: gebruikt uitsluitend de actuele webshopgegevens en de
    gecontroleerde informatie uit deze website. Geen externe AI/API-sleutel,
-   geen webzoekdienst en geen opslag van het gesprek.
+   openbare Wikipedia-zoekfunctie zonder sleutel en optionele volledige DuckDuckGo-zoekopdracht;
+   geen generatieve AI of opslag van het gesprek.
 */
 const assistantPanel = document.querySelector("#shopAssistantPanel");
 const assistantToggle = document.querySelector("#shopAssistantToggle");
@@ -2493,12 +2494,13 @@ function assistantAddMessage(text, role = "bot", actions = []) {
   assistantMessages.scrollTop = assistantMessages.scrollHeight;
   return bubble;
 }
-function assistantAddThinking() {
+function assistantAddThinking(label = "Ik controleer de webshopinformatie…") {
   if (!assistantMessages) return null;
   const bubble = document.createElement("div");
   bubble.className = "shop-assistant-message bot assistant-thinking";
   bubble.setAttribute("role", "status");
-  bubble.innerHTML = '<span class="assistant-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span><span>Ik zoek de juiste informatie op in de webshop…</span>';
+  bubble.innerHTML = '<span class="assistant-thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="assistant-thinking-label"></span>';
+  bubble.querySelector(".assistant-thinking-label").textContent = label;
   assistantMessages.append(bubble);
   assistantMessages.scrollTop = assistantMessages.scrollHeight;
   return bubble;
@@ -2616,7 +2618,7 @@ function assistantKnowledgeSearch(question) {
     { title: "Favorieten", keys: "favoriet favorieten hart bewaren wishlist opslaan product", phrases: ["product bewaren", "favoriete producten"], answer: "Gebruik het hartje bij een product om het aan je favorieten toe te voegen. Via de knop ‘Favorieten’ in de navigatie kun je je bewaarde producten terugvinden." },
     { title: "3D-productvoorbeeld", keys: "3d model 3mf stl draaien preview voorbeeld onderdeel configurator kleuren model", phrases: ["3d model bekijken", "model draaien"], answer: "Sommige producten hebben een interactief 3D-voorbeeld. Je kunt het model op de productpagina met de muis of je vinger draaien. Bij een model met meerdere onderdelen kun je de kleuren kiezen die voor dat product zijn ingesteld. Niet ieder product heeft een 3D-voorbeeld." },
     { title: "Zoeken in de webshop", keys: "zoeken zoekbalk zoeken product categorie filter vinden assortiment", phrases: ["product zoeken", "waar vind ik"], answer: "Gebruik de zoekbalk bovenaan de webshop en typ de naam of een trefwoord van het product. Je kunt het aanbod ook filteren met de categorieknoppen boven de productlijst." },
-    { title: "Account", keys: "account registreren aanmelden inloggen gebruikersnaam wachtwoord e mail", phrases: ["account maken", "ik kan niet inloggen"], answer: "Voor online bestellen en persoonlijke bestelgegevens heb je een klantaccount nodig. Bij een nieuw account kies je een gebruikersnaam van 3–20 tekens en een wachtwoord van minimaal 8 tekens. Als inloggen niet lukt, controleer dan je e-mailadres en wachtwoord. De chatbot kan geen wachtwoorden bekijken of herstellen; neem voor accountproblemen contact op via de contactpagina." },
+    { title: "Account", keys: "account registreren aanmelden inloggen gebruikersnaam wachtwoord e mail e-mailadres login profiel sessie registratie", phrases: ["account maken", "ik kan niet inloggen", "hoe log ik in", "waar kan ik inloggen", "mijn account"], answer: "Klik bovenaan op ‘Inloggen’. Vul bij ‘Welkom terug’ het e-mailadres en wachtwoord van je klantaccount in en klik op ‘Inloggen’. Een nieuw account maak je via ‘Account aanmaken’: kies een gebruikersnaam van 3–20 tekens (letters, cijfers, punt, _ of -), vul je e-mailadres in en kies een wachtwoord van minimaal 8 tekens. Daarna ben je direct ingelogd. Klik op je gebruikersnaam bovenaan om Mijn bestellingen, Mijn chats, Gebruikersnaam wijzigen en Uitloggen te openen. Er is momenteel geen automatische wachtwoordreset; neem bij een vergeten wachtwoord contact op via de contactpagina en stuur nooit je wachtwoord." },
     { title: "Privacy en cookies", keys: "privacy persoonsgegevens gegevens cookies cookie toestemming privacyverklaring verwijderen", phrases: ["welke gegevens bewaren jullie", "cookie instellingen"], answer: "Onderaan de webshop vind je de privacyverklaring en cookie-instellingen. Noodzakelijke browseropslag wordt gebruikt voor functies zoals je winkelwagen en sessie. Optionele statistiek- of marketingcookies zijn in deze versie niet geconfigureerd. Dit chatbotgesprek wordt niet naar Firebase verzonden of in de webshop opgeslagen. Voor privacyverzoeken kun je contact opnemen via de contactgegevens op de website." }
   ];
   const ranked = docs.map(doc => {
@@ -2642,7 +2644,55 @@ function answerShopAssistant(question) {
   }
   if (has("wie ben je", "wat kan je", "wat kun je", "waarmee help", "wat doe je", "vertel alles", "wat weet je")) {
     assistantLastTopic = "mogelijkheden";
-    return { text: "Ik ben de ingebouwde webshopassistent van 3D Printed Shop. Ik kan het actuele assortiment, productbeschrijvingen, prijzen, categorieën, productopties, actieve filamentkleuren en de ingestelde voorraadbeschikbaarheid raadplegen. Ook kan ik uitleggen hoe je bestelt, een eigen tekst invult, een offerte aanvraagt, betaalt, verzendt, een bestelling volgt, een retourverzoek doet, een review schrijft of je favorieten gebruikt. Ik gebruik alleen de informatie van deze webshop en verzin geen ontbrekende gegevens. Ik kan niet live op het openbare internet zoeken en ben geen medewerker die je bestelling handmatig kan aanpassen.", actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Offerte aanvragen", run: () => $("#requestQuoteBtn")?.click() }, { label: "Contact", run: () => openContactPage() }] };
+    return { text: "Ik ben de ingebouwde webshopassistent van 3D Printed Shop. Ik kan het actuele assortiment, productbeschrijvingen, prijzen, categorieën, productopties, actieve filamentkleuren en de ingestelde voorraadbeschikbaarheid raadplegen. Ook kan ik uitleggen hoe je bestelt, een eigen tekst invult, een offerte aanvraagt, betaalt, verzendt, een bestelling volgt, een retourverzoek doet, een review schrijft of je favorieten gebruikt. Ik gebruik de actuele informatie van deze webshop. Voor algemene kennis kan ik openbare Wikipedia-pagina’s zonder API-sleutel doorzoeken en voor volledige webresultaten kan ik een DuckDuckGo-zoekopdracht openen. Ik ben geen medewerker die je bestelling handmatig kan aanpassen.", actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Offerte aanvragen", run: () => $("#requestQuoteBtn")?.click() }, { label: "Contact", run: () => openContactPage() }] };
+  }
+
+  // Account-instructies zijn bewust heel concreet: dit voorkomt dat bezoekers
+  // alleen een korte algemene verwijzing naar "inloggen" krijgen.
+  if (has("wachtwoord vergeten", "wachtwoord kwijt", "wachtwoord reset", "wachtwoord herstellen", "password reset", "kan mijn wachtwoord niet herinneren")) {
+    assistantLastTopic = "wachtwoord-vergeten";
+    return { text: `Ben je je wachtwoord vergeten? Op dit moment heeft deze webshop nog geen knop voor ‘Wachtwoord vergeten’ en kan ik het wachtwoord niet automatisch resetten.
+
+Wat je kunt doen:
+1. Controleer eerst of je het e-mailadres gebruikt waarmee je het account hebt aangemaakt.
+2. Controleer of Caps Lock aanstaat en of je wachtwoord precies is getypt.
+3. Probeer niet steeds opnieuw willekeurige wachtwoorden: na meerdere mislukte pogingen kan inloggen tijdelijk worden geblokkeerd.
+4. Lukt het nog steeds niet? Open de contactpagina en vraag de beheerder om hulp bij je account. Vermeld je gebruikersnaam of het e-mailadres van je account, maar stuur nooit je wachtwoord.
+
+Ik kan je wachtwoord niet zien en vraag er ook niet om.`, actions: [{ label: "Contactpagina openen", run: () => openContactPage() }, { label: "Terug naar inloggen", run: () => authForm("login") }] };
+  }
+  if (has("account aanmaken", "account aan", "nieuw account", "account maken", "registreren", "registratie", "aanmelden als nieuwe klant", "ik heb nog geen account")) {
+    assistantLastTopic = "account-aanmaken";
+    return { text: "Zo maak je een klantaccount aan:\n1. Klik bovenaan de webshop op ‘Inloggen’ (het persoonsicoon).\n2. Klik in het venster op ‘Account aanmaken’.\n3. Kies een gebruikersnaam van 3 tot en met 20 tekens. Je mag letters, cijfers, punten (.), underscores (_) en streepjes (-) gebruiken. Spaties zijn niet toegestaan.\n4. Vul je e-mailadres in. Dit wordt gebruikt om je account terug te vinden en is niet je openbare profielnaam.\n5. Kies een wachtwoord van minimaal 8 tekens.\n6. Klik op ‘Account aanmaken’. Bij succes ben je meteen ingelogd.\n\nIs de gebruikersnaam al bezet? Kies dan een andere. Bestaat het e-mailadres al? Gebruik dan ‘Inloggen’ in plaats van nog een account aan te maken. Met je account kun je bestellingen plaatsen, je bestellingen bekijken, chats openen en een maatwerkofferte aanvragen.", actions: [{ label: "Account aanmaken", run: () => authForm("register") }, { label: "Ik heb al een account · Inloggen", run: () => authForm("login") }] };
+  }
+  if (has("kan niet inloggen", "lukt niet inloggen", "inloggen lukt niet", "login werkt niet", "aanmelden mislukt", "verkeerd wachtwoord", "e-mailadres of wachtwoord klopt niet")) {
+    assistantLastTopic = "inlogprobleem";
+    return { text: `Lukt inloggen niet? Probeer dit stap voor stap:
+1. Controleer of je het e-mailadres gebruikt waarmee je het klantaccount hebt aangemaakt. De website haalt spaties weg en zet het e-mailadres om naar kleine letters.
+2. Controleer je wachtwoord. Hoofdletters, kleine letters en cijfers moeten precies kloppen.
+3. Controleer Caps Lock en je toetsenbordtaal.
+4. Als je account al bestaat, kies dan ‘Inloggen’ en niet ‘Account aanmaken’.
+5. Na vijf mislukte pogingen kan er tijdelijk een beveiligingsblokkade komen. Wacht even voordat je opnieuw probeert.
+6. Ben je je wachtwoord vergeten? Deze webshop heeft op dit moment geen automatische wachtwoordreset. Neem contact op via de contactpagina. Stuur nooit je wachtwoord mee.`, actions: [{ label: "Opnieuw proberen", run: () => authForm("login") }, { label: "Wachtwoord vergeten · hulp", run: () => openContactPage() }] };
+  }
+  if (has("hoe log ik in", "hoe moet ik inloggen", "waar kan ik inloggen", "waar zit de inlogknop", "waar staat inloggen", "hoe werkt inloggen", "inloggen op mijn account", "ik wil inloggen", "login stappen", "inlog stappen", "inloggen")) {
+    assistantLastTopic = "inloggen";
+    if (state.user) return { text: `Je bent al ingelogd als ${state.user.username || "klant"}. Klik bovenaan op je gebruikersnaam om naar je accountmenu te gaan. Daar vind je ‘Mijn bestellingen’, ‘Mijn chats’, ‘Gebruikersnaam wijzigen’ en ‘Uitloggen’.`, actions: [{ label: "Mijn account openen", run: () => accountMenu() }, { label: "Mijn bestellingen", run: () => showMyOrders() }] };
+    return { text: "Zo log je in op je klantaccount:\n1. Ga naar de bovenkant van de webshop.\n2. Klik op ‘Inloggen’ (de knop met het persoonsicoon). Op een smal scherm kan deze knop tussen de compacte navigatieknoppen staan.\n3. In het venster ‘Welkom terug’ vul je het e-mailadres in waarmee je je account hebt aangemaakt.\n4. Vul het wachtwoord van dat account in. Let op hoofdletters en kleine letters.\n5. Klik op de blauwe knop ‘Inloggen’.\n\nGelukt? Bovenaan zie je nu je gebruikersnaam in plaats van ‘Inloggen’. Klik daarop om ‘Mijn bestellingen’, ‘Mijn chats’, ‘Gebruikersnaam wijzigen’ of ‘Uitloggen’ te openen.\n\nHeb je nog geen account? Klik in het inlogvenster op ‘Account aanmaken’. Gebruik je het account voor het eerst en vraagt de website om een gebruikersnaam, kies dan een naam van 3–20 tekens (letters, cijfers, punt, _ of -) en sla die op.", actions: [{ label: "Open het inlogscherm", run: () => authForm("login") }, { label: "Nieuw account aanmaken", run: () => authForm("register") }, { label: "Mijn bestellingen", run: () => assistantOpenOrders() }] };
+  }
+  if (has("gebruikersnaam wijzigen", "naam van mijn account wijzigen", "accountnaam wijzigen", "profielnaam wijzigen")) {
+    assistantLastTopic = "gebruikersnaam-wijzigen";
+    if (!state.user) return { text: "Je kunt je gebruikersnaam wijzigen nadat je bent ingelogd. Klik bovenaan op ‘Inloggen’ en log in. Klik daarna op je gebruikersnaam en kies ‘Gebruikersnaam wijzigen’. Je nieuwe naam moet 3–20 tekens bevatten: letters, cijfers, punt, _ of -. Een naam die al door iemand anders wordt gebruikt, kun je niet kiezen.", actions: [{ label: "Inloggen", run: () => authForm("login") }] };
+    return { text: "Je bent ingelogd. Klik bovenaan op je gebruikersnaam. Kies in het accountmenu ‘Gebruikersnaam wijzigen’ en volg de aanwijzingen. De naam moet 3–20 tekens bevatten: letters, cijfers, punt, _ of -. Kies een naam die nog niet door iemand anders wordt gebruikt.", actions: [{ label: "Accountmenu openen", run: () => accountMenu() }] };
+  }
+  if (has("uitloggen", "hoe log ik uit", "hoe moet ik uitloggen", "afmelden", "log uit", "uit mijn account", "uitgelogd worden")) {
+    assistantLastTopic = "uitloggen";
+    if (!state.user) return { text: "Je bent op dit moment niet ingelogd op een klantaccount.", actions: [{ label: "Inloggen", run: () => authForm("login") }] };
+    return { text: "Zo log je uit:\n1. Klik bovenaan op je gebruikersnaam.\n2. Het accountmenu wordt geopend.\n3. Klik op ‘Uitloggen’.\nDaarna zie je bovenaan weer de knop ‘Inloggen’. Je winkelwagen blijft een aparte functie.", actions: [{ label: "Accountmenu openen", run: () => accountMenu() }] };
+  }
+  if (has("sitebeheer", "beheerder inloggen", "inloggen als beheerder", "admin inloggen")) {
+    assistantLastTopic = "sitebeheer";
+    return { text: "Sitebeheer is alleen bedoeld voor de eigenaar/beheerder van de webshop, niet voor gewone klantaccounts. Klik bovenaan op ‘Sitebeheer’ en gebruik de beheerder-inloggegevens die bij de installatie zijn ingesteld. Je klantaccount werkt niet als beheerdersaccount. Deel je beheerderwachtwoord met niemand. Ben je de eigenaar en kom je er niet in? Gebruik dan de veilige herstel-/beheerprocedure van je eigen installatie en deel geen wachtwoord in de chatbot.", actions: [{ label: "Sitebeheer openen", run: () => { closeShopAssistant(); $("#adminEntry")?.click(); } }] };
   }
 
   // Gecombineerde praktische vragen worden in één antwoord behandeld.
@@ -2802,8 +2852,94 @@ function answerShopAssistant(question) {
   }
 
   assistantLastTopic = "onbekend";
-  return { text: "Ik heb de vraag bekeken, maar ik kan het antwoord niet met zekerheid uit de informatie van deze webshop halen. Ik wil liever geen gegevens verzinnen. Ik kan wel helpen met het assortiment, productbeschrijvingen en prijzen, categorieën, kleuren en filamentvoorraad, productkeuzes en eigen tekst, maatwerkoffertes, bestellen, betalingen, de levertijd van maximaal 14 dagen, verzenden en ophalen, bestellingen volgen, retouren, reviews, favorieten, 3D-voorbeelden, accounts en privacy.\n\nGaat je vraag over een bepaald product? Typ dan de productnaam. Voor iets dat alleen over jouw persoonlijke bestelling gaat, log je in en open je ‘Mijn bestellingen’ of de klantenchat.", actions: [{ label: "Bekijk assortiment", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Contact opnemen", run: () => openContactPage() }] };
+  return { text: "Ik heb geen zeker antwoord gevonden in de informatie van deze webshop. Ik controleer daarom ook openbare informatie. Voor je persoonlijke bestelling heb je je klantaccount nodig: open ‘Mijn bestellingen’ of ‘Mijn chats’. Deel nooit je wachtwoord of betaalgegevens in de chat.", searchWeb: true, actions: [{ label: "Bekijk assortiment", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Contact opnemen", run: () => openContactPage() }] };
 }
+function assistantWantsWebSearch(question) {
+  const q = assistantNormalize(question);
+  return /\b(zoek|zoeken|zoekopdracht|vind|opzoeken)\b/.test(q) && /\b(internet|online|web|website|websites|buiten de webshop)\b/.test(q)
+    || /\b(op het internet|op internet|op het web|online zoeken|web zoeken|zoek op internet|zoek online)\b/.test(q);
+}
+function assistantWebQuery(question) {
+  let query = String(question || "").trim();
+  query = query.replace(/^(?:kun je|kan je|wil je|graag)?\s*(?:even\s*)?(?:zoek|zoeken|zoek op|zoek eens|vind|zoek uit)\s+(?:(?:eens|ook)\s+)?(?:(?:op|in)\s+)?(?:het\s+)?(?:internet|web|online)(?:\s+naar)?\s*/i, "");
+  query = query.replace(/^(?:zoek|zoeken|vind)\s+(?:op\s+)?(?:het\s+)?(?:internet|web|online)\s*(?:naar)?\s*/i, "");
+  return query.trim() || String(question || "").trim();
+}
+function assistantBlockedWebSearch(query) {
+  const q = assistantNormalize(query);
+  const restricted = [
+    /\b(wapen|wapens|pistool|pistolen|geweer|geweren|vuurwapen|munitie|kogels|messen|mes|switchblade|knife|knives|gun|firearm|ammunition)\b/,
+    /\b(drugs|wiet|cannabis|hasj|cocaine|xtc|mdma|speed|meth|heroine|vape|vapen|sigaret|nicotine|alcohol|drank)\b/,
+    /\b(gokken|casino|sportweddenschap|weddenschap|betting|gambling|poker|slots)\b/,
+    /\b(porno|pornografie|porn|sexvideo|adult video)\b/,
+    /\b(gevaarlijke challenge|choking challenge|fire challenge|treinsurfen|train surfing)\b/
+  ];
+  return restricted.some(pattern => pattern.test(q));
+}
+function assistantOpenFullWebSearch(query) {
+  if (assistantBlockedWebSearch(query)) return;
+  const url = `https://duckduckgo.com/?q=${encodeURIComponent(String(query || ""))}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+async function assistantFetchJson(url, timeoutMs = 9000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { method: "GET", mode: "cors", credentials: "omit", headers: { Accept: "application/json" }, signal: controller.signal });
+    if (!response.ok) throw new Error(`Openbare zoekbron gaf HTTP ${response.status}`);
+    return await response.json();
+  } finally { window.clearTimeout(timer); }
+}
+function assistantPlainText(value) {
+  return String(value || "").replace(/<[^>]*>/g, " ").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+async function assistantSearchWikipedia(query) {
+  // Eerst Nederlandstalige Wikipedia proberen en bij weinig/geen treffers
+  // uitwijken naar de Engelstalige encyclopedie. Beide endpoints zijn publiek.
+  for (const language of ["nl", "en"]) {
+    const endpoint = `https://${language}.wikipedia.org/w/api.php`;
+    const searchParams = new URLSearchParams({ action: "query", list: "search", srsearch: query, srlimit: "4", srnamespace: "0", format: "json", origin: "*" });
+    const searchData = await assistantFetchJson(`${endpoint}?${searchParams}`);
+    const hits = Array.isArray(searchData?.query?.search) ? searchData.query.search.slice(0, 4) : [];
+    if (!hits.length) continue;
+    const ids = hits.map(hit => hit.pageid).filter(Number.isFinite);
+    const extractParams = new URLSearchParams({ action: "query", prop: "extracts", pageids: ids.join("|"), exintro: "1", explaintext: "1", exchars: "560", format: "json", origin: "*" });
+    const detailData = await assistantFetchJson(`${endpoint}?${extractParams}`);
+    const pages = detailData?.query?.pages || {};
+    return hits.map(hit => {
+      const page = pages[String(hit.pageid)] || {};
+      return {
+        title: String(hit.title || page.title || "Wikipedia-pagina"),
+        extract: assistantPlainText(page.extract || hit.snippet || "").slice(0, 560),
+        url: `https://${language}.wikipedia.org/?curid=${encodeURIComponent(String(hit.pageid))}`,
+        language
+      };
+    }).filter(item => item.title && item.url);
+  }
+  return [];
+}
+async function assistantWebSearchAnswer(query) {
+  const actions = [];
+  let text = "Ik heb geen direct passend antwoord in de lokale webshopinformatie gevonden.";
+  try {
+    const results = await assistantSearchWikipedia(query);
+    if (results.length) {
+      text = `Ik heb openbare informatie gevonden via Wikipedia over “${query}”. Dit zijn korte samenvattingen (Nederlands waar beschikbaar, anders Engels); open een bron voor de volledige pagina:`;
+      results.slice(0, 3).forEach((result, index) => {
+        text += `\n\n${index + 1}. ${result.title}${result.extract ? `\n${result.extract}` : ""}`;
+        actions.push({ label: `Bron openen: ${result.title.slice(0, 34)}`, run: () => window.open(result.url, "_blank", "noopener,noreferrer") });
+      });
+    } else {
+      text = `Ik heb via de openbare Wikipedia-zoekfunctie geen passende samenvatting gevonden voor “${query}”. Voor algemene webpagina’s kun je de volledige zoekopdracht openen.`;
+    }
+  } catch (error) {
+    console.warn("Wikipedia search unavailable", error);
+    text = `De openbare encyclopedie kon nu niet worden bereikt voor “${query}”. Je kunt de volledige zoekopdracht rechtstreeks openen in DuckDuckGo. Ik heb geen API-sleutel nodig, maar de externe zoekdienst moet wel bereikbaar zijn.`;
+  }
+  actions.push({ label: "Volledige webresultaten openen", run: () => assistantOpenFullWebSearch(query) });
+  return { text, actions };
+}
+
 async function sendShopAssistantQuestion(value) {
   const question = String(value || "").trim();
   if (!question || assistantBusy) return;
@@ -2812,17 +2948,30 @@ async function sendShopAssistantQuestion(value) {
   const submitButton = assistantForm?.querySelector('button[type="submit"]');
   if (submitButton) submitButton.disabled = true;
   assistantAddMessage(question, "user");
-  const thinking = assistantAddThinking();
+  const explicitWebSearch = assistantWantsWebSearch(question);
+  const thinking = assistantAddThinking(explicitWebSearch ? "Ik doorzoek openbare informatie en controleer de bronnen…" : "Ik controleer de webshopinformatie…");
   try {
-    // Korte zichtbare verwerkingstijd; de assistent doorzoekt lokale shopgegevens.
-    await new Promise(resolve => window.setTimeout(resolve, Math.min(1100, 420 + question.length * 5)));
+    // Eerst de lokale webshopregels en actuele productgegevens controleren.
+    await new Promise(resolve => window.setTimeout(resolve, Math.min(700, 220 + question.length * 3)));
     const answer = answerShopAssistant(question);
-    thinking?.remove();
-    assistantAddMessage(answer.text, "bot", answer.actions || []);
+    if (explicitWebSearch || answer.searchWeb) {
+      const query = assistantWebQuery(question);
+      if (assistantBlockedWebSearch(query)) {
+        thinking?.remove();
+        assistantAddMessage("Ik kan niet helpen met het zoeken naar gevaarlijke of leeftijdsgebonden producten, diensten of activiteiten. Ik kan wel algemene, veilige informatie geven over gezondheid, wetgeving of risico’s.", "bot");
+      } else {
+        const webAnswer = await assistantWebSearchAnswer(query);
+        thinking?.remove();
+        assistantAddMessage(webAnswer.text, "bot", webAnswer.actions || []);
+      }
+    } else {
+      thinking?.remove();
+      assistantAddMessage(answer.text, "bot", answer.actions || []);
+    }
   } catch (error) {
     console.error("Shop assistant failed", error);
     thinking?.remove();
-    assistantAddMessage("Er ging iets mis bij het opzoeken van de webshopinformatie. Probeer het nog eens of neem contact met ons op.", "bot", [{ label: "Contact", run: () => openContactPage() }]);
+    assistantAddMessage("Er ging iets mis bij het opzoeken van de informatie. Probeer het nog eens of neem contact op.", "bot", [{ label: "Contact", run: () => openContactPage() }]);
   } finally {
     assistantBusy = false;
     if (assistantInput) assistantInput.disabled = false;

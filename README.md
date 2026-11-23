@@ -194,3 +194,24 @@ Let op: versie 22 voegt geen Cloudflare D1-database of Worker toe. Bestaande pro
 5. Klik op de knoppen voor offerte, producten, winkelwagen en Mijn bestellingen; de bestaande webshopacties moeten openen.
 6. Controleer dat tijdens het beantwoorden een zoek-/verwerkingsindicator zichtbaar wordt en daarna verdwijnt.
 7. Controleer dat de bot onbekende informatie niet verzint en uitlegt dat hij niet live op internet zoekt.
+
+
+## Versie 24 — uitgebreidere hulp voor accounts en zoeken zonder API-sleutel
+
+- De chatbot legt in afzonderlijke stappen uit hoe een klant inlogt, een account aanmaakt, de gebruikersnaam wijzigt en uitlogt.
+- Er is een apart en eerlijk antwoord voor een vergeten wachtwoord. In de huidige webshopcode bestaat geen automatische wachtwoordreset; de bot verzint die functie niet en verwijst naar de contactpagina.
+- De bot geeft extra uitleg over de gebruikersnaamregels (3–20 tekens; letters, cijfers, punt, underscore of koppelteken), het e-mailadres, de wachtwoordlengte (minimaal 8 tekens) en de accountknoppen in de navigatie.
+- Een onbekende vraag triggert nu een openbare zoekactie in Wikipedia via de MediaWiki Action API. Dit is een publiek toegankelijke zoek-API, zonder account of API-sleutel; de site toont maximaal drie resultaten met links naar de bronnen.
+- Voor een volledige webzoekopdracht wordt een DuckDuckGo-resultatenpagina in een nieuw tabblad geopend. Dit geeft echte webresultaten zonder sleutel, maar de zoekresultaten worden niet binnen de chatbot ingelezen: DuckDuckGo publiceert geen algemene gratis webresultaten-API voor deze toepassing. De officiële Instant Answer API is geen volledige webzoek-API.
+- De chatbot laat zien wanneer hij lokale informatie of openbare bronnen opzoekt.
+- Zoekvragen worden alleen bij een expliciete webzoekvraag of een niet-herkende webshopvraag naar de openbare zoekbron gestuurd. Chatberichten worden niet opgeslagen in Firebase.
+
+### Testen versie 24
+
+1. Vraag: “Hoe log ik in?” — de bot geeft een stappenplan en een knop om het inlogvenster te openen.
+2. Vraag: “Hoe maak ik een account aan?” — de bot noemt de gebruikersnaamregels, e-mail en minimale wachtwoordlengte.
+3. Vraag: “Ik ben mijn wachtwoord vergeten” — de bot zegt dat er geen automatische resetfunctie bestaat en verwijst naar contact; er wordt niet om het wachtwoord gevraagd.
+4. Vraag: “Hoe wijzig ik mijn gebruikersnaam?” en “Hoe log ik uit?” — de bot legt het accountmenu uit.
+5. Vraag: “Zoek op internet naar wat is 3D-printen” — de bot doet een Wikipedia-zoekactie en biedt een knop voor volledige DuckDuckGo-resultaten.
+6. Stel een onbekende vraag — de bot probeert openbare kennis te zoeken, en meldt wanneer er geen samenvatting beschikbaar is.
+7. Controleer dat alle oude webshopacties, productinformatie en de 14-dagen-levertijd blijven werken.
