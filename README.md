@@ -1,4 +1,14 @@
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v28)
+# 3D Printed Shop v29 — gesprek en online informatie
+
+## Nieuw in v29
+- Chatbot reageert ook op begroetingen en eenvoudige gewone gesprekjes.
+- Algemene feitelijke vragen worden automatisch opgezocht in Wikipedia en DuckDuckGo Instant Answers.
+- Vervolgvragen zoals “en waarom?” gebruiken de vorige onderwerpvraag als context.
+- Volledige DuckDuckGo-resultaten openen via een gewone zoeklink; de gratis DuckDuckGo-API levert geen volledige zoekresultatenlijst.
+- Er wordt geen lokaal AI-model of API-sleutel vereist.
+- Geen Firebase-profielen, bestellingen, privéchats, adressen of wachtwoorden naar zoekdiensten sturen.
+
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v29)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -146,7 +156,7 @@ Publiceer de inhoud van deze ZIP in dezelfde GitHub-repository. De live Firebase
 
 De lokale controles controleren JavaScript-syntaxis, HTML-structuur en ZIP-integriteit. De weergave kan niet op ieder fysiek laptopscherm worden geverifieerd; test de gepubliceerde site ook even op jouw laptop.
 
-> **Let op bij de versiegeschiedenis:** versie 27 vervangt de lokale AI uit versie 26 door een uitgebreide webshop-FAQ met online zoeken zonder installatie, WebGPU of API-sleutel. Versie 28 repareert de online zoekfallback en verwijdert de lange tekst onder het chat-invoerveld; de secties **Versie 27** en **Versie 28** beschrijven de huidige chatbot.
+> **Let op bij de versiegeschiedenis:** de secties **Versie 27** en **Versie 28** zijn historisch. In de actieve versie 29 is de Tavily/CORS-proxy-zoekmethode vervangen door de combinatie Wikipedia + DuckDuckGo Instant Answers en eenvoudige gespreksreacties. De lange tekst onder het chat-invoerveld blijft verwijderd.
 
 ## Versie 22 – webshopassistent
 
@@ -267,3 +277,18 @@ Zie `TEST-CHATBOT.md` voor de uitgebreide checklist. Controleer in elk geval dat
 - Controleer dat een mislukte Tavily-aanroep automatisch DuckDuckGo/Bing probeert en dat gevonden resultaten met klikbare bronlinks verschijnen.
 - Controleer dat er geen kleine uitleg-/privacytekst meer onder het chat-invoerveld staat.
 - Controleer dat de privacyfilter persoonlijke gegevens tegenhoudt voordat een externe zoekopdracht wordt uitgevoerd.
+
+
+## Actieve chatbot in v29 — gesprek, Wikipedia en DuckDuckGo
+
+De chatbot uit v29 vervangt de online zoekmethode uit v27/v28. De oude Tavily- en openbare CORS-proxy-aanroepen zijn uit de actieve code verwijderd.
+
+- Begroetingen, bedankjes, eenvoudige smalltalk en gewone reacties krijgen een gesprekspassend antwoord.
+- Vragen over de webshop gaan eerst naar de uitgebreide FAQ en de actuele openbare productinformatie.
+- Andere feitelijke vragen worden parallel opgezocht via de Nederlandstalige Wikipedia-API en de DuckDuckGo Instant Answer API. Als er geen Nederlandstalige Wikipedia-resultaten zijn, probeert hij Engelstalige Wikipedia.
+- De assistent combineert de gevonden directe samenvatting en Wikipedia-fragmenten en toont bronkaarten. Vervolgvragen zoals “en waarom?” gebruiken de vorige onderwerpvraag als zoekcontext.
+- DuckDuckGo's openbare API is een Instant Answer API, geen volledige zoekresultaten-API. Daarom geeft de chatbot ook een directe knop naar de volledige DuckDuckGo-zoekpagina; hij leest die volledige pagina niet automatisch uit.
+- De chatbot is geen volledig generatief taalmodel. De kleine gespreksreacties zijn ingebouwde gesprekspatronen; feitelijke antwoorden worden op basis van de opgehaalde bronfragmenten samengesteld.
+- De invoerfilter blijft actief; de assistent haalt geen accountprofielen, wachtwoorden, klantadressen, bestellingen of privéchats uit Firebase op en stuurt die gegevens niet naar zoekdiensten.
+
+Zie `TEST-CHATBOT.md` voor de v29-checklist. Controleer de echte browserverbinding vanaf GitHub Pages na publicatie; CORS, API-beschikbaarheid en zoekresultaten kunnen per moment verschillen.

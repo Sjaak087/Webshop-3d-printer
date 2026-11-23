@@ -2445,12 +2445,13 @@ $("#privacyCookieSettings").onclick = openCookiePreferences;
 $("#privacyModal").querySelector("[data-close-privacy]").onclick = closePrivacyNotice;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#privacyModal").hidden) closePrivacyNotice(); });
 
-/* ---------- uitgebreide webshop-FAQ + online zoekassistent ----------
-   Webshopvragen worden beantwoord vanuit deze uitgebreide kennisbank en live
-   openbare product-/kleurgegevens. Algemene online vragen gebruiken Tavily
-   keyless Search: geen account, API-sleutel of lokaal AI-model vereist.
-   Er worden nooit klantprofielen, adressen, wachtwoorden, orders of chats
-   opgehaald of meegestuurd met een externe zoekdienst.
+/* ---------- uitgebreide webshop-FAQ + gesprek + online zoekassistent ----------
+   Webshopvragen gebruiken de kennisbank en openbare product-/kleurgegevens.
+   Voor algemene onderwerpen gebruikt de assistent Wikipedia's publieke
+   MediaWiki-API en DuckDuckGo's Instant Answer API. De volledige DuckDuckGo-
+   zoekresultaten openen via een gewone zoeklink (DDG heeft geen volledige
+   openbare resultaten-API). Er worden geen klantprofielen, adressen,
+   wachtwoorden, orders of privéchats opgehaald of meegestuurd.
 */
 const assistantPanel = document.querySelector("#shopAssistantPanel");
 const assistantToggle = document.querySelector("#shopAssistantToggle");
@@ -2590,7 +2591,7 @@ const ASSISTANT_FAQ = [
   { id: "contact", terms: ["contact", "contact opnemen", "klantenservice", "hulp nodig", "klacht", "vraag stellen", "openingstijden"], answer: () => "Voor een vraag die niet in deze uitleg staat, gebruik je de contactpagina van de webshop. Daar staan de klantgerichte contactgegevens en eventuele openingstijden die door de beheerder zijn ingevuld. De chatbot toont geen privé- of accountgegevens." },
   { id: "terms", terms: ["voorwaarden", "algemene voorwaarden", "regels webshop", "juridisch", "rechten en plichten"], answer: () => "De algemene voorwaarden zijn te openen via de link onderaan de webshop. Daar vind je de formele afspraken over bestellen, betalen, levering en retouren. Bij een verschil tussen een korte chatuitleg en de gepubliceerde voorwaarden zijn de voorwaarden leidend." },
   { id: "admin", terms: ["beheerder", "sitebeheer", "admin", "beheeromgeving", "voorraadbeheer", "dashboard"], answer: () => "De beheeromgeving is alleen voor de webshopbeheerder. Deze klantenassistent kan geen beheeracties uitvoeren en deelt geen beheerwachtwoorden, interne voorraadgrammen, waarschuwingsgrenzen of afgeschermde dashboardinformatie." },
-  { id: "chatbot", terms: ["chatbot", "assistent", "werkt de bot", "kunstmatige intelligentie", "ai bot", "faq bot"], answer: () => "Deze assistent gebruikt een uitgebreide webshop-FAQ en actuele openbare productinformatie. Vragen die buiten de webshop-FAQ vallen, kunnen via de online zoekfunctie worden opgezocht. Er is geen lokaal AI-model of WebGPU-download nodig. Online zoekvragen worden naar de externe zoekdienst Tavily gestuurd; deel daarom geen persoonlijke of geheime gegevens." }
+  { id: "chatbot", terms: ["chatbot", "assistent", "werkt de bot", "kunstmatige intelligentie", "ai bot", "faq bot"], answer: () => "Je kunt gewone vragen stellen of gewoon even praten. Voor webshopvragen gebruik ik de webshopuitleg en actuele openbare productinformatie. Voor andere onderwerpen zoek ik automatisch in Wikipedia en de directe antwoorden van DuckDuckGo. Voor volledige zoekresultaten kun je de DuckDuckGo-zoekpagina openen. Ik ben geen vrij generatief AI-model zoals ChatGPT; ik combineer gesprekshulp met gevonden informatie. Deel nooit wachtwoorden, adressen, betaalgegevens of persoonlijke bestelgegevens in deze chat." }
 ];
 
 function assistantCatalogAnswer() {
@@ -2710,159 +2711,238 @@ function assistantSearchQuery(question, scope = "general") {
   const siteTarget = host ? `${host}${firstPath ? `/${firstPath}` : ""}` : "";
   return siteTarget ? `${query} site:${siteTarget}` : `${query} 3D Printed Shop`;
 }
+const ASSISTANT_WEB_CACHE = new Map();
+let assistantLastTopicQuestion = "";
+let assistantLastTopicScope = "general";
+
+function assistantSafeHttpsUrl(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return url.protocol === "https:" ? url.href : "";
+  } catch {
+    return "";
+  }
+}
+
 function assistantSearchEngineLinks(query) {
   const q = encodeURIComponent(query);
   return [
-    { label: "Google", url: `https://www.google.com/search?q=${q}` },
-    { label: "Bing", url: `https://www.bing.com/search?q=${q}` },
     { label: "DuckDuckGo", url: `https://duckduckgo.com/?q=${q}` },
-    { label: "Brave", url: `https://search.brave.com/search?q=${q}` }
+    { label: "Wikipedia", url: `https://nl.wikipedia.org/w/index.php?search=${q}` },
+    { label: "Google", url: `https://www.google.com/search?q=${q}` },
+    { label: "Bing", url: `https://www.bing.com/search?q=${q}` }
   ];
 }
-const ASSISTANT_WEB_CACHE = new Map();
-function assistantUnwrapSearchResultUrl(rawHref) {
-  try {
-    let candidate = String(rawHref || '').trim();
-    if (!candidate) return '';
-    if (candidate.startsWith('//')) candidate = `https:${candidate}`;
-    let parsed = new URL(candidate, window.location.href);
-    if (/(^|\.)duckduckgo\.com$/i.test(parsed.hostname)) {
-      const redirected = parsed.searchParams.get('uddg') || parsed.searchParams.get('url');
-      if (redirected) parsed = new URL(redirected);
-    } else if (/(^|\.)bing\.com$/i.test(parsed.hostname) && /\/ck\/a$/.test(parsed.pathname)) {
-      const encoded = parsed.searchParams.get('u') || '';
-      if (encoded.startsWith('a1')) {
-        try {
-          const base64 = encoded.slice(2).replace(/-/g, '+').replace(/_/g, '/');
-          const binary = atob(base64);
-          const decoded = decodeURIComponent(Array.from(binary, char => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`).join(''));
-          parsed = new URL(decoded);
-        } catch { /* Leave an unrecognized tracking URL blocked below. */ }
-      }
-    }
-    if (!['http:', 'https:'].includes(parsed.protocol)) return '';
-    if (/(^|\.)(duckduckgo|bing|google|brave)\.com$/i.test(parsed.hostname)) return '';
-    return parsed.href;
-  } catch {
-    return '';
-  }
-}
-function assistantParseSearchHtml(html, engine) {
-  const documentResult = new DOMParser().parseFromString(String(html || ''), 'text/html');
-  const selector = engine === 'bing' ? 'li.b_algo h2 a' : 'a.result__a';
-  const anchors = [...documentResult.querySelectorAll(selector)];
-  const seen = new Set();
-  const results = [];
-  for (const anchor of anchors) {
-    const url = assistantUnwrapSearchResultUrl(anchor.getAttribute('href'));
-    const title = String(anchor.textContent || '').replace(/\s+/g, ' ').trim();
-    if (!url || title.length < 5 || seen.has(url)) continue;
-    const container = anchor.closest(engine === 'bing' ? 'li.b_algo' : '.result') || anchor.parentElement?.parentElement;
-    const snippetNode = container?.querySelector(engine === 'bing' ? '.b_caption p, p' : '.result__snippet, .result__body, .result__snippet');
-    const snippet = String(snippetNode?.textContent || '').replace(/\s+/g, ' ').trim();
-    // Ignore navigation links and other page furniture, not result titles.
-    if (!snippet && title.length < 12) continue;
-    seen.add(url);
-    results.push({ title: title.slice(0, 150), url, content: snippet.slice(0, 500), source: engine });
-    if (results.length >= 6) break;
-  }
-  return results;
-}
-async function assistantFetchPublicSearchPage(targetUrl, engine) {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 10000);
-  try {
-    // Free public GET proxy: search-page HTML only; no cookies, account data or Firebase data.
-    const response = await fetch(`https://proxy.cors.dev/${targetUrl}`, {
-      method: 'GET', mode: 'cors', credentials: 'omit', signal: controller.signal
-    });
-    if (!response.ok) throw new Error(`${engine} HTTP ${response.status}`);
-    const html = await response.text();
-    if (!html || html.length < 500) throw new Error(`${engine} gaf geen zoekpagina terug`);
-    return assistantParseSearchHtml(html, engine);
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-async function assistantFallbackWebSearch(queryText) {
-  const cached = ASSISTANT_WEB_CACHE.get(queryText);
-  if (cached && Date.now() - cached.savedAt < 3 * 60 * 1000) return cached.data;
-  const encoded = encodeURIComponent(queryText);
-  const requests = [
-    assistantFetchPublicSearchPage(`https://html.duckduckgo.com/html/?q=${encoded}`, 'DuckDuckGo'),
-    assistantFetchPublicSearchPage(`https://www.bing.com/search?q=${encoded}&count=8`, 'Bing')
-  ];
-  const settled = await Promise.allSettled(requests);
-  const results = [];
-  for (const item of settled) {
-    if (item.status === 'fulfilled') results.push(...item.value);
-  }
-  const unique = [...new Map(results.map(item => [item.url, item])).values()].slice(0, 6);
-  if (!unique.length) {
-    const errors = settled.filter(item => item.status === 'rejected').map(item => String(item.reason?.message || 'zoekfout'));
-    throw new Error(errors.join('; ').slice(0, 240) || 'Geen openbare zoekresultaten gevonden');
-  }
-  const data = { query: queryText, answer: '', results: unique, responseTime: null, searchProvider: 'DuckDuckGo / Bing' };
-  ASSISTANT_WEB_CACHE.set(queryText, { savedAt: Date.now(), data });
-  return data;
-}
-async function assistantSearchOnline(question, scope = 'general') {
-  const queryText = assistantSearchQuery(question, scope);
-  const cached = ASSISTANT_WEB_CACHE.get(queryText);
-  if (cached && Date.now() - cached.savedAt < 3 * 60 * 1000) return cached.data;
 
-  // Try Tavily keyless first. Keep the request minimal so unsupported optional
-  // parameters cannot make every request fail on the public keyless tier.
+function assistantResolveFollowUp(question) {
+  const normalized = assistantNormalize(question);
+  const isFollowUp = /^(en |maar |waarom|hoezo|hoe dan|vertel meer|meer hierover|meer uitleg|wat bedoel je|welke daarvan|kun je dat uitleggen|kan je dat uitleggen|en nu|en daarna|wat gebeurde er daarna|waarom dan)\b/.test(normalized)
+    || /^(en waarom|en hoe|en welke|en wanneer|en waar|vertel eens meer|leg dat uit)$/.test(normalized);
+  if (isFollowUp && assistantLastTopicQuestion) return `${assistantLastTopicQuestion} ${question}`.slice(0, 500);
+  return question;
+}
+
+function assistantSmallTalkReply(question) {
+  const q = assistantNormalize(question).replace(/[.,]+$/g, "").trim();
+  if (!q) return null;
+  if (/^(hoi|hoi ik wil gewoon even praten|ik wil gewoon even praten|hallo|hey|heyy|heyyy|yo|goedemorgen|goeiemorgen|goedemiddag|goedenavond|dag|he|hallo daar|hoi hoi)$/.test(q)) {
+    return "Hoi! 😊 Leuk dat je er bent. Waar heb je zin in om over te praten? Je mag me ook iets vragen of vragen om iets op te zoeken.";
+  }
+  if (/^(hoe gaat het|hoe gaat het met je|alles goed|alles goed met jou|hoe is het|hoe gaat ie|hoe gaatie)$/.test(q)) {
+    return "Met mij gaat het goed — ik ben klaar om te kletsen en dingen voor je op te zoeken. 😊 Hoe gaat het met jou?";
+  }
+  if (/^(bedankt|dank je|dankjewel|thanks|thx|dank je wel|super bedankt|heel erg bedankt)$/.test(q)) {
+    return "Graag gedaan! 😊 Waar zullen we het hierna over hebben?";
+  }
+  if (/^(doei|tot ziens|tot later|later|bye|ik ga weer|spreek je later)$/.test(q)) {
+    return "Tot later! Je kunt hier altijd weer verder praten. Fijne dag!";
+  }
+  if (/^(wie ben jij|wat ben jij|ben je een robot|ben je echt|ben je een ai|ben jij ai)$/.test(q)) {
+    return "Ik ben de digitale assistent van deze webshop. Ik kan je helpen met de webshop, gewone gesprekjes voeren, en informatie opzoeken via Wikipedia en DuckDuckGo. Ik ben geen mens en ook geen volledig generatief AI-model, dus bij ingewikkelde vragen baseer ik mijn antwoord op gevonden bronnen.";
+  }
+  if (/^(wat kun je|wat kan je|waarmee kun je helpen|waarmee kan je helpen|wat kan ik vragen|wat weet je|wat doe je)$/.test(q)) {
+    return "Je kunt me alles vragen over de webshop, maar ook over algemene onderwerpen zoals wetenschap, geschiedenis, techniek, dieren, hobby's of bekende personen. Voor feitelijke onderwerpen zoek ik informatie in Wikipedia en DuckDuckGo. Je kunt ook gewoon hoi zeggen en een gesprek beginnen.";
+  }
+  if (/^(ok|oke|okay|ja|nee|aha|hmm|hmmm|precies|klopt|snap ik|duidelijk|is goed|prima)$/.test(q)) {
+    return "Helemaal goed! 😊 Waar wil je het verder over hebben?";
+  }
+  if (/^(ik verveel me|ik ben verveeld|ik weet niet wat ik moet doen)$/.test(q)) {
+    return "Zullen we iets leuks bedenken? We kunnen praten over een hobby, een interessant weetje opzoeken, een raadsel doen of samen een idee voor een 3D-print bedenken. Wat lijkt je leuk?";
+  }
+  if (/^(ik ben blij|ik ben vrolijk|ik heb een leuke dag|mijn dag is leuk|ik ben enthousiast)$/.test(q)) {
+    return "Wat leuk om te horen! 😊 Wat maakte je dag zo fijn?";
+  }
+  if (/^(ik ben verdrietig|ik voel me rot|ik heb een rotdag|ik ben gestrest|ik ben boos|ik zit ergens mee)$/.test(q)) {
+    return "Dat klinkt niet fijn. Je mag er best iets over vertellen. Wat is er aan de hand? Ik kan luisteren en met je meedenken.";
+  }
+  if (/^(ik vind het leuk|ik vind dat leuk|ik hou van|ik houd van|ik ben fan van)\b/.test(q)) {
+    return "Leuk! Vertel eens wat je daar zo leuk aan vindt.";
+  }
+  return null;
+}
+
+function assistantLooksLikeInformationQuestion(question) {
+  const q = assistantNormalize(question);
+  return /\?/.test(question)
+    || /^(wat|wie|waar|wanneer|waarom|hoe|welke|welk|hoeveel|is |zijn |was |waren |kan |kun |mag |moet |heeft |hebben |bestaat |betekent |vertel over|vertel me over|vertel eens wat over|vertel me iets over|ik wil praten over|laten we praten over|praat over|leg uit|zoek |vergelijk |wanneer komt|wat weet je van)\b/.test(q)
+    || /\b(zoek op|zoek naar|vertel over|vertel me over|vertel eens wat over|vertel me iets over|ik wil praten over|laten we praten over|praat over|leg uit|wat betekent|wie was|wie is|wat is|hoe werkt|hoe werkt dat)\b/.test(q);
+}
+
+async function assistantFetchJson(url, timeoutMs = 10000) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 12000);
-  let tavilyError = null;
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetch('https://api.tavily.com/search', {
-      method: 'POST', mode: 'cors', credentials: 'omit',
-      headers: { 'Content-Type': 'application/json', 'X-Tavily-Access-Mode': 'keyless' },
-      body: JSON.stringify({
-        query: queryText, topic: 'general', search_depth: 'basic', max_results: 5,
-        include_answer: 'basic', include_raw_content: false
-      }),
+    const response = await fetch(url, {
+      method: "GET", mode: "cors", credentials: "omit",
+      headers: { "Accept": "application/json" },
       signal: controller.signal
     });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = data?.detail?.error || data?.detail || data?.message || data?.error || `HTTP ${response.status}`;
-      throw new Error(String(detail).slice(0, 200));
-    }
-    const results = Array.isArray(data?.results)
-      ? data.results.filter(item => item && /^https:\/\//i.test(String(item.url || ''))).slice(0, 5)
-      : [];
-    const answer = String(data?.answer || '').trim();
-    if (answer || results.length) {
-      const normalized = { query: queryText, answer, results, responseTime: data?.response_time || null, searchProvider: 'Tavily' };
-      ASSISTANT_WEB_CACHE.set(queryText, { savedAt: Date.now(), data: normalized });
-      return normalized;
-    }
-    tavilyError = new Error('Tavily gaf geen zoekresultaten terug');
-  } catch (error) {
-    tavilyError = error;
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return await response.json();
   } finally {
     window.clearTimeout(timeout);
   }
-
-  try {
-    return await assistantFallbackWebSearch(queryText);
-  } catch (fallbackError) {
-    const message = [tavilyError?.message, fallbackError?.message].filter(Boolean).join(' | ');
-    throw new Error(message.slice(0, 240) || 'Online zoeken is tijdelijk niet beschikbaar');
-  }
 }
+
+async function assistantSearchWikipedia(query) {
+  const search = String(query || "").trim().slice(0, 260);
+  if (!search) return [];
+  const buildUrl = language => {
+    const params = new URLSearchParams({
+      action: "query", generator: "search", gsrsearch: search,
+      gsrnamespace: "0", gsrlimit: "4", prop: "extracts|info",
+      exintro: "1", explaintext: "1", exchars: "850", inprop: "url",
+      format: "json", formatversion: "2", origin: "*"
+    });
+    return `https://${language}.wikipedia.org/w/api.php?${params.toString()}`;
+  };
+  let data;
+  let language = "nl";
+  try {
+    data = await assistantFetchJson(buildUrl("nl"));
+  } catch (error) {
+    console.warn("Dutch Wikipedia search failed", error);
+  }
+  let pages = Array.isArray(data?.query?.pages) ? data.query.pages : [];
+  if (!pages.length) {
+    try {
+      language = "en";
+      data = await assistantFetchJson(buildUrl("en"));
+      pages = Array.isArray(data?.query?.pages) ? data.query.pages : [];
+    } catch (error) {
+      console.warn("English Wikipedia search failed", error);
+    }
+  }
+  return pages
+    .filter(page => page && page.title)
+    .sort((a, b) => (Number(a.index) || 999) - (Number(b.index) || 999))
+    .slice(0, 4)
+    .map(page => ({
+      title: String(page.title).slice(0, 150),
+      url: assistantSafeHttpsUrl(page.fullurl) || `https://${language}.wikipedia.org/wiki/${encodeURIComponent(String(page.title).replace(/ /g, "_"))}`,
+      content: String(page.extract || page.snippet || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 850),
+      source: "Wikipedia"
+    }));
+}
+
+function assistantCollectDuckDuckGoTopics(topics, output = []) {
+  if (!Array.isArray(topics)) return output;
+  for (const topic of topics) {
+    if (topic?.Topics) {
+      assistantCollectDuckDuckGoTopics(topic.Topics, output);
+      continue;
+    }
+    const url = assistantSafeHttpsUrl(topic?.FirstURL);
+    const text = String(topic?.Text || "").replace(/\s+/g, " ").trim();
+    if (url && text) output.push({
+      title: text.split(" - ")[0].slice(0, 140), url,
+      content: text.slice(0, 420), source: "DuckDuckGo"
+    });
+    if (output.length >= 6) break;
+  }
+  return output;
+}
+
+async function assistantSearchDuckDuckGo(query) {
+  const params = new URLSearchParams({
+    q: String(query || "").trim().slice(0, 260),
+    format: "json", no_html: "1", skip_disambig: "1", kl: "nl-nl"
+  });
+  const data = await assistantFetchJson(`https://api.duckduckgo.com/?${params.toString()}`);
+  const results = [];
+  const abstractUrl = assistantSafeHttpsUrl(data?.AbstractURL);
+  if (abstractUrl && data?.AbstractText) results.push({
+    title: String(data.Heading || "DuckDuckGo direct antwoord").slice(0, 140),
+    url: abstractUrl, content: String(data.AbstractText).slice(0, 850), source: "DuckDuckGo"
+  });
+  const definitionUrl = assistantSafeHttpsUrl(data?.DefinitionURL);
+  if (definitionUrl && data?.Definition) results.push({
+    title: String(data.DefinitionSource || "Definitie").slice(0, 140),
+    url: definitionUrl, content: String(data.Definition).slice(0, 500), source: "DuckDuckGo"
+  });
+  const related = assistantCollectDuckDuckGoTopics(data?.RelatedTopics || []);
+  results.push(...related);
+  const answerText = [data?.Answer, data?.AbstractText, data?.Definition]
+    .map(value => String(value || "").trim())
+    .find(Boolean) || "";
+  const answerUrl = assistantSafeHttpsUrl(data?.AnswerType ? data?.Redirect : "") || abstractUrl || definitionUrl;
+  return {
+    answer: answerText.slice(0, 1100),
+    answerUrl,
+    heading: String(data?.Heading || "").slice(0, 140),
+    results: [...new Map(results.map(item => [item.url, item])).values()].slice(0, 6)
+  };
+}
+
+async function assistantSearchOnline(question, scope = "general") {
+  const rawQuery = assistantWebQuery(question);
+  const queryText = assistantSearchQuery(question, scope);
+  const cacheKey = `${scope}:${queryText}`;
+  const cached = ASSISTANT_WEB_CACHE.get(cacheKey);
+  if (cached && Date.now() - cached.savedAt < 3 * 60 * 1000) return cached.data;
+
+  // Wikipedia's MediaWiki API and DuckDuckGo Instant Answers both support
+  // public, keyless browser requests. DuckDuckGo does not syndicate full
+  // search-result lists through this API; a direct search link is also shown.
+  const searchResults = await Promise.allSettled([
+    assistantSearchWikipedia(rawQuery),
+    assistantSearchDuckDuckGo(rawQuery)
+  ]);
+  const wikiResults = searchResults[0].status === "fulfilled" ? searchResults[0].value : [];
+  const ddgData = searchResults[1].status === "fulfilled" ? searchResults[1].value : { answer: "", results: [] };
+  if (searchResults[0].status === "rejected") console.warn("Wikipedia lookup failed", searchResults[0].reason);
+  if (searchResults[1].status === "rejected") console.warn("DuckDuckGo instant answer lookup failed", searchResults[1].reason);
+
+  const results = [...wikiResults, ...(ddgData.results || [])];
+  const unique = [...new Map(results.map(item => [item.url, item])).values()].slice(0, 7);
+  const answerParts = [];
+  if (ddgData.answer) answerParts.push(`DuckDuckGo: ${ddgData.answer}`);
+  const topWiki = wikiResults.find(item => item.content);
+  if (topWiki) answerParts.push(`Wikipedia (${topWiki.title}): ${topWiki.content}`);
+  const normalized = {
+    query: queryText,
+    answer: answerParts.join("\n\n").slice(0, 2000),
+    results: unique,
+    responseTime: null,
+    searchProvider: "Wikipedia / DuckDuckGo",
+    searchedSources: [
+      ...(searchResults[0].status === "fulfilled" ? ["Wikipedia"] : []),
+      ...(searchResults[1].status === "fulfilled" ? ["DuckDuckGo"] : [])
+    ]
+  };
+  ASSISTANT_WEB_CACHE.set(cacheKey, { savedAt: Date.now(), data: normalized });
+  return normalized;
+}
+
 function assistantAddOnlineResults(question, data, shopSearch = false) {
   const engineLinks = assistantSearchEngineLinks(data.query || question);
   const hasAnswer = !!data.answer;
-  const searchLabel = shopSearch ? "de openbare webshopinformatie" : "het internet";
+  const searchLabel = shopSearch ? "de openbare webshopinformatie" : "Wikipedia en DuckDuckGo";
   const summary = hasAnswer
-    ? `Ik heb ${searchLabel} doorzocht voor “${question}”. Hieronder staat een korte samenvatting op basis van de gevonden webbronnen. Controleer belangrijke of actuele informatie altijd bij de oorspronkelijke bron.`
+    ? `Ik heb ${searchLabel} geraadpleegd voor “${question}”. Hieronder combineer ik de directe informatie en gevonden samenvattingen. Controleer belangrijke of actuele informatie altijd bij de oorspronkelijke bron.`
     : data.results.length
       ? `Ik heb in ${searchLabel} bronnen gevonden voor “${question}”. Dit zijn de beste treffers en hun samenvattingen:`
-      : `De online zoekdienst gaf geen bruikbaar antwoord op “${question}”. Je kunt de zoekopdracht ook rechtstreeks in een zoekmachine openen.`;
+      : `Ik vond geen directe samenvatting in Wikipedia of DuckDuckGo voor “${question}”. Via de zoeklinks hieronder kun je de volledige zoekresultaten bekijken.`;
   const bubble = assistantAddMessage(hasAnswer ? `${summary}\n\n${data.answer}` : summary, "bot", assistantBuildActions(question));
   if (!bubble) return;
   if (data.results.length) {
@@ -2879,7 +2959,7 @@ function assistantAddOnlineResults(question, data, shopSearch = false) {
       const snippet = document.createElement("span");
       snippet.textContent = String(item.content || "").slice(0, 360);
       const domain = document.createElement("small");
-      try { domain.textContent = new URL(item.url).hostname.replace(/^www\./, ""); } catch { domain.textContent = "Webbron"; }
+      try { domain.textContent = item.source ? `${item.source} · ${new URL(item.url).hostname.replace(/^www\./, "")}` : new URL(item.url).hostname.replace(/^www\./, ""); } catch { domain.textContent = item.source || "Webbron"; }
       if (item.published_date) domain.textContent += ` · ${String(item.published_date).slice(0, 16)}`;
       card.append(title, snippet, domain);
       list.append(card);
@@ -2919,29 +2999,46 @@ async function sendShopAssistantQuestion(value) {
       assistantAddMessage("Deel geen e-mailadres, telefoonnummer, postcode, IBAN, wachtwoord of herstelcode in deze chat. Ik heb je bericht niet doorgestuurd naar de online zoekdienst. Stel je vraag opnieuw zonder persoonlijke gegevens.", "bot");
     } else {
       const explicitWeb = assistantIsWebSearchRequest(question);
-      const faq = explicitWeb ? null : assistantFindFaq(question);
-      if (faq) {
+      const smallTalk = !explicitWeb ? assistantSmallTalkReply(question) : null;
+      if (smallTalk) {
         thinking?.remove();
-        assistantAddMessage(faq.answer({ question }), "bot", assistantBuildActions(question));
+        assistantAddMessage(smallTalk, "bot");
       } else {
-        searchScope = assistantIsShopQuestion(question) && !explicitWeb ? "shop" : "general";
-        const label = thinking?.querySelector(".assistant-thinking-label");
-        if (label) label.textContent = searchScope === "shop"
-          ? "Ik zoek op de openbare webshopsite en controleer de bronnen…"
-          : "Ik zoek actuele online bronnen en controleer de resultaten…";
-        const data = await assistantSearchOnline(question, searchScope);
-        thinking?.remove();
-        assistantAddOnlineResults(question, data, searchScope === "shop");
+        const contextualQuestion = assistantResolveFollowUp(question);
+        const faq = explicitWeb ? null : assistantFindFaq(contextualQuestion);
+        if (faq) {
+          thinking?.remove();
+          const answer = faq.answer({ question: contextualQuestion });
+          assistantLastTopicQuestion = contextualQuestion;
+          assistantLastTopicScope = assistantIsShopQuestion(contextualQuestion) ? "shop" : "general";
+          assistantAddMessage(answer, "bot", assistantBuildActions(contextualQuestion));
+        } else if (!explicitWeb && !assistantLooksLikeInformationQuestion(contextualQuestion) && !assistantIsShopQuestion(contextualQuestion) && question.length < 100) {
+          thinking?.remove();
+          assistantAddMessage("Ik luister! Vertel gerust wat meer, of stel een vraag. Over een onderwerp waar je meer over wilt weten kan ik informatie opzoeken in Wikipedia en DuckDuckGo.", "bot");
+        } else {
+          searchScope = assistantIsShopQuestion(contextualQuestion) && !explicitWeb
+            ? "shop"
+            : (assistantLastTopicScope === "shop" && contextualQuestion !== question ? "shop" : "general");
+          assistantLastTopicQuestion = contextualQuestion;
+          assistantLastTopicScope = searchScope;
+          const label = thinking?.querySelector(".assistant-thinking-label");
+          if (label) label.textContent = searchScope === "shop"
+            ? "Ik controleer de openbare webshopinformatie en zoek zo nodig verder…"
+            : "Ik zoek in Wikipedia en DuckDuckGo…";
+          const data = await assistantSearchOnline(contextualQuestion, searchScope);
+          thinking?.remove();
+          assistantAddOnlineResults(question, data, searchScope === "shop");
+        }
       }
     }
   } catch (error) {
-    console.warn("Online shop assistant search failed", error);
+    console.warn("Online assistant lookup failed", error);
     thinking?.remove();
     const detail = String(error?.message || "");
     const rateLimited = /429|rate|limit|quota|capacity/i.test(detail);
     const fallback = assistantAddMessage(rateLimited
-      ? "De gratis sleutelvrije zoekdienst heeft tijdelijk zijn gebruikslimiet bereikt. Probeer het later opnieuw. Je kunt dezelfde vraag hieronder ook rechtstreeks in een zoekmachine openen."
-      : "Ik kan de zoekresultaten nu niet automatisch tonen. Je kunt dezelfde vraag hieronder rechtstreeks in een zoekmachine openen.", "bot");
+      ? "De online informatiebronnen hebben tijdelijk een gebruikslimiet bereikt. Je kunt dezelfde vraag hieronder rechtstreeks openen in Wikipedia of DuckDuckGo."
+      : "De directe informatiebronnen zijn tijdelijk niet bereikbaar. Je kunt dezelfde vraag hieronder rechtstreeks openen in Wikipedia of DuckDuckGo.", "bot");
     if (fallback) {
       const engines = document.createElement("div"); engines.className = "assistant-search-engines";
       const label = document.createElement("span"); label.textContent = "Zoek verder via:"; engines.append(label);
