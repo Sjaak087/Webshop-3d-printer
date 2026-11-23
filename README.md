@@ -1,4 +1,4 @@
-# 3D Printed Shop v29 — gesprek en online informatie
+# 3D Printed Shop v30 — gesprek en online informatie
 
 ## Nieuw in v29
 - Chatbot reageert ook op begroetingen en eenvoudige gewone gesprekjes.
@@ -8,7 +8,7 @@
 - Er wordt geen lokaal AI-model of API-sleutel vereist.
 - Geen Firebase-profielen, bestellingen, privéchats, adressen of wachtwoorden naar zoekdiensten sturen.
 
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v29)
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v30)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -279,7 +279,7 @@ Zie `TEST-CHATBOT.md` voor de uitgebreide checklist. Controleer in elk geval dat
 - Controleer dat de privacyfilter persoonlijke gegevens tegenhoudt voordat een externe zoekopdracht wordt uitgevoerd.
 
 
-## Actieve chatbot in v29 — gesprek, Wikipedia en DuckDuckGo
+## Historische chatbotuitleg v29 (vervangen in v30) — gesprek, Wikipedia en DuckDuckGo
 
 De chatbot uit v29 vervangt de online zoekmethode uit v27/v28. De oude Tavily- en openbare CORS-proxy-aanroepen zijn uit de actieve code verwijderd.
 
@@ -291,4 +291,17 @@ De chatbot uit v29 vervangt de online zoekmethode uit v27/v28. De oude Tavily- e
 - De chatbot is geen volledig generatief taalmodel. De kleine gespreksreacties zijn ingebouwde gesprekspatronen; feitelijke antwoorden worden op basis van de opgehaalde bronfragmenten samengesteld.
 - De invoerfilter blijft actief; de assistent haalt geen accountprofielen, wachtwoorden, klantadressen, bestellingen of privéchats uit Firebase op en stuurt die gegevens niet naar zoekdiensten.
 
-Zie `TEST-CHATBOT.md` voor de v29-checklist. Controleer de echte browserverbinding vanaf GitHub Pages na publicatie; CORS, API-beschikbaarheid en zoekresultaten kunnen per moment verschillen.
+Deze automatische zoekflow is in v30 aangepast: standaard wordt niet online gezocht. Zie de v30-sectie en `TEST-CHATBOT.md` voor de actuele werkwijze.
+
+
+## Versie 30 — productadvies en handmatige zoekkeuze
+
+- De chatbot zoekt niet langer automatisch online bij iedere onbekende vraag.
+- Onder het invoerveld staat een keuzelijst: **Gewoon antwoorden / advies**, **Zoek in mijn webshop** en **Zoek op het internet**.
+- “Zoek in mijn webshop” doorzoekt de reeds geladen openbare productcatalogus, productbeschrijvingen en lokale FAQ; hierbij wordt geen externe zoekdienst aangeroepen.
+- “Zoek op het internet” voert de bestaande sleutelvrije zoekactie via Wikipedia en DuckDuckGo Instant Answers uit en toont bronlinks. DuckDuckGo levert via deze openbare API geen volledige zoekresultatenlijst.
+- Bij de vraag “Welk product zou jij het meeste aanraden?” vergelijkt de chatbot beschikbare producten op actuele bestelbaarheid, publieke reviews, productinformatie, opties en 3D-preview. Hij licht zijn keuze toe en toont maximaal twee alternatieven. De rangschikking gebruikt geen verborgen omzet-, bestel- of klantgegevens.
+- De standaardmodus blijft bij gesprek en advies; zoeken gebeurt alleen na een expliciete keuze of een duidelijke opdracht zoals “zoek op internet”.
+- Geen AI-modeldownload, API-sleutel of extra Firebase-opslag vereist.
+
+Zie `TEST-CHATBOT.md` voor de v30-controles. De externe Wikipedia/DuckDuckGo-verbinding moet na publicatie in de echte browser worden getest. Dit is geen vrij generatief taalmodel; aanbevelingen worden transparant samengesteld uit de beschikbare webshopgegevens.

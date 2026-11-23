@@ -2459,6 +2459,7 @@ const assistantClose = document.querySelector("#shopAssistantClose");
 const assistantMessages = document.querySelector("#shopAssistantMessages");
 const assistantForm = document.querySelector("#shopAssistantForm");
 const assistantInput = document.querySelector("#shopAssistantInput");
+const assistantModeSelect = document.querySelector("#shopAssistantMode");
 const assistantSuggestions = document.querySelector("#shopAssistantSuggestions");
 let assistantBusy = false;
 
@@ -2650,6 +2651,77 @@ function assistantStockAnswer(question) {
   }
   return "De webshop controleert of een product en de gekozen filamentkleur voldoende voorraad hebben. Opties die uitverkocht zijn of waarvoor onvoldoende filament beschikbaar is, worden niet als bestelbaar aangeboden. Exacte interne voorraadgrammen zijn beheerinformatie en worden hier niet getoond.";
 }
+function assistantIsRecommendationRequest(question) {
+  const q = assistantNormalize(question);
+  return /\b(raad je aan|aanraden|aanbevelen|aanbeveelt|aanbevolen|beste keuze|wat zou jij kiezen|wat zou jij kopen|wat is jouw favoriet|favoriete product|meest aanraden|het meeste aanraden|welk product.*(beste|aanraden|aanbevelen)|welke product.*(beste|aanraden|aanbevelen))\b/.test(q);
+}
+function assistantRecommendationList(question = "") {
+  const products = (state.products || []).filter(product => product && product.active !== false);
+  const availableProducts = products.filter(product => !isSoldOut(product));
+  const pool = availableProducts.length ? availableProducts : products;
+  const genericWords = new Set(["product", "producten", "raad", "raadt", "aan", "aanraden", "aanbevelen", "aanbevolen", "meest", "meeste", "beste", "keuze", "kies", "kiezen", "zou", "jij", "ik", "welk", "welke", "wat", "voor", "mij", "jouw", "favoriet", "favoriete", "eigenlijk", "het", "een", "de", "van", "is", "zijn", "kun", "kan", "je", "meer"]);
+  const intentTokens = assistantTokens(question).filter(token => !genericWords.has(token));
+  return pool.map(product => {
+    const title = assistantNormalize(product.title || "");
+    const description = assistantNormalize(product.description || "");
+    const category = assistantNormalize(categoryLabel(product.categoryId) || "");
+    const matchScore = intentTokens.reduce((sum, token) => sum + (title.includes(token) ? 4 : description.includes(token) ? 2 : category.includes(token) ? 3 : 0), 0);
+    const stats = reviewStats(product.id);
+    const reviewCount = Number(stats.count || 0);
+    const average = Number(stats.average || 0);
+    // Bayesian smoothing avoids treating one 5-star review as definitive.
+    const adjustedRating = reviewCount ? ((average * reviewCount) + (4 * 3)) / (reviewCount + 3) : 0;
+    const groups = optionGroupsOf(product);
+    const optionCount = groups.reduce((sum, group) => sum + (group.options || []).filter(option => !option.soldOut).length, 0);
+    const price = Math.max(0, Number(product.price) || 0);
+    const descriptionScore = Math.min(5, Math.ceil(description.length / 90));
+    const reviewScore = reviewCount ? adjustedRating * 10 + Math.min(reviewCount, 10) * 0.45 : 0;
+    const featureScore = (product.model3d ? 2 : 0) + (optionCount ? 1.5 : 0) + (product.customTextEnabled === true ? 1 : 0) + descriptionScore;
+    const availabilityScore = !isSoldOut(product) ? 18 : -30;
+    return {
+      product, stats, reviewCount, average, adjustedRating, price, optionCount,
+      score: matchScore * 4 + reviewScore + featureScore + availabilityScore
+    };
+  }).sort((a, b) => b.score - a.score || (a.price - b.price) || String(a.product.title || "").localeCompare(String(b.product.title || ""), "nl"));
+}
+function assistantRecommendationAnswer(question) {
+  if (!state.loaded) return "Ik ben het actuele assortiment nog aan het laden. Probeer het zo nog eens; dan kan ik mijn advies baseren op de producten die nu echt in de webshop staan.";
+  const products = assistantRecommendationList(question);
+  if (!products.length) return "Ik kan op dit moment geen actieve producten in het assortiment vinden. Zodra er producten zichtbaar zijn, kan ik ze voor je vergelijken.";
+  const best = products[0];
+  const p = best.product;
+  const priceText = `vanaf €${best.price.toFixed(2).replace(".", ",")}`;
+  const reasons = [];
+  reasons.push(isSoldOut(p) ? "dit product staat momenteel niet als bestelbaar vermeld" : "dit product staat volgens de webshop als beschikbaar vermeld");
+  if (best.reviewCount) reasons.push(`klanten beoordelen het gemiddeld met ${best.average.toFixed(1).replace(".", ",")}/5 uit ${best.reviewCount} ${best.reviewCount === 1 ? "review" : "reviews"}`);
+  else reasons.push("er zijn nog geen klantreviews, dus ik kan de kwaliteit niet op klantbeoordelingen baseren");
+  if (p.model3d) reasons.push("je kunt het model eerst in de 3D-preview bekijken");
+  if (best.optionCount) reasons.push(`er zijn ${best.optionCount} bestelbare keuze-optie(s) zichtbaar`);
+  if (String(p.description || "").trim()) reasons.push("de productpagina bevat extra productinformatie");
+  const paragraphs = [
+    `Als ik op basis van het huidige assortiment één product moet aanraden, kies ik ${p.title || "dit product"} (${priceText}).`,
+    `Waarom? ${reasons.join("; ")}. Dit is mijn praktische aanbeveling op basis van de beschikbare productinformatie, bestelbaarheid en eventuele reviews. Ik gebruik geen verborgen verkoopcijfers en kan dus niet zeggen dat dit per se het populairste product is.`,
+    assistantProductAnswer(p, question)
+  ];
+  const alternatives = products.slice(1, 3);
+  if (alternatives.length) {
+    paragraphs.push("Andere opties die ik ook zou overwegen:");
+    alternatives.forEach((item, index) => {
+      const availability = isSoldOut(item.product) ? "momenteel niet bestelbaar" : "beschikbaar";
+      const rating = item.reviewCount ? ` · ${item.average.toFixed(1).replace(".", ",")}/5 (${item.reviewCount} reviews)` : " · nog geen reviews";
+      paragraphs.push(`${index + 2}. ${item.product.title || "Product"} — vanaf €${item.price.toFixed(2).replace(".", ",")} · ${availability}${rating}`);
+    });
+  }
+  paragraphs.push("Als je vertelt waarvoor je het zoekt (bijvoorbeeld cadeau, decoratie, praktisch gebruik of een bepaald budget), kan ik gerichter kiezen.");
+  return { text: paragraphs.join("\n\n"), recommendations: products.slice(0, 3) };
+}
+function assistantRecommendationActions(recommendations) {
+  return (recommendations || []).filter(item => item?.product?.id).slice(0, 3).map(item => ({
+    label: `Bekijk ${String(item.product.title || "product").slice(0, 25)}`,
+    run: () => { closeShopAssistant(); showProduct(item.product.id); }
+  }));
+}
+
 function assistantFindFaq(question) {
   const normalized = assistantNormalize(question);
   if (!normalized) return null;
@@ -2934,6 +3006,46 @@ async function assistantSearchOnline(question, scope = "general") {
   return normalized;
 }
 
+function assistantSearchWebsiteLocal(question) {
+  const recommendation = assistantIsRecommendationRequest(question) ? assistantRecommendationAnswer(question) : null;
+  const products = assistantFindProducts(question).filter(item => item.score > 0).slice(0, 6);
+  const faq = assistantFindFaq(question);
+  let faqAnswer = "";
+  if (faq) {
+    try { faqAnswer = faq.answer({ question }); } catch (error) { console.warn("Local FAQ search failed", error); }
+  }
+  return { products, faq, faqAnswer, recommendation };
+}
+function assistantAddWebsiteResults(question, data) {
+  const matched = data.products || [];
+  const summary = [];
+  if (data.recommendation && typeof data.recommendation === "object") summary.push(data.recommendation.text);
+  else if (typeof data.recommendation === "string") summary.push(data.recommendation);
+  if (data.faqAnswer && !data.recommendation) summary.push(`Informatie uit de webshop:\n${data.faqAnswer}`);
+  if (matched.length && !data.recommendation) summary.push(`Producten die bij je zoekvraag passen:\n${matched.map((item, index) => `${index + 1}. ${item.product.title || "Product"} — vanaf €${(Number(item.product.price) || 0).toFixed(2).replace(".", ",")}${isSoldOut(item.product) ? " · niet bestelbaar" : " · beschikbaar"}`).join("\n")}`);
+  if (!summary.length) summary.push(`Ik heb in de lokale webshopgegevens geen duidelijke match gevonden voor “${question}”. Probeer een productnaam, categorie of onderwerp zoals verzenden, betalen, kleuren, maatwerk of 3D-preview. Je kunt ook de zoekbalk van de webshop gebruiken.`);
+  const actions = data.recommendation?.recommendations
+    ? assistantRecommendationActions(data.recommendation.recommendations)
+    : matched.slice(0, 3).filter(item => item.product?.id).map(item => ({
+      label: `Bekijk ${String(item.product.title || "product").slice(0, 25)}`,
+      run: () => { closeShopAssistant(); showProduct(item.product.id); }
+    }));
+  const bubble = assistantAddMessage(summary.join("\n\n"), "bot", actions);
+  if (bubble && matched.length) {
+    const list = document.createElement("div");
+    list.className = "assistant-web-results";
+    matched.forEach(({ product }) => {
+      const card = document.createElement("div");
+      card.className = "assistant-web-result assistant-local-result";
+      const title = document.createElement("strong"); title.textContent = String(product.title || "Product").slice(0, 140);
+      const detail = document.createElement("span"); detail.textContent = `Vanaf €${(Number(product.price) || 0).toFixed(2).replace(".", ",")} · ${isSoldOut(product) ? "niet bestelbaar" : "beschikbaar"}`;
+      const desc = document.createElement("small"); desc.textContent = String(product.description || "Product uit het actuele assortiment").slice(0, 180);
+      card.append(title, detail, desc); list.append(card);
+    });
+    bubble.append(list);
+  }
+}
+
 function assistantAddOnlineResults(question, data, shopSearch = false) {
   const engineLinks = assistantSearchEngineLinks(data.query || question);
   const hasAnswer = !!data.answer;
@@ -2980,15 +3092,18 @@ function assistantAddOnlineResults(question, data, shopSearch = false) {
   bubble.append(engines);
   assistantMessages.scrollTop = assistantMessages.scrollHeight;
 }
-async function sendShopAssistantQuestion(value) {
+async function sendShopAssistantQuestion(value, selectedMode = "chat") {
   const question = String(value || "").trim();
   if (!question || assistantBusy) return;
+  const mode = ["chat", "website", "internet"].includes(selectedMode) ? selectedMode : "chat";
   assistantBusy = true;
   if (assistantInput) assistantInput.disabled = true;
+  if (assistantModeSelect) assistantModeSelect.disabled = true;
   const submitButton = assistantForm?.querySelector('button[type="submit"]');
   if (submitButton) submitButton.disabled = true;
   assistantAddMessage(question, "user");
-  const thinking = assistantAddThinking("Ik controleer de webshop-FAQ…");
+  const modeLabels = { chat: "Ik denk even met je mee…", website: "Ik doorzoek de openbare webshopinformatie…", internet: "Ik zoek in Wikipedia en DuckDuckGo…" };
+  const thinking = assistantAddThinking(modeLabels[mode]);
   let searchScope = "general";
   try {
     if (assistantIsSafetyRestricted(question)) {
@@ -2996,49 +3111,63 @@ async function sendShopAssistantQuestion(value) {
       assistantAddMessage("Ik kan niet helpen met praktische instructies of zoekhulp voor dit onderwerp.", "bot");
     } else if (assistantContainsPrivateData(question)) {
       thinking?.remove();
-      assistantAddMessage("Deel geen e-mailadres, telefoonnummer, postcode, IBAN, wachtwoord of herstelcode in deze chat. Ik heb je bericht niet doorgestuurd naar de online zoekdienst. Stel je vraag opnieuw zonder persoonlijke gegevens.", "bot");
+      assistantAddMessage("Deel geen e-mailadres, telefoonnummer, postcode, IBAN, wachtwoord of herstelcode in deze chat. Ik heb je bericht niet doorgestuurd naar een zoekdienst. Stel je vraag opnieuw zonder persoonlijke gegevens.", "bot");
+    } else if (mode === "website") {
+      const contextualQuestion = assistantResolveFollowUp(question);
+      const label = thinking?.querySelector(".assistant-thinking-label");
+      if (label) label.textContent = "Ik doorzoek de productcatalogus en webshopuitleg…";
+      const data = assistantSearchWebsiteLocal(contextualQuestion);
+      thinking?.remove();
+      assistantAddWebsiteResults(question, data);
+      assistantLastTopicQuestion = contextualQuestion;
+      assistantLastTopicScope = "shop";
+    } else if (mode === "internet" || (mode === "chat" && assistantIsWebSearchRequest(question))) {
+      const contextualQuestion = assistantResolveFollowUp(question);
+      assistantLastTopicQuestion = contextualQuestion;
+      assistantLastTopicScope = "general";
+      const label = thinking?.querySelector(".assistant-thinking-label");
+      if (label) label.textContent = "Ik zoek in Wikipedia en DuckDuckGo…";
+      const data = await assistantSearchOnline(contextualQuestion, "general");
+      thinking?.remove();
+      assistantAddOnlineResults(question, data, false);
     } else {
-      const explicitWeb = assistantIsWebSearchRequest(question);
-      const smallTalk = !explicitWeb ? assistantSmallTalkReply(question) : null;
+      const contextualQuestion = assistantResolveFollowUp(question);
+      const smallTalk = assistantSmallTalkReply(question);
       if (smallTalk) {
         thinking?.remove();
         assistantAddMessage(smallTalk, "bot");
+      } else if (assistantIsRecommendationRequest(contextualQuestion)) {
+        const recommendation = assistantRecommendationAnswer(contextualQuestion);
+        thinking?.remove();
+        if (typeof recommendation === "string") assistantAddMessage(recommendation, "bot");
+        else assistantAddMessage(recommendation.text, "bot", assistantRecommendationActions(recommendation.recommendations));
+        assistantLastTopicQuestion = contextualQuestion;
+        assistantLastTopicScope = "shop";
       } else {
-        const contextualQuestion = assistantResolveFollowUp(question);
-        const faq = explicitWeb ? null : assistantFindFaq(contextualQuestion);
+        const faq = assistantFindFaq(contextualQuestion);
         if (faq) {
           thinking?.remove();
           const answer = faq.answer({ question: contextualQuestion });
           assistantLastTopicQuestion = contextualQuestion;
-          assistantLastTopicScope = assistantIsShopQuestion(contextualQuestion) ? "shop" : "general";
+          assistantLastTopicScope = "shop";
           assistantAddMessage(answer, "bot", assistantBuildActions(contextualQuestion));
-        } else if (!explicitWeb && !assistantLooksLikeInformationQuestion(contextualQuestion) && !assistantIsShopQuestion(contextualQuestion) && question.length < 100) {
+        } else if (!assistantLooksLikeInformationQuestion(contextualQuestion) && !assistantIsShopQuestion(contextualQuestion)) {
           thinking?.remove();
-          assistantAddMessage("Ik luister! Vertel gerust wat meer, of stel een vraag. Over een onderwerp waar je meer over wilt weten kan ik informatie opzoeken in Wikipedia en DuckDuckGo.", "bot");
+          assistantAddMessage("Ik denk graag met je mee. Vertel gerust wat meer, dan reageer ik op wat je vertelt. Wil je feiten of bronnen laten opzoeken? Kies dan bij het versturen ‘Zoek op het internet’. Voor producten en webshopinformatie kies je ‘Zoek in mijn webshop’.", "bot");
         } else {
-          searchScope = assistantIsShopQuestion(contextualQuestion) && !explicitWeb
-            ? "shop"
-            : (assistantLastTopicScope === "shop" && contextualQuestion !== question ? "shop" : "general");
-          assistantLastTopicQuestion = contextualQuestion;
-          assistantLastTopicScope = searchScope;
-          const label = thinking?.querySelector(".assistant-thinking-label");
-          if (label) label.textContent = searchScope === "shop"
-            ? "Ik controleer de openbare webshopinformatie en zoek zo nodig verder…"
-            : "Ik zoek in Wikipedia en DuckDuckGo…";
-          const data = await assistantSearchOnline(contextualQuestion, searchScope);
           thinking?.remove();
-          assistantAddOnlineResults(question, data, searchScope === "shop");
+          assistantAddMessage("Ik ga niet automatisch zoeken, zodat ik niet bij iedere vraag het internet open. Ik kan wel meedenken op basis van de webshopinformatie die al beschikbaar is. Wil je gericht zoeken? Kies bij het versturen ‘Zoek in mijn webshop’ of ‘Zoek op het internet’.", "bot", assistantBuildActions(contextualQuestion));
         }
       }
     }
   } catch (error) {
-    console.warn("Online assistant lookup failed", error);
+    console.warn("Assistant lookup failed", error);
     thinking?.remove();
     const detail = String(error?.message || "");
     const rateLimited = /429|rate|limit|quota|capacity/i.test(detail);
     const fallback = assistantAddMessage(rateLimited
-      ? "De online informatiebronnen hebben tijdelijk een gebruikslimiet bereikt. Je kunt dezelfde vraag hieronder rechtstreeks openen in Wikipedia of DuckDuckGo."
-      : "De directe informatiebronnen zijn tijdelijk niet bereikbaar. Je kunt dezelfde vraag hieronder rechtstreeks openen in Wikipedia of DuckDuckGo.", "bot");
+      ? "De online informatiebron heeft tijdelijk een gebruikslimiet bereikt. Je kunt het later opnieuw proberen of de zoeklinks hieronder openen."
+      : "De online informatiebron is tijdelijk niet bereikbaar. Je kunt de zoeklinks hieronder rechtstreeks openen.", "bot");
     if (fallback) {
       const engines = document.createElement("div"); engines.className = "assistant-search-engines";
       const label = document.createElement("span"); label.textContent = "Zoek verder via:"; engines.append(label);
@@ -3050,6 +3179,7 @@ async function sendShopAssistantQuestion(value) {
   } finally {
     assistantBusy = false;
     if (assistantInput) assistantInput.disabled = false;
+    if (assistantModeSelect) assistantModeSelect.disabled = false;
     if (submitButton) submitButton.disabled = false;
     if (assistantPanel && !assistantPanel.hidden) assistantInput?.focus();
   }
@@ -3060,13 +3190,14 @@ assistantForm?.addEventListener("submit", event => {
   event.preventDefault();
   const question = assistantInput.value.trim();
   if (!question) return;
+  const mode = assistantModeSelect?.value || "chat";
   assistantInput.value = "";
-  sendShopAssistantQuestion(question);
+  sendShopAssistantQuestion(question, mode);
 });
 assistantSuggestions?.addEventListener("click", event => {
   const button = event.target.closest("[data-assistant-prompt]");
   if (!button || assistantBusy) return;
-  sendShopAssistantQuestion(button.dataset.assistantPrompt);
+  sendShopAssistantQuestion(button.dataset.assistantPrompt, button.dataset.assistantMode || "chat");
 });
 document.addEventListener("keydown", event => {
   if (event.key === "Escape" && assistantPanel && !assistantPanel.hidden) closeShopAssistant();

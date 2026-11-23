@@ -1053,3 +1053,12 @@ button:disabled{cursor:not-allowed;opacity:.62}
 .assistant-search-engines span{width:100%;font-size:9px;color:#78889d}
 .assistant-search-engines a{padding:5px 8px;border:1px solid #d6e2f1;border-radius:7px;background:#fff;color:#1455a2;font-size:10px;font-weight:800;text-decoration:none}
 .assistant-search-engines a:hover{background:#edf5ff;border-color:#9dbce4}
+
+
+/* v30: antwoordmodus kiezen zonder automatisch webzoeken */
+.shop-assistant-form{display:grid;grid-template-columns:minmax(0,1fr) 42px;grid-template-areas:"mode mode" "input send";gap:8px}
+.shop-assistant-form select{grid-area:mode;width:100%;min-width:0;border:1px solid #dce5f1;border-radius:10px;padding:8px 10px;background:#f8fbff;color:#31506f;font-size:11px;font-weight:700;outline:none}
+.shop-assistant-form select:focus{border-color:#75a5e8;box-shadow:0 0 0 3px #0756c916}
+.shop-assistant-form input{grid-area:input}
+.shop-assistant-form button{grid-area:send}
+.shop-assistant-form select:disabled{opacity:.7}
