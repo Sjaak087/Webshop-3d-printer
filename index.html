@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111827"><meta name="description" content="Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen."><title>3D Printed Shop</title>
-  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=21-laptop-fit-quote-warning"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
+  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=22-shop-assistant"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <header class="topbar">
@@ -168,5 +168,37 @@
  <section class="dialog"><button class="close" id="closeDialog" aria-label="Sluiten">×</button><div id="dialogContent"></div></section>
 </div>
 <div id="toast" class="toast"></div>
-<script type="module" src="./app.js?v=21-laptop-fit-quote-warning"></script>
+
+<!-- Vaste webshopassistent; antwoorden worden lokaal in de browser samengesteld. -->
+<div class="shop-assistant" id="shopAssistant">
+  <section class="shop-assistant-panel" id="shopAssistantPanel" role="dialog" aria-modal="false" aria-labelledby="shopAssistantTitle" hidden>
+    <header class="shop-assistant-header">
+      <div class="shop-assistant-avatar" aria-hidden="true">✦</div>
+      <div class="shop-assistant-heading">
+        <strong id="shopAssistantTitle">Shopassistent</strong>
+        <small><span class="shop-assistant-online-dot"></span> Hulp bij 3D Printed Shop</small>
+      </div>
+      <button class="shop-assistant-close" id="shopAssistantClose" type="button" aria-label="Chat sluiten">×</button>
+    </header>
+    <div class="shop-assistant-messages" id="shopAssistantMessages" aria-live="polite" aria-relevant="additions text">
+      <div class="shop-assistant-message bot"><p>Hoi! 👋 Ik ben de webshopassistent van 3D Printed Shop. Vraag me over producten, prijzen, kleuren, filament, offertes, bestellen of verzending. De levertijd is maximaal 14 dagen.</p></div>
+    </div>
+    <div class="shop-assistant-suggestions" id="shopAssistantSuggestions">
+      <button type="button" data-assistant-prompt="Wat is de levertijd?">Levertijd</button>
+      <button type="button" data-assistant-prompt="Wat zijn de verzendkosten?">Verzendkosten</button>
+      <button type="button" data-assistant-prompt="Welke filamentkleuren zijn beschikbaar?">Filamentkleuren</button>
+      <button type="button" data-assistant-prompt="Hoe vraag ik een offerte aan?">Offerte</button>
+    </div>
+    <form class="shop-assistant-form" id="shopAssistantForm">
+      <label class="visually-hidden" for="shopAssistantInput">Stel je vraag</label>
+      <input id="shopAssistantInput" type="text" maxlength="500" autocomplete="off" placeholder="Stel je vraag…" required>
+      <button type="submit" aria-label="Vraag versturen"><span aria-hidden="true">➤</span></button>
+    </form>
+    <small class="shop-assistant-footnote">Dit gesprek wordt niet opgeslagen. Voor persoonlijke bestelvragen kun je inloggen en de klantenchat gebruiken.</small>
+  </section>
+  <button class="shop-assistant-toggle" id="shopAssistantToggle" type="button" aria-expanded="false" aria-controls="shopAssistantPanel">
+    <span class="shop-assistant-toggle-icon" aria-hidden="true">✦</span><span>Vraag het de bot</span>
+  </button>
+</div>
+<script type="module" src="./app.js?v=22-shop-assistant"></script>
 </body></html>

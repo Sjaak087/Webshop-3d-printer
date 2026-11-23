@@ -145,3 +145,29 @@ Publiceer de inhoud van deze ZIP in dezelfde GitHub-repository. De live Firebase
 - De cacheversies zijn verhoogd naar `v=21-laptop-fit-quote-warning` zodat GitHub Pages de bijgewerkte bestanden opnieuw laadt.
 
 De lokale controles controleren JavaScript-syntaxis, HTML-structuur en ZIP-integriteit. De weergave kan niet op ieder fysiek laptopscherm worden geverifieerd; test de gepubliceerde site ook even op jouw laptop.
+
+## Versie 22 – webshopassistent
+
+Deze versie voegt een vaste webshopassistent rechtsonder toe. De assistent gebruikt de reeds geladen product-, categorie-, productoptie-, filament- en contactgegevens uit de webshop om vragen te beantwoorden over onder meer:
+
+- het assortiment en productprijzen;
+- beschikbare productkeuzes en filamentkleuren (waarbij voorraad per product kan verschillen);
+- maatwerk en het aanvragen van een offerte;
+- bestellen, accounts, betalen en bestellingen volgen;
+- verzendkosten (€ 3,95), gratis ophalen en de maximale levertijd van 14 dagen;
+- contact en retourvragen.
+
+De assistent is lokaal in de browser geïmplementeerd. Er wordt geen externe AI-API gebruikt en chatberichten worden niet naar Firebase opgeslagen. Daardoor zijn geen API-sleutel, extra server of extra Firebase-databaseverzoeken nodig voor het chatten. Antwoorden buiten de kennis en gegevens van deze webshop worden niet als feiten verzonnen; bij onbekende vragen verwijst de assistent naar de contactpagina of de klantenchat.
+
+### Testen
+
+Open de webshop en druk rechtsonder op **Vraag het de bot**. Test in ieder geval:
+
+1. “Wat is de levertijd?” – antwoord moet maximaal 14 dagen noemen.
+2. “Wat zijn de verzendkosten?” – € 3,95 en gratis ophalen.
+3. “Welke filamentkleuren zijn beschikbaar?” – gebruikt de actieve kleuren uit Filamentbeheer.
+4. “Hoe vraag ik een offerte aan?” – knop opent het offerteformulier.
+5. Vraag naar een bestaande productnaam – assistent toont gegevens en een knop om het product te openen.
+6. Test op mobiel en laptop; het chatvenster moet binnen het scherm blijven en met Escape/sluitknop dicht kunnen.
+
+Let op: versie 22 voegt geen Cloudflare D1-database of Worker toe. Bestaande projectonderdelen, waaronder de al aanwezige printercamera-configuratie, zijn ongewijzigd gelaten.
