@@ -37,3 +37,14 @@ Deze versie is geen volledig generatief taalmodel. De standaardmodus gebruikt de
 - [x] Beschikbare en niet-bestelbare aantallen worden apart vermeld.
 - [x] Goedkoopste/duurste producten komen uit het actuele assortiment.
 - [ ] Live Firebase-data, live zoekdiensten en gebruikerservaring moeten op de gepubliceerde site worden getest.
+
+
+## v32 — maatwerk-printherkenning en bredere gesprekmodus
+- Vraag “Kunnen jullie een product dat nog niet in de webshop staat 3D-printen?”: de bot legt uit dat dit via een offerteaanvraag loopt en toont de knop “Offerte aanvragen”.
+- Vraag met een typefout, bijvoorbeeld “Kunnen jullie een kerstbooom voor oma 3d printen?” als “Kerstboom voor oma” in de catalogus staat: de fuzzy productnaamherkenning moet het bestaande product vinden en niet onterecht een offerte eisen.
+- Vraag naar een onbekend product, bijvoorbeeld “Kunnen jullie een bureaunaamplaatje 3d printen?” als dat niet in de catalogus staat: de bot verwijst naar maatwerkofferte.
+- “Ik wil mijn huiswerk uitprinten” mag niet als 3D-printofferte worden gezien.
+- Gewone gespreksprompts over hobby's, sport, games, muziek, gevoelens, school, films, dieren, ruimte en techniek krijgen een onderwerpgerichte reactie en een natuurlijke vervolgvraag.
+- Opinievragen zoals “Wat vind jij van ...?” krijgen een afgewogen reactie zonder te doen alsof de bot persoonlijke ervaringen heeft.
+- Extra gespreksthema’s: favoriete dieren/kleuren/games, “hoe was je dag?”, gevoelens/hobby’s, vakantieplannen, grappen, raadsels, weetjes, een korte verhaalstarter en een mini-quiz.
+- Dit blijft regelgestuurde gespreksondersteuning; voor werkelijk willekeurige, contextueel redenerende antwoorden is een generatief AI-model nodig.

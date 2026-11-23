@@ -2608,6 +2608,102 @@ function assistantIsProductCountQuestion(question) {
   const hasProductWord = /\b(product|producten|artikel|artikelen|item|items)\b/.test(q);
   return hasCountWord && hasProductWord;
 }
+
+// Herkent printverzoeken ook wanneer de bezoeker kleine typefouten maakt.
+function assistantEditDistance(left, right) {
+  const a = String(left || ""), b = String(right || "");
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= b.length; j++) {
+      current[j] = Math.min(current[j - 1] + 1, previous[j] + 1, previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    previous = current;
+  }
+  return previous[b.length];
+}
+function assistantWordsClose(left, right) {
+  const a = assistantNormalize(left), b = assistantNormalize(right);
+  if (!a || !b) return false;
+  if (a === b || a.startsWith(b) || b.startsWith(a)) return true;
+  if (Math.min(a.length, b.length) < 4) return false;
+  const distance = assistantEditDistance(a, b);
+  const maxDistance = Math.max(a.length, b.length) >= 7 ? 2 : 1;
+  return distance <= maxDistance && (1 - distance / Math.max(a.length, b.length)) >= 0.72;
+}
+function assistantIsPrintRequest(question) {
+  const q = assistantNormalize(question);
+  if (!q) return false;
+  const words = q.split(/\s+/);
+  const hasPrintWord = words.some(word => ["print", "printen", "printje", "geprint", "printen", "uitprinten", "geprint"].some(target => assistantWordsClose(word, target)));
+  const has3d = /\b3\s*d\b/.test(q);
+  const hasShopCue = /\b(jullie|bij jullie|voor mij|voor ons|voor me|webshop|winkel|shop)\b/.test(q);
+  const hasMakeRequest = /\b(laten maken|maken jullie|kunnen jullie maken|kun je maken|wil maken|willen maken|maak voor mij|op maat maken)\b/.test(q) || (has3d && /\b(maken|maak|laten|ontwerp)\b/.test(q)) || (hasShopCue && /\b(maken|maak|ontwerpen|ontwerp)\b/.test(q));
+  const hasRequestLanguage = /\b(wil|wilt|willen|zou|zouden|kun|kan|kunnen|mag|graag|laten|zoek|maken|maken jullie)\b/.test(q);
+  // Een gewone vraag om huiswerk/documenten op papier te printen is geen 3D-printofferte.
+  const paperTask = /\b(huiswerk|schoolwerk|document|werkstuk|formulier|papier|brief|pdf|verslag)\b/.test(q)
+    && !has3d && !hasShopCue;
+  if (paperTask) return false;
+  return (hasPrintWord && (hasRequestLanguage || hasShopCue || has3d)) || (has3d && hasMakeRequest) || (hasMakeRequest && hasShopCue);
+}
+function assistantRequestedPrintProduct(question) {
+  const ignored = new Set([
+    "ik", "wij", "we", "jullie", "je", "jij", "mij", "me", "ons", "onze", "voor", "van", "de", "het", "een", "en", "of", "aan", "bij", "met", "wil", "wilt", "willen", "zou", "zouden", "kun", "kan", "kunnen", "mag", "graag", "laten", "laat", "maken", "maak", "print", "printen", "printje", "geprint", "uitprinten", "3d", "iets", "ook", "nog", "hebben", "heb", "bestaan", "bestaat", "bestellen", "bestel", "kunnen", "jullie", "als", "dat", "dit", "voor", "mijn", "eigen", "ontwerp", "product", "ding", "dingetje", "speciaal", "eentje", "eens"
+  ]);
+  const queryWords = assistantNormalize(question).split(/\s+/).filter(word => word.length >= 3 && !ignored.has(word));
+  if (!queryWords.length) return null;
+  const products = (state.products || []).filter(product => product && product.active !== false);
+  const matches = products.map(product => {
+    const titleWords = assistantNormalize(product.title || "").split(/\s+/).filter(word => word.length >= 3 && !["voor", "van", "met", "een", "het", "de", "en"].includes(word));
+    if (!titleWords.length) return { product, score: 0, matched: 0 };
+    const weights = titleWords.map(titleWord => {
+      let best = 0;
+      for (const queryWord of queryWords) {
+        if (queryWord === titleWord) best = Math.max(best, 1);
+        else if (queryWord.includes(titleWord) || titleWord.includes(queryWord)) {
+          const shorter = Math.min(queryWord.length, titleWord.length);
+          if (shorter >= 4) best = Math.max(best, 0.88);
+        } else {
+          const distance = assistantEditDistance(queryWord, titleWord);
+          const similarity = 1 - distance / Math.max(queryWord.length, titleWord.length);
+          if (distance <= (titleWord.length >= 9 ? 2 : 1) && similarity >= 0.72) best = Math.max(best, similarity);
+        }
+      }
+      return best;
+    });
+    const coverage = weights.reduce((sum, score) => sum + score, 0) / weights.length;
+    const exactHits = weights.filter(score => score >= 0.98).length;
+    const queryCoverage = queryWords.filter(queryWord => titleWords.some(titleWord => queryWord === titleWord || (assistantEditDistance(queryWord, titleWord) <= 1 && Math.min(queryWord.length, titleWord.length) >= 4))).length / queryWords.length;
+    return { product, score: coverage * 0.78 + queryCoverage * 0.22, matched: exactHits, coverage };
+  }).sort((a, b) => b.score - a.score);
+  const best = matches[0];
+  if (!best) return null;
+  const titleWordCount = assistantNormalize(best.product.title || "").split(/\s+/).filter(word => word.length >= 3 && !["voor", "van", "met", "een", "het", "de", "en"].includes(word)).length;
+  const threshold = titleWordCount <= 1 ? 0.78 : 0.68;
+  return best.score >= threshold ? best.product : null;
+}
+function assistantUnlistedPrintAnswer(question) {
+  const quoteAction = { label: "Offerte aanvragen", run: () => { closeShopAssistant(); $("#requestQuoteBtn")?.click(); } };
+  if (!state.loaded || state.productsError) {
+    return { text: "Ik kan op dit moment niet betrouwbaar controleren of we dit product al in het assortiment hebben. Open het productoverzicht om eerst te kijken. Denk je dat het maatwerk is, dan kun je ook een offerte aanvragen; de beheerder kan dan beoordelen of het te printen is.", actions: [quoteAction] };
+  }
+  const product = assistantRequestedPrintProduct(question);
+  if (product) {
+    const available = !isSoldOut(product);
+    const message = `Ik heb een product in ons assortiment gevonden dat waarschijnlijk bij je vraag past: ${product.title}. ${available ? "Volgens de huidige webshopgegevens is het beschikbaar." : "Dit product staat op dit moment niet als bestelbaar vermeld."} Bekijk de productpagina om de opties, kleuren en prijs te controleren. Bedoel je iets anders of wil je een aangepaste versie? Dan kun je daarvoor een offerte aanvragen.`;
+    return { text: message, actions: [
+      { label: `Bekijk ${String(product.title || "product").slice(0, 28)}`, run: () => { closeShopAssistant(); showProduct(product.id); } },
+      quoteAction
+    ] };
+  }
+  return {
+    text: "Dat specifieke product zie ik niet terug in ons huidige assortiment. We kunnen wel bekijken of we het als maatwerk kunnen printen. Vraag daarvoor een offerte aan; beschrijf wat je wilt, voeg een afbeelding of ontwerp toe en geef de gewenste afmetingen en kleur op. Dan kan de webshopbeheerder beoordelen of het mogelijk is en wat het kost. Kleine typfouten in je omschrijving zijn geen probleem.",
+    actions: [quoteAction]
+  };
+}
 function assistantProductCountAnswer(question = "") {
   if (!state.loaded) return "Ik laad het actuele productoverzicht nog. Probeer het over een paar seconden nog eens; ik wil je geen verkeerd aantal geven.";
   if (state.productsError) return "Ik kan het actuele productaantal nu niet betrouwbaar uitlezen omdat het productoverzicht niet goed geladen is. Ververs de webshop en probeer het opnieuw.";
@@ -2857,69 +2953,142 @@ function assistantResolveFollowUp(question) {
   return question;
 }
 
+function assistantLastUserMessage() {
+  for (let index = assistantConversationHistory.length - 1; index >= 0; index--) {
+    if (assistantConversationHistory[index]?.role === "user") return String(assistantConversationHistory[index].text || "");
+  }
+  return "";
+}
 function assistantSmallTalkReply(question) {
-  const q = assistantNormalize(question).replace(/[.,]+$/g, "").trim();
+  const q = assistantNormalize(question).replace(/[.,!?]+$/g, "").trim();
   if (!q) return null;
-  if (/^(hoi|hoi ik wil gewoon even praten|ik wil gewoon even praten|hallo|hey|heyy|heyyy|yo|goedemorgen|goeiemorgen|goedemiddag|goedenavond|dag|he|hallo daar|hoi hoi)$/.test(q)) {
-    return "Hoi! 😊 Leuk dat je er bent. Waar heb je zin in om over te praten? Je mag me ook iets vragen of vragen om iets op te zoeken.";
+  if (/^(hoi|hoi ik wil gewoon even praten|ik wil gewoon even praten|hallo|hallo daar|hey|heyy|heyyy|yo|goedemorgen|goeiemorgen|goedemiddag|goedenavond|dag|he|hoi hoi|heya)$/.test(q)) {
+    return "Hoi! 😊 Gezellig dat je even komt praten. Hoe is je dag tot nu toe? We kunnen het over iets leuks, je hobby's, techniek, games, dieren of echt iets heel anders hebben.";
   }
   if (/^(hoe gaat het|hoe gaat het met je|alles goed|alles goed met jou|hoe is het|hoe gaat ie|hoe gaatie)$/.test(q)) {
-    return "Met mij gaat het goed — ik ben klaar om te kletsen en dingen voor je op te zoeken. 😊 Hoe gaat het met jou?";
+    return "Met mij gaat het goed — ik ben er klaar voor om met je mee te denken en gezellig te praten. 😊 Hoe gaat het met jou? Is het een drukke dag of valt het mee?";
   }
   if (/^(bedankt|dank je|dankjewel|thanks|thx|dank je wel|super bedankt|heel erg bedankt)$/.test(q)) {
-    return "Graag gedaan! 😊 Waar zullen we het hierna over hebben?";
+    return "Graag gedaan! 😊 Fijn dat ik kon helpen. Waar zullen we het hierna over hebben?";
   }
   if (/^(doei|tot ziens|tot later|later|bye|ik ga weer|spreek je later)$/.test(q)) {
-    return "Tot later! Je kunt hier altijd weer verder praten. Fijne dag!";
+    return "Tot later! 😊 Je kunt hier altijd weer verder praten. Fijne dag!";
   }
-  if (/^(wie ben jij|wat ben jij|ben je een robot|ben je echt|ben je een ai|ben jij ai)$/.test(q)) {
-    return "Ik ben de digitale assistent van deze webshop. Ik kan je helpen met de webshop, gewone gesprekjes voeren, en informatie opzoeken via Wikipedia en DuckDuckGo. Ik ben geen mens en ook geen volledig generatief AI-model, dus bij ingewikkelde vragen baseer ik mijn antwoord op gevonden bronnen.";
+  if (/^(wie ben jij|wat ben jij|ben je een robot|ben je echt|ben je een ai|ben jij ai|wat is je naam)$/.test(q)) {
+    return "Ik ben de digitale assistent van deze webshop. Ik ben software, geen mens, maar ik kan wel met je kletsen, ideeën uitwerken, productvragen beantwoorden en je helpen informatie te vinden. Waar ben je benieuwd naar?";
+  }
+  if (/^(hoe oud ben je|heb je een leeftijd|wanneer ben je geboren)$/.test(q)) {
+    return "Ik heb geen menselijke leeftijd of verjaardag. Ik ben een digitale assistent die in deze webshop draait. 😄 Hoe oud ben jij trouwens niet iets wat je hier hoeft te delen — zullen we het over iets leuks hebben?";
   }
   if (/^(wat kun je|wat kan je|waarmee kun je helpen|waarmee kan je helpen|wat kan ik vragen|wat weet je|wat doe je)$/.test(q)) {
-    return "Je kunt me alles vragen over de webshop, maar ook over algemene onderwerpen zoals wetenschap, geschiedenis, techniek, dieren, hobby's of bekende personen. Voor feitelijke onderwerpen zoek ik informatie in Wikipedia en DuckDuckGo. Je kunt ook gewoon hoi zeggen en een gesprek beginnen.";
+    return "Je kunt me van alles vragen over de webshop, maar ook gewoon met me praten. Denk aan hobby's, sport, games, dieren, wetenschap, geschiedenis, techniek, films, muziek of een creatief idee. Ik kan meedenken en uitleg geven; voor actuele feiten kun je via het pijltje bewust kiezen om online te zoeken.";
   }
   if (/^(ok|oke|okay|ja|nee|aha|hmm|hmmm|precies|klopt|snap ik|duidelijk|is goed|prima)$/.test(q)) {
-    return "Helemaal goed! 😊 Waar wil je het verder over hebben?";
+    return "Helemaal goed! 😊 We hoeven niet bij hetzelfde onderwerp te blijven. Wat houdt je op dit moment bezig?";
   }
-  if (/^(ik verveel me|ik ben verveeld|ik weet niet wat ik moet doen)$/.test(q)) {
-    return "Zullen we iets leuks bedenken? We kunnen praten over een hobby, een interessant weetje opzoeken, een raadsel doen of samen een idee voor een 3D-print bedenken. Wat lijkt je leuk?";
+  if (/^(ik verveel me|ik ben verveeld|ik weet niet wat ik moet doen|ik heb niks te doen|ik heb niets te doen)$/.test(q)) {
+    return "Dan bedenken we iets! We kunnen een raadsel doen, een grappig weetje uitwisselen, een mini-quiz spelen, een creatief 3D-printidee bedenken of gewoon over je dag praten. Welke klinkt het leukst?";
   }
-  if (/^(vertel een grap|maak me aan het lachen|heb je een grap)$/.test(q)) {
-    return "Waarom nam de 3D-printer een pauze? Omdat hij even een nieuwe laag nodig had. 😄 Zal ik nog een grap vertellen of zullen we ergens anders over praten?";
+  if (/^(vertel een grap|maak me aan het lachen|heb je een grap|grapje)$/.test(q)) {
+    return "Waarom nam de 3D-printer een pauze? Omdat hij even een nieuwe laag nodig had. 😄 Zal ik nog een grap vertellen, een raadsel geven of een ander onderwerp kiezen?";
   }
   if (/^(vertel een raadsel|heb je een raadsel|raadsel)$/.test(q)) {
     return "Raadsel: ik heb lagen, maar ben geen taart. Ik word gemaakt, maar leef niet. Wat ben ik? Denk maar even na!";
   }
+  if (/^(vertel een weetje|leuk weetje|interessant weetje|wist je dat)$/.test(q)) {
+    return "Leuk weetje: octopussen hebben drie harten en een groot deel van hun zenuwcellen zit in hun armen. Daardoor kunnen hun armen sommige bewegingen deels zelfstandig uitvoeren. 🐙 Zal ik nog een weetje geven over dieren, ruimte, techniek of geschiedenis?";
+  }
+  if (/^(doe een quiz|quiz|quiz me|stel me een vraag)$/.test(q)) {
+    return "Mini-quiz! 🧠 Welke planeet staat bekend als de rode planeet: A) Venus, B) Mars of C) Jupiter? Wat denk jij?";
+  }
+  if (/^(vertel een verhaal|bedenk een verhaal|maak een verhaaltje)$/.test(q)) {
+    return "Er was eens een kleine robot die in een werkplaats woonde. Hij kon maar één ding maken: perfecte kubusjes. Op een dag vroeg iemand om een cadeau dat nergens te koop was. De robot keek naar zijn printer, glimlachte op zijn eigen robotmanier en begon te ontwerpen. Voor het eerst maakte hij geen kubus, maar iets dat precies bij iemand paste. En dat bleek veel leuker dan perfect zijn. Wil je dat ik het verhaal verder vertel of een heel ander verhaal bedenk?";
+  }
   if (/^(wat vind je van 3d printen|wat vind jij van 3d printen|vind je 3d printen leuk)$/.test(q)) {
-    return "Ik vind 3D-printen vooral bijzonder omdat je een digitaal ontwerp stap voor stap kunt omzetten in iets tastbaars. Het leuke is dat je iets kunt aanpassen aan je eigen idee, in plaats van alleen te kiezen wat al in een winkel ligt. Wat zou jij zelf graag eens willen laten printen?";
+    return "Mijn kijk erop: 3D-printen is bijzonder omdat je een digitaal ontwerp stap voor stap kunt omzetten in iets tastbaars. Het is vooral interessant dat je iets kunt aanpassen aan je eigen idee, in plaats van alleen te kiezen wat al bestaat. Wat zou jij zelf graag eens willen laten maken?";
   }
-  if (/^(ik ben blij|ik ben vrolijk|ik heb een leuke dag|mijn dag is leuk|ik ben enthousiast)$/.test(q)) {
-    return "Wat leuk om te horen! 😊 Wat maakte je dag zo fijn?";
+  if (/^(ik ben blij|ik ben vrolijk|ik heb een leuke dag|mijn dag is leuk|ik ben enthousiast|ik heb goed nieuws)$/.test(q)) {
+    return "Wat leuk om te horen! 😊 Wat maakte je dag zo fijn? Is er iets bijzonders gebeurd of is het gewoon zo'n fijne dag?";
   }
-  if (/^(ik ben verdrietig|ik voel me rot|ik heb een rotdag|ik ben gestrest|ik ben boos|ik zit ergens mee)$/.test(q)) {
-    return "Dat klinkt niet fijn. Je mag er best iets over vertellen. Wat is er aan de hand? Ik kan luisteren en met je meedenken.";
+  if (/^(ik ben verdrietig|ik voel me rot|ik heb een rotdag|ik ben gestrest|ik ben boos|ik zit ergens mee|ik voel me niet zo goed)$/.test(q)) {
+    return "Dat klinkt niet fijn. Je mag er best iets over vertellen. Wat is er gebeurd of wat zit je dwars? Ik kan luisteren en rustig met je meedenken.";
+  }
+  if (/^(ik ben moe|ik heb slecht geslapen|ik ben uitgeput)$/.test(q)) {
+    return "Dat is vervelend. Was het een drukke dag, of heb je gewoon niet zo goed kunnen slapen? Misschien is het fijn om het even rustig aan te doen.";
   }
   if (/^(ik vind het leuk|ik vind dat leuk|ik hou van|ik houd van|ik ben fan van)\b/.test(q)) {
-    return "Leuk! Vertel eens wat je daar zo leuk aan vindt.";
+    const subject = q.replace(/^(ik vind het leuk|ik vind dat leuk|ik hou van|ik houd van|ik ben fan van)\s*/, "").trim();
+    return subject ? `Leuk! ${subject} dus. Wat vind je daar het leukste aan — en hoe ben je daarin geïnteresseerd geraakt?` : "Leuk! Vertel eens wat je zo leuk vindt.";
   }
   return null;
 }
-
+function assistantIsConversationalPrompt(question) {
+  const q = assistantNormalize(question);
+  return /\b(wat vind jij|wat vind je|wat denk jij|wat denk je|jouw mening|jouw favoriete|favoriete kleur|favoriete film|favoriete game|lievelingsdier|lievelingskleur|lievelingseten|heb jij|ben jij|hou jij|houd jij|waar hou je van|waar houd je van|wat doe jij|wat ben je aan het doen|hoe was je dag|waar woon je|heb je gevoelens|heb je vrienden|heb je een hobby|en jij|wat zou jij|wat lijkt jou|ik vind|ik hou van|ik houd van|ik ben fan|mijn hobby|mijn lievelings|ik speel|ik game|ik kijk|ik luister|ik sport|ik teken|ik bouw|ik maak graag|ik ben blij|ik ben verdrietig|ik verveel me|ik heb zin|ik wil gewoon praten|vertel een grap|vertel een raadsel|vertel een weetje|wat zullen we doen|waar zullen we over praten)\b/.test(q)
+    || /^(ik ben|ik voel|ik denk|ik vind|ik heb|ik ga|mijn dag|vandaag|gisteren|morgen|op school|na school)\b/.test(q);
+}
 function assistantConversationReply(question) {
   const q = assistantNormalize(question);
-  if (/\b(ik ben|ik voel|ik vind|ik denk|ik hou van|ik houd van|ik heb|mijn dag|vandaag)\b/.test(q)) {
-    return "Ik luister. Vertel gerust wat er precies speelt of wat je eraan leuk, lastig of interessant vindt. Ik probeer aan te sluiten op wat je vertelt, dus je hoeft je verhaal niet meteen perfect uit te leggen.";
+  const previousUser = assistantNormalize(assistantLastUserMessage());
+  if (/\b(wat vind jij van|wat vind je van|wat denk jij van|wat denk je van|wat is jouw mening over|wat is je mening over)\b/.test(q)) {
+    const subject = q.replace(/\b(wat vind jij van|wat vind je van|wat denk jij van|wat denk je van|wat is jouw mening over|wat is je mening over)\b/, "").replace(/[?!.]+$/g, "").trim();
+    if (subject) return `Goede vraag. Mijn kijk op ${subject} is dat er meestal meerdere kanten aan zitten. Ik zou vooral letten op wat mensen er goed aan vinden, welke nadelen er kunnen zijn en voor wie het wel of juist niet werkt. Ik heb geen persoonlijke ervaringen, maar ik kan wel een afgewogen mening met argumenten geven. Wat vind jij er zelf van?`;
+    return "Waarover wil je mijn mening horen? Noem het onderwerp maar, dan denk ik met je mee en zal ik ook de andere kant bekijken.";
   }
-  if (/^(kun je me helpen|kan je me helpen|help me|ik heb hulp nodig)$/.test(q)) {
-    return "Natuurlijk. Vertel me waar je mee bezig bent en wat je graag wilt bereiken. Dan pakken we het stap voor stap aan.";
+  if (/^(wat vind jij leuk|wat vind je leuk|wat doe je graag|waar hou je van|waar houd je van|wat is jouw favoriete onderwerp)$/.test(q)) {
+    return "Ik heb geen persoonlijke voorkeuren zoals een mens, maar ik praat graag mee over creatieve ideeën, techniek, wetenschap, dieren, games en verhalen. Een onderwerp waarbij je iets nieuws ontdekt vind ik altijd leuk om samen uit te pluizen. Wat is jouw favoriete onderwerp?";
   }
-  if (/^(wat zullen we doen|waar zullen we over praten|waar wil je over praten|waar heb je zin in)$/.test(q)) {
-    return "We kunnen het over van alles hebben: een hobby, school, techniek, dieren, films, een idee voor een 3D-print of gewoon hoe je dag gaat. Waar heb jij nu zin in?";
+  if (/\b(wat is jouw|wat is je|wat zijn jouw|wat zijn je)\b/.test(q) && /\b(favoriete|favoriet|lievelings|liefste)\b/.test(q)) {
+    if (/\b(dier|huisdier)\b/.test(q)) return "Ik heb geen eigen huisdier of persoonlijke favoriet, maar als ik er één moet kiezen op basis van karakter en bijzonder gedrag, zijn octopussen erg fascinerend. Welk dier vind jij het leukst?";
+    if (/\b(kleur)\b/.test(q)) return "Ik heb geen persoonlijke lievelingskleur, maar blauw en groen zijn mooie combinaties voor een rustige uitstraling. Welke kleur kies jij meestal?";
+    if (/\b(eten|gerecht|pizza)\b/.test(q)) return "Ik kan zelf niet eten, maar pizza is een veelzijdige favoriet van veel mensen omdat je er zoveel kanten mee op kunt. Wat is jouw favoriete eten?";
+    if (/\b(game|spel)\b/.test(q)) return "Ik speel zelf geen games, maar ik vind games met vrijheid om te bouwen, ontdekken en experimenteren interessant. Wat is jouw favoriete game?";
+    return "Ik heb geen persoonlijke favorieten zoals een mens, maar ik kan wel helpen kiezen. Waar gaat je vraag precies over — muziek, films, games, eten, dieren of iets anders?";
   }
-  if (/^(ja|nee|graag|zeker|misschien|dat klopt|precies)$/.test(q) && assistantLastBotText) {
-    return "Helemaal goed. Ik houd ons vorige onderwerp erbij. Vertel maar wat je daar nog over wilt weten of wat je eraan wilt toevoegen.";
+  if (/\b(heb jij|ben jij|wat doe jij|wat zou jij|wat lijkt jou|hou jij|houd jij)\b/.test(q) && /\b(hobby|favoriet|leuk|graag|doen|kiezen|spelen|kijken|luisteren|interesse)\b/.test(q)) {
+    return "Ik heb zelf geen vrije tijd of persoonlijke ervaringen zoals een mens, maar ik kan wel voorkeuren beredeneren. Ik vind creatieve dingen, interessante techniek en ideeën waarbij je iets nieuws maakt leuke onderwerpen om over te praten. Wat vind jij leuk om in je vrije tijd te doen?";
   }
-  return "Ik luister. Vertel me gerust iets meer, dan kan ik beter aansluiten op wat je bedoelt. Je kunt ook gewoon van onderwerp veranderen; dat is helemaal prima.";
+  if (/\b(hoe was je dag|wat ben je aan het doen|heb je gevoelens|heb je vrienden|heb je een hobby|waar woon je|waar hou je van|waar houd je van)\b/.test(q)) {
+    if (/\b(hoe was je dag)\b/.test(q)) return "Ik heb zelf geen dag zoals een mens, maar ik ben er om met je te praten. Hoe was jouw dag? Gebeurde er iets leuks of juist iets vervelends?";
+    if (/\b(wat ben je aan het doen)\b/.test(q)) return "Op dit moment beantwoord ik jouw bericht en probeer ik goed aan te sluiten op wat je zegt. 😊 Wat ben jij aan het doen?";
+    if (/\b(gevoelens|vrienden|hobby)\b/.test(q)) return "Ik heb geen gevoelens, vrienden of hobby's zoals een mens. Ik kan wel gesprekken voeren, meedenken en allerlei onderwerpen met je verkennen. Wat doe jij graag als je vrije tijd hebt?";
+    return "Ik heb geen fysieke woonplaats; ik ben een digitale assistent in deze webshop. Je hoeft hier zelf ook geen adres of andere privégegevens te delen. Waar wil je het over hebben?";
+  }
+  if (/\b(mijn lievelings|lievelingsdier|lievelingskleur|lievelingseten|mijn favoriete|favoriete game|favoriete film)\b/.test(q)) {
+    if (/\b(dier|hond|kat|paard|konijn)\b/.test(q)) return "Een dier als favoriet kiezen is lastig; elk dier heeft iets bijzonders. Honden zijn vaak sociaal, katten kunnen eigenzinnig zijn en vogels zijn vaak verrassend slim. Welk dier vind jij het leukst?";
+    if (/\b(game|spel)\b/.test(q)) return "Games kunnen heel verschillend zijn: bouwen, avontuur, strategie of samenwerken. Welke game speel je het liefst, en wat maakt die zo leuk?";
+    if (/\b(kleur)\b/.test(q)) return "Kleuren kunnen heel verschillend aanvoelen: blauw en groen vaak rustig, geel en oranje energiek, paars wat creatiever. Welke kleur past het best bij jou?";
+    return "Leuk onderwerp! Vertel eens wat jouw favoriet is en waarom je die kiest.";
+  }
+  if (/\b(ik ga|ik ben van plan|straks ga ik|morgen ga ik|dit weekend ga ik)\b/.test(q)) return "Oh, dat klinkt als iets om naar uit te kijken! Is het iets wat je vaker doet, of juist een bijzonder plan?";
+  if (/\b(mijn hobby|ik hobby|ik speel|ik game|ik kijk graag|ik kijk|ik luister graag|ik luister|ik sport|ik teken|ik bouw|ik maak graag)\b/.test(q)) {
+    const cleaned = question.trim();
+    return `Dat klinkt als iets waar je plezier in hebt! 😊 ${cleaned.length > 100 ? "" : ""}Wat vind je daar het leukste aan? Doe je dat vooral voor ontspanning, of probeer je er ook steeds beter in te worden?`;
+  }
+  if (/\b(ik ben|ik voel|ik vind|ik denk|ik hou van|ik houd van|ik heb|mijn dag|vandaag|gisteren|morgen)\b/.test(q)) {
+    if (/\b(school|huiswerk|toets|leren|les)\b/.test(q)) return "School kan soms best veel tegelijk zijn. Gaat het om een vak dat je leuk vindt, of juist iets waar je tegenop ziet? Ik kan ook helpen iets uit te leggen of samen een planning te bedenken.";
+    if (/\b(voetbal|sport|wedstrijd|trainen|team)\b/.test(q)) return "Leuk! Sport kan behoorlijk spannend zijn, zeker als je ergens voor traint of een wedstrijd hebt. Doe je zelf aan die sport, of volg je vooral een team?";
+    if (/\b(game|gamen|minecraft|fortnite|roblox|playstation|xbox|nintendo)\b/.test(q)) return "Ah, games! Wat vind je er vooral leuk aan: bouwen, ontdekken, samenwerken, competitie of het verhaal? En welke game speel je op dit moment het meest?";
+    if (/\b(muziek|lied|zingen|instrument|concert)\b/.test(q)) return "Muziek kan echt de sfeer van een dag veranderen. Naar welke muziek luister je graag? Heb je een favoriete artiest of juist verschillende stijlen door elkaar?";
+    if (/\b(dier|hond|kat|paard|konijn|huisdier)\b/.test(q)) return /\b(ik heb|mijn)\b/.test(q) ? "Wat leuk! Wat voor dier heb je, en hoe heet die?" : "Dieren zijn fascinerend. Heb je zelf een huisdier, of is er een dier dat je heel graag zou willen hebben?";
+    return "Ik luister. Vertel gerust wat er precies speelt of wat je eraan leuk, lastig of interessant vindt. Wat gebeurde er daarna?";
+  }
+  if (/^(kun je me helpen|kan je me helpen|help me|ik heb hulp nodig)$/.test(q)) return "Natuurlijk. Vertel me waar je mee bezig bent en wat je graag wilt bereiken. Dan pakken we het stap voor stap aan.";
+  if (/^(wat zullen we doen|waar zullen we over praten|waar wil je over praten|waar heb je zin in)$/.test(q)) return "We kunnen een mini-quiz doen, een raadsel proberen, praten over sport, games, dieren, muziek of films, een creatief idee bedenken, of gewoon bespreken hoe je dag gaat. Waar heb jij nu het meeste zin in?";
+  if (/\b(en jij|en met jou|hoe zit dat bij jou)\b/.test(q)) return "Ik heb geen eigen dag of ervaringen zoals jij, maar ik kan wel met je meedenken. Vertel eens: wat zou jij kiezen of hoe kijk jij ertegenaan?";
+  if (/\b(ja|nee|graag|zeker|misschien|dat klopt|precies)\b/.test(q) && assistantLastBotText) {
+    if (previousUser) return "Helder! 😊 Wil je daar nog iets over vertellen, of zullen we een nieuw onderwerp pakken?";
+  }
+  if (/\b(ik wil gewoon praten|laten we kletsen|gewoon even praten|ik wil kletsen)\b/.test(q)) return "Gezellig. Dan hoeft er geen speciale vraag te zijn. Hoe was je dag, of wat is iets waar je de laatste tijd veel aan denkt?";
+  if (/\b(ik weet het niet|geen idee|maakt niet uit)\b/.test(q)) return "Geen probleem. Ik kan een grappig weetje vertellen, een raadsel geven, een paar leuke onderwerpen voorstellen of gewoon een vraag stellen: wat was vandaag het leukste moment?";
+  if (/\b(ruimte|planeten|heelal|sterren|maan|mars)\b/.test(q)) return "Ruimte is een geweldig onderwerp om over te praten. Er zijn planeten met enorme stormen, manen onder een dikke ijslaag en sterren die veel groter zijn dan onze zon. Welk deel vind je het interessantst: planeten, zwarte gaten, astronauten of buitenaards leven?";
+  if (/\b(geschiedenis|romeinen|egypte|middeleeuwen|dinosaurussen|historisch)\b/.test(q)) return "Geschiedenis zit vol verrassende verhalen. Wat ik er interessant aan vind, is hoe gewone keuzes en uitvindingen soms enorme gevolgen kregen. Welke periode of gebeurtenis spreekt jou aan?";
+  if (/\b(techniek|computer|programmeren|robot|elektronica|uitvinding)\b/.test(q)) return "Techniek is leuk omdat ideeën uiteindelijk iets kunnen worden dat echt werkt. Ben je vooral benieuwd naar hoe iets werkt, of zou je zelf iets willen bouwen of programmeren?";
+  if (/\b(film|films|serie|series|bioscoop|acteur)\b/.test(q)) return "Films en series zijn een leuk gespreksonderwerp. Hou je meer van actie, komedie, avontuur, sciencefiction of juist spannende mysteries?";
+  if (/\b(eten|koken|pizza|pasta|gerecht|recept)\b/.test(q)) return "Lekker onderwerp! Ben je meer iemand die graag kookt en nieuwe dingen probeert, of kies je meestal iets wat je al kent?";
+  if (/\b(vriend|vrienden|klas|familie|thuis)\b/.test(q)) return "Dat kan van alles betekenen. Wil je vertellen wat er speelt? Ik kan luisteren en samen met je bekijken wat je ermee zou kunnen doen.";
+  if (!assistantLooksLikeInformationQuestion(question)) return "Ik ben benieuwd! Vertel nog iets meer, dan kan ik beter op jouw verhaal reageren. Je hoeft niet netjes of uitgebreid te typen; ik probeer te begrijpen wat je bedoelt.";
+  return "Dat is een interessante vraag. Ik wil geen feiten verzinnen die ik niet zeker weet. Ik kan er wel met je over meedenken; voor een feitelijk antwoord kun je via het pijltje naast de verzendknop ‘Zoek op het internet’ kiezen. Als je vooral een mening of gesprek bedoelt, vertel dan gerust wat je zelf denkt.";
 }
 
 function assistantLooksLikeInformationQuestion(question) {
@@ -3220,6 +3389,12 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
       if (smallTalk) {
         thinking?.remove();
         assistantAddMessage(smallTalk, "bot");
+      } else if (assistantIsPrintRequest(contextualQuestion)) {
+        thinking?.remove();
+        const printResult = assistantUnlistedPrintAnswer(contextualQuestion);
+        assistantLastTopicQuestion = contextualQuestion;
+        assistantLastTopicScope = "shop";
+        assistantAddMessage(printResult.text, "bot", printResult.actions);
       } else if (assistantIsProductCountQuestion(contextualQuestion)) {
         thinking?.remove();
         assistantAddMessage(assistantProductCountAnswer(contextualQuestion), "bot", assistantBuildActions(contextualQuestion));
@@ -3245,7 +3420,7 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
           assistantLastTopicQuestion = contextualQuestion;
           assistantLastTopicScope = "shop";
           assistantAddMessage(answer, "bot", assistantBuildActions(contextualQuestion));
-        } else if (!assistantLooksLikeInformationQuestion(contextualQuestion) && !assistantIsShopQuestion(contextualQuestion)) {
+        } else if ((!assistantLooksLikeInformationQuestion(contextualQuestion) || assistantIsConversationalPrompt(contextualQuestion)) && !assistantIsShopQuestion(contextualQuestion)) {
           thinking?.remove();
           assistantAddMessage(assistantConversationReply(question), "bot");
         } else {

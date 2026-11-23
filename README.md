@@ -314,3 +314,11 @@ Zie `TEST-CHATBOT.md` voor de v30-controles. De externe Wikipedia/DuckDuckGo-ver
 - Goedkoopste en duurste bestelbare producten kunnen dynamisch worden vergeleken op basis van basisprijs.
 - De chatbot bewaart een beperkte gesprekscontext alleen in het huidige browsertabblad.
 - Dit blijft een regelgestuurde assistent en is geen volledig generatief taalmodel; willekeurige vragen buiten de kennisbasis vereisen een externe AI-dienst of een lokaal model.
+
+
+## Versie 32 — maatwerkherkenning en gesprek
+- Standaard chat herkent verzoeken om een 3D-print te laten maken. Als een gelijkend actief product in het assortiment wordt gevonden (inclusief kleine typfouten), wordt daarnaar verwezen. Als er geen gelijkend product wordt gevonden, legt de assistent uit dat de bezoeker een maatwerkofferte moet aanvragen en toont een directe knop naar het offerteformulier.
+- Gewone verzoeken om documenten/huiswerk uit te printen worden niet als 3D-printofferte behandeld.
+- De gewone gesprekmodus is uitgebreid met natuurlijkere reacties voor hobby's, sport, games, muziek, school, gevoelens, films, dieren, ruimte, geschiedenis, techniek, meningen, grappen en weetjes.
+- De standaardmodus blijft offline en zoekt niet automatisch op internet. Voor willekeurige feitelijke vragen gebruikt de bezoeker expliciet de internetzoekoptie.
+- De chatbot blijft regelgestuurd en is geen generatief taalmodel; reacties zijn breder en contextgevoeliger maar niet gelijk aan ChatGPT.
