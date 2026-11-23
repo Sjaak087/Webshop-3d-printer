@@ -28,3 +28,12 @@
 
 ## Beperking
 Deze versie is geen volledig generatief taalmodel. De standaardmodus gebruikt de uitgebreide webshopkennis, gesprekspatronen en een transparante productrangschikking. De gebruiker kiest zelf wanneer een lokale webshopzoekactie of externe online zoekactie wordt uitgevoerd.
+
+
+## v31 aanvullingen
+- [x] Twee zoekacties staan in menu naast de gewone verzendknop.
+- [x] Gewoon verzenden start geen automatische online zoekopdracht.
+- [x] Productaantal wordt dynamisch berekend uit actieve catalogusgegevens nadat `state.loaded` waar is.
+- [x] Beschikbare en niet-bestelbare aantallen worden apart vermeld.
+- [x] Goedkoopste/duurste producten komen uit het actuele assortiment.
+- [ ] Live Firebase-data, live zoekdiensten en gebruikerservaring moeten op de gepubliceerde site worden getest.

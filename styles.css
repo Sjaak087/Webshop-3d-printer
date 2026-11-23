@@ -1062,3 +1062,16 @@ button:disabled{cursor:not-allowed;opacity:.62}
 .shop-assistant-form input{grid-area:input}
 .shop-assistant-form button{grid-area:send}
 .shop-assistant-form select:disabled{opacity:.7}
+
+
+/* v31: gewone verzendknop met exact twee expliciete zoekkeuzes */
+.shop-assistant-form{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"input send";align-items:center;gap:7px}
+.shop-assistant-form input{grid-area:input;width:100%;min-width:0}
+.assistant-send-wrap{grid-area:send;position:relative;display:flex;align-items:stretch;gap:3px}
+.shop-assistant-form .assistant-send-wrap>button{width:40px;height:41px;flex:0 0 40px;border:0;border-radius:10px;background:#0756c9;color:#fff;font-size:18px;font-weight:800}
+.shop-assistant-form .assistant-send-wrap>.assistant-send-menu-toggle{width:27px;flex-basis:27px;background:#eaf1fb;color:#174b8d;font-size:17px;border:1px solid #d7e3f2}
+.shop-assistant-form .assistant-send-wrap>button:disabled{opacity:.55;cursor:wait}
+.assistant-send-menu{position:absolute;right:0;bottom:calc(100% + 9px);z-index:5;width:205px;padding:6px;border:1px solid #dce6f3;border-radius:12px;background:#fff;box-shadow:0 12px 32px #0b244b24;display:grid;gap:4px}
+.assistant-send-menu[hidden]{display:none!important}
+.shop-assistant-form .assistant-send-menu>button{width:100%;height:auto;min-height:36px;flex:none;border:0;border-radius:8px;padding:8px 10px;background:#fff;color:#25496f;text-align:left;font-size:11px;font-weight:750}
+.shop-assistant-form .assistant-send-menu>button:hover,.shop-assistant-form .assistant-send-menu>button:focus-visible{background:#edf5ff;color:#0756c9}

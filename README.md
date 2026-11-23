@@ -305,3 +305,12 @@ Deze automatische zoekflow is in v30 aangepast: standaard wordt niet online gezo
 - Geen AI-modeldownload, API-sleutel of extra Firebase-opslag vereist.
 
 Zie `TEST-CHATBOT.md` voor de v30-controles. De externe Wikipedia/DuckDuckGo-verbinding moet na publicatie in de echte browser worden getest. Dit is geen vrij generatief taalmodel; aanbevelingen worden transparant samengesteld uit de beschikbare webshopgegevens.
+
+
+## v31 chatbot updates
+- De gewone verzendknop voert een normaal gesprek zonder automatisch te zoeken.
+- Het pijltje naast de verzendknop bevat precies twee zoekacties: webshop en internet.
+- Productaantallen en bestelbare/niet-bestelbare productaantallen worden direct uit de geladen openbare productcatalogus berekend.
+- Goedkoopste en duurste bestelbare producten kunnen dynamisch worden vergeleken op basis van basisprijs.
+- De chatbot bewaart een beperkte gesprekscontext alleen in het huidige browsertabblad.
+- Dit blijft een regelgestuurde assistent en is geen volledig generatief taalmodel; willekeurige vragen buiten de kennisbasis vereisen een externe AI-dienst of een lokaal model.

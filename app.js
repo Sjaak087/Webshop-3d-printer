@@ -2459,9 +2459,12 @@ const assistantClose = document.querySelector("#shopAssistantClose");
 const assistantMessages = document.querySelector("#shopAssistantMessages");
 const assistantForm = document.querySelector("#shopAssistantForm");
 const assistantInput = document.querySelector("#shopAssistantInput");
-const assistantModeSelect = document.querySelector("#shopAssistantMode");
+const assistantSearchMenuToggle = document.querySelector("#shopAssistantSearchMenuToggle");
+const assistantSearchMenu = document.querySelector("#shopAssistantSearchMenu");
 const assistantSuggestions = document.querySelector("#shopAssistantSuggestions");
 let assistantBusy = false;
+const assistantConversationHistory = [];
+let assistantLastBotText = "";
 
 function assistantNormalize(value) {
   return String(value ?? "").toLocaleLowerCase("nl-NL").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-‐‑–—]/g, " ").replace(/[^a-z0-9#€., -]/g, " ").replace(/\s+/g, " ").trim();
@@ -2477,6 +2480,10 @@ function assistantAddMessage(text, role = "bot", actions = []) {
   const paragraph = document.createElement("p");
   paragraph.textContent = String(text ?? "");
   bubble.append(paragraph);
+  const messageText = String(text ?? "");
+  assistantConversationHistory.push({ role, text: messageText.slice(0, 1600) });
+  if (assistantConversationHistory.length > 24) assistantConversationHistory.shift();
+  if (role === "bot") assistantLastBotText = messageText.slice(0, 1600);
   if (actions.length) {
     const row = document.createElement("div"); row.className = "shop-assistant-actions";
     actions.forEach(action => {
@@ -2592,16 +2599,52 @@ const ASSISTANT_FAQ = [
   { id: "contact", terms: ["contact", "contact opnemen", "klantenservice", "hulp nodig", "klacht", "vraag stellen", "openingstijden"], answer: () => "Voor een vraag die niet in deze uitleg staat, gebruik je de contactpagina van de webshop. Daar staan de klantgerichte contactgegevens en eventuele openingstijden die door de beheerder zijn ingevuld. De chatbot toont geen privé- of accountgegevens." },
   { id: "terms", terms: ["voorwaarden", "algemene voorwaarden", "regels webshop", "juridisch", "rechten en plichten"], answer: () => "De algemene voorwaarden zijn te openen via de link onderaan de webshop. Daar vind je de formele afspraken over bestellen, betalen, levering en retouren. Bij een verschil tussen een korte chatuitleg en de gepubliceerde voorwaarden zijn de voorwaarden leidend." },
   { id: "admin", terms: ["beheerder", "sitebeheer", "admin", "beheeromgeving", "voorraadbeheer", "dashboard"], answer: () => "De beheeromgeving is alleen voor de webshopbeheerder. Deze klantenassistent kan geen beheeracties uitvoeren en deelt geen beheerwachtwoorden, interne voorraadgrammen, waarschuwingsgrenzen of afgeschermde dashboardinformatie." },
-  { id: "chatbot", terms: ["chatbot", "assistent", "werkt de bot", "kunstmatige intelligentie", "ai bot", "faq bot"], answer: () => "Je kunt gewone vragen stellen of gewoon even praten. Voor webshopvragen gebruik ik de webshopuitleg en actuele openbare productinformatie. Voor andere onderwerpen zoek ik automatisch in Wikipedia en de directe antwoorden van DuckDuckGo. Voor volledige zoekresultaten kun je de DuckDuckGo-zoekpagina openen. Ik ben geen vrij generatief AI-model zoals ChatGPT; ik combineer gesprekshulp met gevonden informatie. Deel nooit wachtwoorden, adressen, betaalgegevens of persoonlijke bestelgegevens in deze chat." }
+  { id: "chatbot", terms: ["chatbot", "assistent", "werkt de bot", "kunstmatige intelligentie", "ai bot", "faq bot"], answer: () => "Je kunt gewone vragen stellen of gewoon even praten. Voor webshopvragen gebruik ik de webshopuitleg en actuele openbare productinformatie. Je kiest zelf via het pijltje naast de verzendknop of ik in de webshop of op internet zoek. Voor internetvragen gebruik ik Wikipedia en DuckDuckGo. Ik ben geen vrij generatief AI-model zoals ChatGPT; ik combineer gesprekshulp met gevonden informatie. Deel nooit wachtwoorden, adressen, betaalgegevens of persoonlijke bestelgegevens in deze chat." }
 ];
+
+function assistantIsProductCountQuestion(question) {
+  const q = assistantNormalize(question);
+  const hasCountWord = /\b(hoeveel|aantal|number|how many)\b/.test(q);
+  const hasProductWord = /\b(product|producten|artikel|artikelen|item|items)\b/.test(q);
+  return hasCountWord && hasProductWord;
+}
+function assistantProductCountAnswer(question = "") {
+  if (!state.loaded) return "Ik laad het actuele productoverzicht nog. Probeer het over een paar seconden nog eens; ik wil je geen verkeerd aantal geven.";
+  if (state.productsError) return "Ik kan het actuele productaantal nu niet betrouwbaar uitlezen omdat het productoverzicht niet goed geladen is. Ververs de webshop en probeer het opnieuw.";
+  const products = (state.products || []).filter(product => product && product.active !== false);
+  const available = products.filter(product => !isSoldOut(product));
+  const unavailable = products.length - available.length;
+  const availableWord = available.length === 1 ? "product" : "producten";
+  const unavailableWord = unavailable === 1 ? "product" : "producten";
+  const q = assistantNormalize(question);
+  if (/\b(uitverkocht|niet bestelbaar|niet beschikbaar)\b/.test(q)) {
+    return `Op dit moment zijn ${unavailable} van de ${products.length} actieve producten niet bestelbaar volgens de voorraad- en beschikbaarheidscontrole van de webshop.`;
+  }
+  if (/\b(bestelbaar|beschikbaar|op voorraad)\b/.test(q)) {
+    return `Op dit moment zijn ${available.length} van de ${products.length} actieve producten bestelbaar volgens de actuele webshopcontrole. De beschikbaarheid kan veranderen wanneer voorraad of productopties worden aangepast.`;
+  }
+  return `We hebben op dit moment ${products.length} actieve producten in de webshop. Daarvan zijn ${available.length} ${availableWord} volgens de actuele beschikbaarheidscontrole bestelbaar en ${unavailable} ${unavailableWord} momenteel niet bestelbaar. Ik tel hierbij ieder product één keer; verschillende kleur- of maatopties tel ik niet als aparte producten.`;
+}
+function assistantCatalogExtremesAnswer(question = "") {
+  if (!state.loaded) return "Ik laad het assortiment nog. Probeer het zo nog eens, dan kan ik de actuele prijzen vergelijken.";
+  const products = (state.products || []).filter(product => product && product.active !== false && !isSoldOut(product));
+  if (!products.length) return "Ik zie op dit moment geen actieve, bestelbare producten om op prijs te vergelijken.";
+  const q = assistantNormalize(question);
+  const wantsExpensive = /\b(duurste|meest duur|hoogste prijs|kostbaarste)\b/.test(q);
+  const sorted = [...products].sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0));
+  const selected = wantsExpensive ? sorted.slice(-3).reverse() : sorted.slice(0, 3);
+  const heading = wantsExpensive ? "De duurste bestelbare producten op basis van hun basisprijs zijn:" : "De voordeligste bestelbare producten op basis van hun basisprijs zijn:";
+  return `${heading}\n${selected.map((product, index) => `${index + 1}. ${product.title || "Product"} — vanaf €${(Number(product.price) || 0).toFixed(2).replace(".", ",")}`).join("\n")}\n\nLet op: gekozen opties kunnen de eindprijs veranderen. De winkelwagen berekent het definitieve bedrag.`;
+}
 
 function assistantCatalogAnswer() {
   const products = (state.products || []).filter(product => product && product.active !== false);
   if (!state.loaded) return "De productcatalogus wordt nog geladen. Probeer het over een moment opnieuw of open het productoverzicht.";
   if (!products.length) return "Er staan op dit moment geen actieve producten in het productoverzicht.";
+  const availableCount = products.filter(product => !isSoldOut(product)).length;
   const lines = products.slice(0, 24).map(product => `• ${product.title || "Product"} — vanaf €${(Number(product.price) || 0).toFixed(2).replace(".", ",")}${isSoldOut(product) ? " (momenteel niet beschikbaar)" : ""}`);
   const extra = products.length > 24 ? `\nEr zijn nog ${products.length - 24} actieve producten. Bekijk het volledige assortiment op de website.` : "";
-  return `Dit is het actuele assortiment dat op dit moment is geladen:\n${lines.join("\n")}${extra}\n\nOpen een product voor de actuele opties, kleuren, meerprijzen en eventuele 3D-preview.`;
+  return `We hebben op dit moment ${products.length} actieve producten in de webshop. ${availableCount} daarvan zijn volgens de actuele beschikbaarheidscontrole bestelbaar.\n\nDit is het assortiment dat op dit moment is geladen:\n${lines.join("\n")}${extra}\n\nOpen een product voor de actuele opties, kleuren, meerprijzen en eventuele 3D-preview.`;
 }
 function assistantProductAnswer(product, question = "") {
   const price = (Number(product.price) || 0).toFixed(2).replace(".", ",");
@@ -2725,7 +2768,7 @@ function assistantRecommendationActions(recommendations) {
 function assistantFindFaq(question) {
   const normalized = assistantNormalize(question);
   if (!normalized) return null;
-  const asksCatalog = /\b(assortiment|catalogus|alle producten|welke producten|wat verkopen|wat hebben jullie|aanbod|collectie)\b/.test(normalized);
+  const asksCatalog = /\b(assortiment|catalogus|alle producten|welke producten|wat verkopen|wat hebben jullie|aanbod|collectie|wat voor producten|wat is er te koop|welke zijn het|wat zijn ze)\b/.test(normalized);
   if (asksCatalog) return ASSISTANT_FAQ.find(item => item.id === "catalog");
   const productMatches = assistantFindProducts(question);
   if (productMatches[0]?.score >= 6) {
@@ -2808,8 +2851,8 @@ function assistantSearchEngineLinks(query) {
 
 function assistantResolveFollowUp(question) {
   const normalized = assistantNormalize(question);
-  const isFollowUp = /^(en |maar |waarom|hoezo|hoe dan|vertel meer|meer hierover|meer uitleg|wat bedoel je|welke daarvan|kun je dat uitleggen|kan je dat uitleggen|en nu|en daarna|wat gebeurde er daarna|waarom dan)\b/.test(normalized)
-    || /^(en waarom|en hoe|en welke|en wanneer|en waar|vertel eens meer|leg dat uit)$/.test(normalized);
+  const isFollowUp = /^(en |maar |waarom|hoezo|hoe dan|vertel meer|meer hierover|meer uitleg|wat bedoel je|welke daarvan|welke dan|welke zijn het|wat zijn ze|wat kost die|hoe duur is die|en de prijs|en de tweede|en de eerste|de tweede|de eerste|en die|die dan|kun je dat uitleggen|kan je dat uitleggen|en nu|en daarna|wat gebeurde er daarna|waarom dan|hoeveel waren het|hoeveel zijn er)\b/.test(normalized)
+    || /^(en waarom|en hoe|en welke|en wanneer|en waar|vertel eens meer|leg dat uit|wat bedoel je daarmee)$/.test(normalized);
   if (isFollowUp && assistantLastTopicQuestion) return `${assistantLastTopicQuestion} ${question}`.slice(0, 500);
   return question;
 }
@@ -2841,6 +2884,15 @@ function assistantSmallTalkReply(question) {
   if (/^(ik verveel me|ik ben verveeld|ik weet niet wat ik moet doen)$/.test(q)) {
     return "Zullen we iets leuks bedenken? We kunnen praten over een hobby, een interessant weetje opzoeken, een raadsel doen of samen een idee voor een 3D-print bedenken. Wat lijkt je leuk?";
   }
+  if (/^(vertel een grap|maak me aan het lachen|heb je een grap)$/.test(q)) {
+    return "Waarom nam de 3D-printer een pauze? Omdat hij even een nieuwe laag nodig had. 😄 Zal ik nog een grap vertellen of zullen we ergens anders over praten?";
+  }
+  if (/^(vertel een raadsel|heb je een raadsel|raadsel)$/.test(q)) {
+    return "Raadsel: ik heb lagen, maar ben geen taart. Ik word gemaakt, maar leef niet. Wat ben ik? Denk maar even na!";
+  }
+  if (/^(wat vind je van 3d printen|wat vind jij van 3d printen|vind je 3d printen leuk)$/.test(q)) {
+    return "Ik vind 3D-printen vooral bijzonder omdat je een digitaal ontwerp stap voor stap kunt omzetten in iets tastbaars. Het leuke is dat je iets kunt aanpassen aan je eigen idee, in plaats van alleen te kiezen wat al in een winkel ligt. Wat zou jij zelf graag eens willen laten printen?";
+  }
   if (/^(ik ben blij|ik ben vrolijk|ik heb een leuke dag|mijn dag is leuk|ik ben enthousiast)$/.test(q)) {
     return "Wat leuk om te horen! 😊 Wat maakte je dag zo fijn?";
   }
@@ -2851,6 +2903,23 @@ function assistantSmallTalkReply(question) {
     return "Leuk! Vertel eens wat je daar zo leuk aan vindt.";
   }
   return null;
+}
+
+function assistantConversationReply(question) {
+  const q = assistantNormalize(question);
+  if (/\b(ik ben|ik voel|ik vind|ik denk|ik hou van|ik houd van|ik heb|mijn dag|vandaag)\b/.test(q)) {
+    return "Ik luister. Vertel gerust wat er precies speelt of wat je eraan leuk, lastig of interessant vindt. Ik probeer aan te sluiten op wat je vertelt, dus je hoeft je verhaal niet meteen perfect uit te leggen.";
+  }
+  if (/^(kun je me helpen|kan je me helpen|help me|ik heb hulp nodig)$/.test(q)) {
+    return "Natuurlijk. Vertel me waar je mee bezig bent en wat je graag wilt bereiken. Dan pakken we het stap voor stap aan.";
+  }
+  if (/^(wat zullen we doen|waar zullen we over praten|waar wil je over praten|waar heb je zin in)$/.test(q)) {
+    return "We kunnen het over van alles hebben: een hobby, school, techniek, dieren, films, een idee voor een 3D-print of gewoon hoe je dag gaat. Waar heb jij nu zin in?";
+  }
+  if (/^(ja|nee|graag|zeker|misschien|dat klopt|precies)$/.test(q) && assistantLastBotText) {
+    return "Helemaal goed. Ik houd ons vorige onderwerp erbij. Vertel maar wat je daar nog over wilt weten of wat je eraan wilt toevoegen.";
+  }
+  return "Ik luister. Vertel me gerust iets meer, dan kan ik beter aansluiten op wat je bedoelt. Je kunt ook gewoon van onderwerp veranderen; dat is helemaal prima.";
 }
 
 function assistantLooksLikeInformationQuestion(question) {
@@ -3007,6 +3076,8 @@ async function assistantSearchOnline(question, scope = "general") {
 }
 
 function assistantSearchWebsiteLocal(question) {
+  const catalogCount = assistantIsProductCountQuestion(question) ? assistantProductCountAnswer(question) : "";
+  const priceExtremes = /\b(goedkoopste|voordeligste|duurste|meest duur|hoogste prijs)\b/.test(assistantNormalize(question)) ? assistantCatalogExtremesAnswer(question) : "";
   const recommendation = assistantIsRecommendationRequest(question) ? assistantRecommendationAnswer(question) : null;
   const products = assistantFindProducts(question).filter(item => item.score > 0).slice(0, 6);
   const faq = assistantFindFaq(question);
@@ -3014,11 +3085,13 @@ function assistantSearchWebsiteLocal(question) {
   if (faq) {
     try { faqAnswer = faq.answer({ question }); } catch (error) { console.warn("Local FAQ search failed", error); }
   }
-  return { products, faq, faqAnswer, recommendation };
+  return { products, faq, faqAnswer, recommendation, catalogCount, priceExtremes };
 }
 function assistantAddWebsiteResults(question, data) {
   const matched = data.products || [];
   const summary = [];
+  if (data.catalogCount) summary.push(data.catalogCount);
+  if (data.priceExtremes) summary.push(data.priceExtremes);
   if (data.recommendation && typeof data.recommendation === "object") summary.push(data.recommendation.text);
   else if (typeof data.recommendation === "string") summary.push(data.recommendation);
   if (data.faqAnswer && !data.recommendation) summary.push(`Informatie uit de webshop:\n${data.faqAnswer}`);
@@ -3092,19 +3165,30 @@ function assistantAddOnlineResults(question, data, shopSearch = false) {
   bubble.append(engines);
   assistantMessages.scrollTop = assistantMessages.scrollHeight;
 }
+function closeAssistantSearchMenu() {
+  if (assistantSearchMenu) assistantSearchMenu.hidden = true;
+  assistantSearchMenuToggle?.setAttribute("aria-expanded", "false");
+}
+function toggleAssistantSearchMenu() {
+  if (!assistantSearchMenu || assistantBusy) return;
+  const willOpen = assistantSearchMenu.hidden;
+  assistantSearchMenu.hidden = !willOpen;
+  assistantSearchMenuToggle?.setAttribute("aria-expanded", String(willOpen));
+}
 async function sendShopAssistantQuestion(value, selectedMode = "chat") {
   const question = String(value || "").trim();
   if (!question || assistantBusy) return;
   const mode = ["chat", "website", "internet"].includes(selectedMode) ? selectedMode : "chat";
   assistantBusy = true;
   if (assistantInput) assistantInput.disabled = true;
-  if (assistantModeSelect) assistantModeSelect.disabled = true;
+  if (assistantSearchMenuToggle) assistantSearchMenuToggle.disabled = true;
   const submitButton = assistantForm?.querySelector('button[type="submit"]');
   if (submitButton) submitButton.disabled = true;
+  closeAssistantSearchMenu();
   assistantAddMessage(question, "user");
   const modeLabels = { chat: "Ik denk even met je mee…", website: "Ik doorzoek de openbare webshopinformatie…", internet: "Ik zoek in Wikipedia en DuckDuckGo…" };
   const thinking = assistantAddThinking(modeLabels[mode]);
-  let searchScope = "general";
+  let searchScope = mode === "website" ? "shop" : "general";
   try {
     if (assistantIsSafetyRestricted(question)) {
       thinking?.remove();
@@ -3121,7 +3205,7 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
       assistantAddWebsiteResults(question, data);
       assistantLastTopicQuestion = contextualQuestion;
       assistantLastTopicScope = "shop";
-    } else if (mode === "internet" || (mode === "chat" && assistantIsWebSearchRequest(question))) {
+    } else if (mode === "internet") {
       const contextualQuestion = assistantResolveFollowUp(question);
       assistantLastTopicQuestion = contextualQuestion;
       assistantLastTopicScope = "general";
@@ -3136,6 +3220,16 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
       if (smallTalk) {
         thinking?.remove();
         assistantAddMessage(smallTalk, "bot");
+      } else if (assistantIsProductCountQuestion(contextualQuestion)) {
+        thinking?.remove();
+        assistantAddMessage(assistantProductCountAnswer(contextualQuestion), "bot", assistantBuildActions(contextualQuestion));
+        assistantLastTopicQuestion = contextualQuestion;
+        assistantLastTopicScope = "shop";
+      } else if (/\b(goedkoopste|voordeligste|duurste|meest duur|hoogste prijs)\b/.test(assistantNormalize(contextualQuestion))) {
+        thinking?.remove();
+        assistantAddMessage(assistantCatalogExtremesAnswer(contextualQuestion), "bot", assistantBuildActions(contextualQuestion));
+        assistantLastTopicQuestion = contextualQuestion;
+        assistantLastTopicScope = "shop";
       } else if (assistantIsRecommendationRequest(contextualQuestion)) {
         const recommendation = assistantRecommendationAnswer(contextualQuestion);
         thinking?.remove();
@@ -3153,10 +3247,10 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
           assistantAddMessage(answer, "bot", assistantBuildActions(contextualQuestion));
         } else if (!assistantLooksLikeInformationQuestion(contextualQuestion) && !assistantIsShopQuestion(contextualQuestion)) {
           thinking?.remove();
-          assistantAddMessage("Ik denk graag met je mee. Vertel gerust wat meer, dan reageer ik op wat je vertelt. Wil je feiten of bronnen laten opzoeken? Kies dan bij het versturen ‘Zoek op het internet’. Voor producten en webshopinformatie kies je ‘Zoek in mijn webshop’.", "bot");
+          assistantAddMessage(assistantConversationReply(question), "bot");
         } else {
           thinking?.remove();
-          assistantAddMessage("Ik ga niet automatisch zoeken, zodat ik niet bij iedere vraag het internet open. Ik kan wel meedenken op basis van de webshopinformatie die al beschikbaar is. Wil je gericht zoeken? Kies bij het versturen ‘Zoek in mijn webshop’ of ‘Zoek op het internet’.", "bot", assistantBuildActions(contextualQuestion));
+          assistantAddMessage("Ik wil je geen antwoord verzinnen. Ik kan deze vraag niet met zekerheid beantwoorden op basis van de informatie die ik nu heb. Gebruik het pijltje naast de verzendknop en kies ‘Zoek in mijn webshop’ voor product- en winkelinformatie of ‘Zoek op het internet’ voor algemene informatie. Als het een persoonlijke vraag of een mening is, kun je die ook gewoon anders formuleren; dan denk ik met je mee.", "bot", assistantBuildActions(contextualQuestion));
         }
       }
     }
@@ -3179,7 +3273,7 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
   } finally {
     assistantBusy = false;
     if (assistantInput) assistantInput.disabled = false;
-    if (assistantModeSelect) assistantModeSelect.disabled = false;
+    if (assistantSearchMenuToggle) assistantSearchMenuToggle.disabled = false;
     if (submitButton) submitButton.disabled = false;
     if (assistantPanel && !assistantPanel.hidden) assistantInput?.focus();
   }
@@ -3188,11 +3282,31 @@ assistantToggle?.addEventListener("click", () => assistantPanel?.hidden ? openSh
 assistantClose?.addEventListener("click", closeShopAssistant);
 assistantForm?.addEventListener("submit", event => {
   event.preventDefault();
-  const question = assistantInput.value.trim();
+  const question = assistantInput?.value.trim();
   if (!question) return;
-  const mode = assistantModeSelect?.value || "chat";
   assistantInput.value = "";
-  sendShopAssistantQuestion(question, mode);
+  sendShopAssistantQuestion(question, "chat");
+});
+assistantSearchMenuToggle?.addEventListener("click", toggleAssistantSearchMenu);
+assistantSearchMenu?.addEventListener("click", event => {
+  const choice = event.target.closest("[data-assistant-send-mode]");
+  if (!choice || assistantBusy) return;
+  const question = assistantInput?.value.trim();
+  if (!question) {
+    closeAssistantSearchMenu();
+    assistantInput?.focus();
+    assistantAddMessage("Typ eerst je vraag. Open daarna het pijltje naast de verzendknop en kies waar ik moet zoeken.", "bot");
+    return;
+  }
+  assistantInput.value = "";
+  closeAssistantSearchMenu();
+  sendShopAssistantQuestion(question, choice.dataset.assistantSendMode || "chat");
+});
+document.addEventListener("click", event => {
+  if (!event.target.closest(".assistant-send-wrap")) closeAssistantSearchMenu();
+});
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeAssistantSearchMenu();
 });
 assistantSuggestions?.addEventListener("click", event => {
   const button = event.target.closest("[data-assistant-prompt]");

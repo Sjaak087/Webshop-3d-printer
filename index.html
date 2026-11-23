@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111827"><meta name="description" content="Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen."><title>3D Printed Shop</title>
-  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=30-advies-en-zoekkeuze"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
+  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=31-verzendknop-met-zoekmenu"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <header class="topbar">
@@ -181,7 +181,7 @@
       <button class="shop-assistant-close" id="shopAssistantClose" type="button" aria-label="Chat sluiten">×</button>
     </header>
     <div class="shop-assistant-messages" id="shopAssistantMessages" aria-live="polite" aria-relevant="additions text">
-      <div class="shop-assistant-message bot"><p>Je kunt hier gewoon praten of om advies vragen. Ik zoek pas iets op als je hieronder kiest voor zoeken in de webshop of op het internet.</p></div>
+      <div class="shop-assistant-message bot"><p>Hoi! Je kunt hier gewoon met me praten of vragen stellen over de webshop. De gewone verzendknop stuurt je bericht als normaal gesprek. Via het pijltje ernaast kun je precies één van twee zoekopties kiezen: zoeken in de webshop of zoeken op internet.</p></div>
     </div>
     <div class="shop-assistant-suggestions" id="shopAssistantSuggestions">
       <button type="button" data-assistant-prompt="Welke producten zijn er?">Assortiment</button>
@@ -214,20 +214,21 @@
       <button type="button" data-assistant-prompt="Wat is 3D-printen?" data-assistant-mode="internet">Web zoeken</button>
     </div>
     <form class="shop-assistant-form" id="shopAssistantForm">
-      <label class="visually-hidden" for="shopAssistantMode">Kies hoe ik je vraag moet beantwoorden</label>
-      <select id="shopAssistantMode" aria-label="Kies hoe ik je vraag moet beantwoorden">
-        <option value="chat">Gewoon antwoorden / advies</option>
-        <option value="website">Zoek in mijn webshop</option>
-        <option value="internet">Zoek op het internet</option>
-      </select>
       <label class="visually-hidden" for="shopAssistantInput">Stel je vraag</label>
-      <input id="shopAssistantInput" type="text" maxlength="500" autocomplete="off" placeholder="Waar kan ik je mee helpen?" required>
-      <button type="submit" aria-label="Vraag versturen"><span aria-hidden="true">➤</span></button>
+      <input id="shopAssistantInput" type="text" maxlength="500" autocomplete="off" placeholder="Typ je bericht…" required>
+      <div class="assistant-send-wrap">
+        <button class="assistant-send-main" type="submit" aria-label="Bericht versturen" title="Gewoon gesprek"><span aria-hidden="true">➤</span></button>
+        <button class="assistant-send-menu-toggle" id="shopAssistantSearchMenuToggle" type="button" aria-label="Kies een zoekoptie" aria-haspopup="true" aria-expanded="false" aria-controls="shopAssistantSearchMenu" title="Zoekopties">⌄</button>
+        <div class="assistant-send-menu" id="shopAssistantSearchMenu" role="menu" hidden>
+          <button type="button" role="menuitem" data-assistant-send-mode="website">Zoek in mijn webshop</button>
+          <button type="button" role="menuitem" data-assistant-send-mode="internet">Zoek op het internet</button>
+        </div>
+      </div>
     </form>
   </section>
   <button class="shop-assistant-toggle" id="shopAssistantToggle" type="button" aria-expanded="false" aria-controls="shopAssistantPanel">
     <span class="shop-assistant-toggle-icon" aria-hidden="true">✦</span><span>Vraag het de bot</span>
   </button>
 </div>
-<script type="module" src="./app.js?v=30-aanbevelingen-handmatig-zoeken"></script>
+<script type="module" src="./app.js?v=31-gesprekslogica-catalogus-en-zoekmenu"></script>
 </body></html>
