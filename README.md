@@ -171,3 +171,26 @@ Open de webshop en druk rechtsonder op **Vraag het de bot**. Test in ieder geval
 6. Test op mobiel en laptop; het chatvenster moet binnen het scherm blijven en met Escape/sluitknop dicht kunnen.
 
 Let op: versie 22 voegt geen Cloudflare D1-database of Worker toe. Bestaande projectonderdelen, waaronder de al aanwezige printercamera-configuratie, zijn ongewijzigd gelaten.
+
+
+## Versie 23 — uitgebreide ingebouwde webshopassistent
+
+- De assistent is uitgebreid met een lokale kennisbank die aansluit op de werkelijk aanwezige webshopfuncties en -voorwaarden.
+- Hij kan actuele producten, beschrijvingen, prijzen, categorieën, productopties en actieve filamentkleuren opzoeken in de gegevens die de webshop al heeft geladen.
+- Onderwerpen omvatten bestellen, winkelwagen, eigen klanttekst (max. 160 tekens), maatwerkoffertes, offerte-afmetingen (max. 180 mm per richting), afbeeldingseisen (PNG/JPG/WEBP, max. 12 MB), filamentbeschikbaarheid per product, 3D-voorbeelden, betalingen, bestellingen volgen, retourverzoeken, reviews, favorieten, accounts, privacy, cookies en contact.
+- De actuele voorwaarden in de code worden gebruikt: maximale levertijd 14 dagen, verzending € 3,95, ophalen gratis en verzending binnen Nederland.
+- De chatbot toont tijdens het zoeken een korte verwerkingsindicator. Dit is lokale verwerking van webshopinformatie en geen generatieve AI.
+- Er is geen externe AI-dienst, API-sleutel, webzoekdienst, Cloudflare Worker of extra Firebase-opslag nodig. Chatberichten worden niet naar Firebase verstuurd of persistent opgeslagen.
+- Bij informatie die de website niet bevat, geeft de assistent aan dat hij het niet zeker weet en verwijst hij naar contact of de klantenchat in plaats van gegevens te verzinnen. Hij kan niet live op het openbare internet zoeken.
+- De chat heeft uitgebreidere vraagknoppen en onthoudt binnen het geopende gesprek het laatst besproken product voor eenvoudige vervolgvragen.
+- De cacheversies zijn verhoogd naar `v=23-expanded-local-assistant`.
+
+### Testen
+
+1. Open de vaste knop rechtsonder en controleer dat het chatvenster binnen het scherm blijft.
+2. Stel vragen over levertijd, verzendkosten, ophalen, betaling, retouren, eigen tekst, offertes, account, favorieten en privacy.
+3. Vraag naar een bestaande productnaam; de assistent moet actuele prijs, omschrijving en beschikbare opties tonen.
+4. Vraag welke kleuren beschikbaar zijn en controleer dat de namen overeenkomen met Filamentbeheer; vraag daarna naar kleuren bij een specifiek product.
+5. Klik op de knoppen voor offerte, producten, winkelwagen en Mijn bestellingen; de bestaande webshopacties moeten openen.
+6. Controleer dat tijdens het beantwoorden een zoek-/verwerkingsindicator zichtbaar wordt en daarna verdwijnt.
+7. Controleer dat de bot onbekende informatie niet verzint en uitlegt dat hij niet live op internet zoekt.

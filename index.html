@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111827"><meta name="description" content="Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen."><title>3D Printed Shop</title>
-  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=22-shop-assistant"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
+  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=23-expanded-local-assistant"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <header class="topbar">
@@ -176,29 +176,35 @@
       <div class="shop-assistant-avatar" aria-hidden="true">✦</div>
       <div class="shop-assistant-heading">
         <strong id="shopAssistantTitle">Shopassistent</strong>
-        <small><span class="shop-assistant-online-dot"></span> Hulp bij 3D Printed Shop</small>
+        <small><span class="shop-assistant-online-dot"></span> Lokale webshopkennis · geen externe API</small>
       </div>
       <button class="shop-assistant-close" id="shopAssistantClose" type="button" aria-label="Chat sluiten">×</button>
     </header>
     <div class="shop-assistant-messages" id="shopAssistantMessages" aria-live="polite" aria-relevant="additions text">
-      <div class="shop-assistant-message bot"><p>Hoi! 👋 Ik ben de webshopassistent van 3D Printed Shop. Vraag me over producten, prijzen, kleuren, filament, offertes, bestellen of verzending. De levertijd is maximaal 14 dagen.</p></div>
+      <div class="shop-assistant-message bot"><p>Hoi! 👋 Ik ben de uitgebreide webshopassistent van 3D Printed Shop. Ik kan de actuele productinformatie en veelgestelde vragen over de hele webshop opzoeken. Stel gerust een vraag over producten, kleuren, maatwerk, bestellen, betalen, bezorgen, retouren of je account.</p></div>
     </div>
     <div class="shop-assistant-suggestions" id="shopAssistantSuggestions">
+      <button type="button" data-assistant-prompt="Welke producten zijn er?">Assortiment</button>
+      <button type="button" data-assistant-prompt="Hoe werkt bestellen?">Bestellen</button>
       <button type="button" data-assistant-prompt="Wat is de levertijd?">Levertijd</button>
-      <button type="button" data-assistant-prompt="Wat zijn de verzendkosten?">Verzendkosten</button>
-      <button type="button" data-assistant-prompt="Welke filamentkleuren zijn beschikbaar?">Filamentkleuren</button>
-      <button type="button" data-assistant-prompt="Hoe vraag ik een offerte aan?">Offerte</button>
+      <button type="button" data-assistant-prompt="Wat zijn de verzendkosten en kan ik ophalen?">Verzenden</button>
+      <button type="button" data-assistant-prompt="Welke filamentkleuren zijn beschikbaar?">Kleuren</button>
+      <button type="button" data-assistant-prompt="Hoe werkt een maatwerkofferte?">Offerte</button>
+      <button type="button" data-assistant-prompt="Hoe kan ik een eigen tekst op een product laten zetten?">Eigen tekst</button>
+      <button type="button" data-assistant-prompt="Hoe volg ik mijn bestelling?">Bestelling volgen</button>
+      <button type="button" data-assistant-prompt="Hoe werkt het 3D-voorbeeld?">3D-voorbeeld</button>
+      <button type="button" data-assistant-prompt="Hoe werkt retourneren?">Retouren</button>
     </div>
     <form class="shop-assistant-form" id="shopAssistantForm">
       <label class="visually-hidden" for="shopAssistantInput">Stel je vraag</label>
-      <input id="shopAssistantInput" type="text" maxlength="500" autocomplete="off" placeholder="Stel je vraag…" required>
+      <input id="shopAssistantInput" type="text" maxlength="500" autocomplete="off" placeholder="Waar kan ik je mee helpen?" required>
       <button type="submit" aria-label="Vraag versturen"><span aria-hidden="true">➤</span></button>
     </form>
-    <small class="shop-assistant-footnote">Dit gesprek wordt niet opgeslagen. Voor persoonlijke bestelvragen kun je inloggen en de klantenchat gebruiken.</small>
+    <small class="shop-assistant-footnote">Ik gebruik alleen de informatie van deze webshop. Geen API-sleutel, externe AI of live webzoekdienst. Chatberichten worden niet opgeslagen. Voor persoonlijke bestelvragen kun je inloggen en de klantenchat gebruiken.</small>
   </section>
   <button class="shop-assistant-toggle" id="shopAssistantToggle" type="button" aria-expanded="false" aria-controls="shopAssistantPanel">
     <span class="shop-assistant-toggle-icon" aria-hidden="true">✦</span><span>Vraag het de bot</span>
   </button>
 </div>
-<script type="module" src="./app.js?v=22-shop-assistant"></script>
+<script type="module" src="./app.js?v=23-expanded-local-assistant"></script>
 </body></html>

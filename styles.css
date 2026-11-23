@@ -1024,3 +1024,15 @@ button:disabled{cursor:not-allowed;opacity:.62}
  .shop-assistant-messages{padding:12px 10px}
 }
 @media(prefers-reduced-motion:reduce){.shop-assistant-toggle,.shop-assistant-panel{transition:none;animation:none}}
+
+/* v23: zichtbaar opzoeken in de lokale webshopkennis */
+.assistant-thinking{display:flex;align-items:center;gap:9px;color:#526987;font-style:italic}
+.assistant-thinking-dots{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto}
+.assistant-thinking-dots i{display:block;width:5px;height:5px;border-radius:50%;background:#3476c8;animation:assistant-dot-pulse 1s infinite ease-in-out}
+.assistant-thinking-dots i:nth-child(2){animation-delay:.14s}
+.assistant-thinking-dots i:nth-child(3){animation-delay:.28s}
+@keyframes assistant-dot-pulse{0%,65%,100%{opacity:.35;transform:translateY(0)}32%{opacity:1;transform:translateY(-3px)}}
+.shop-assistant-form button:disabled{opacity:.55;cursor:wait}
+.shop-assistant-form input:disabled{opacity:.7}
+.shop-assistant-suggestions button{padding:8px 11px;font-size:10.5px}
+@media(prefers-reduced-motion:reduce){.assistant-thinking-dots i{animation:none;opacity:.75}}
