@@ -2445,11 +2445,12 @@ $("#privacyCookieSettings").onclick = openCookiePreferences;
 $("#privacyModal").querySelector("[data-close-privacy]").onclick = closePrivacyNotice;
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("#privacyModal").hidden) closePrivacyNotice(); });
 
-/* ---------- uitgebreide webshopassistent ----------
-   Volledig lokaal: gebruikt uitsluitend de actuele webshopgegevens en de
-   gecontroleerde informatie uit deze website. Geen externe AI/API-sleutel,
-   openbare Wikipedia-zoekfunctie zonder sleutel en optionele volledige DuckDuckGo-zoekopdracht;
-   geen generatieve AI of opslag van het gesprek.
+/* ---------- uitgebreide webshop-FAQ + online zoekassistent ----------
+   Webshopvragen worden beantwoord vanuit deze uitgebreide kennisbank en live
+   openbare product-/kleurgegevens. Algemene online vragen gebruiken Tavily
+   keyless Search: geen account, API-sleutel of lokaal AI-model vereist.
+   Er worden nooit klantprofielen, adressen, wachtwoorden, orders of chats
+   opgehaald of meegestuurd met een externe zoekdienst.
 */
 const assistantPanel = document.querySelector("#shopAssistantPanel");
 const assistantToggle = document.querySelector("#shopAssistantToggle");
@@ -2458,16 +2459,13 @@ const assistantMessages = document.querySelector("#shopAssistantMessages");
 const assistantForm = document.querySelector("#shopAssistantForm");
 const assistantInput = document.querySelector("#shopAssistantInput");
 const assistantSuggestions = document.querySelector("#shopAssistantSuggestions");
-let assistantHasOpened = false;
 let assistantBusy = false;
-let assistantLastProductId = null;
-let assistantLastTopic = "";
 
 function assistantNormalize(value) {
-  return String(value ?? "").toLocaleLowerCase("nl-NL").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9#€., -]/g, " ").replace(/\s+/g, " ").trim();
+  return String(value ?? "").toLocaleLowerCase("nl-NL").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[-‐‑–—]/g, " ").replace(/[^a-z0-9#€., -]/g, " ").replace(/\s+/g, " ").trim();
 }
 function assistantTokens(value) {
-  const stop = new Set(["heb", "heeft", "hebben", "kan", "kun", "jullie", "ik", "wij", "ons", "onze", "de", "het", "een", "voor", "van", "met", "op", "in", "is", "zijn", "er", "wat", "hoe", "welke", "waar", "wil", "graag", "dit", "deze", "dat", "die", "als", "naar", "bij", "en", "of", "maar", "me", "mij", "je", "jouw", "product", "producten", "kunnen", "zou", "willen", "mag", "moet", "dan", "ook", "eens", "even"]);
+  const stop = new Set(["heb", "heeft", "hebben", "kan", "kun", "jullie", "ik", "wij", "ons", "onze", "de", "het", "een", "voor", "van", "met", "op", "in", "is", "zijn", "er", "wat", "hoe", "welke", "waar", "wil", "graag", "dit", "deze", "dat", "die", "als", "naar", "bij", "en", "of", "maar", "me", "mij", "je", "jouw", "kunnen", "zou", "willen", "mag", "moet", "dan", "ook", "eens", "even", "mijn", "ons", "onze", "kan", "kunnen"]);
   return assistantNormalize(value).split(/\s+/).filter(token => token.length > 2 && !stop.has(token));
 }
 function assistantAddMessage(text, role = "bot", actions = []) {
@@ -2494,7 +2492,7 @@ function assistantAddMessage(text, role = "bot", actions = []) {
   assistantMessages.scrollTop = assistantMessages.scrollHeight;
   return bubble;
 }
-function assistantAddThinking(label = "Ik controleer de webshopinformatie…") {
+function assistantAddThinking(label = "Ik zoek de juiste informatie erbij…") {
   if (!assistantMessages) return null;
   const bubble = document.createElement("div");
   bubble.className = "shop-assistant-message bot assistant-thinking";
@@ -2510,7 +2508,6 @@ function openShopAssistant() {
   assistantPanel.hidden = false;
   assistantToggle?.setAttribute("aria-expanded", "true");
   assistantToggle?.classList.add("is-open");
-  assistantHasOpened = true;
   window.setTimeout(() => assistantInput?.focus(), 50);
 }
 function closeShopAssistant() {
@@ -2519,427 +2516,279 @@ function closeShopAssistant() {
   assistantToggle?.setAttribute("aria-expanded", "false");
   assistantToggle?.classList.remove("is-open");
 }
-function assistantOpenOrders() {
-  if (state.user) showMyOrders();
-  else authForm();
-}
 function assistantFindProducts(question) {
   const normalized = assistantNormalize(question);
   const tokens = assistantTokens(question);
   return (state.products || []).filter(product => product && product.active !== false).map(product => {
     const title = assistantNormalize(product.title || "");
     const description = assistantNormalize(product.description || "");
-    const category = assistantNormalize(categoryLabel(product.categoryId) || product.category || "");
-    const all = `${title} ${description} ${category}`;
-    let score = 0;
-    if (title && (normalized.includes(title) || title.includes(normalized))) score += 18;
-    tokens.forEach(token => {
-      if (title.split(" ").includes(token)) score += 5;
-      else if (category.split(" ").includes(token)) score += 3;
-      else if (all.includes(token)) score += 1;
-    });
+    const category = assistantNormalize(categoryLabel(product.categoryId) || "");
+    const score = (title && normalized.includes(title) ? 12 : 0)
+      + tokens.reduce((sum, token) => sum + (title.includes(token) ? 3 : description.includes(token) ? 1 : category.includes(token) ? 1 : 0), 0);
     return { product, score };
-  }).filter(result => result.score >= 3).sort((a, b) => b.score - a.score);
+  }).filter(match => match.score > 0).sort((a, b) => b.score - a.score);
 }
-function assistantProductSummary(product, question = "") {
-  const soldOut = isSoldOut(product);
-  const priceText = Number.isFinite(Number(product.price)) ? money(product.price) : "prijs op de productpagina";
-  const lines = [`${product.title}: ${priceText}${soldOut ? " · momenteel uitverkocht" : " · momenteel beschikbaar volgens de webshop"}.`];
-  if (String(product.description || "").trim()) lines.push(String(product.description).trim().slice(0, 520));
+function assistantBuildActions(question) {
+  const q = assistantNormalize(question);
+  const actions = [];
+  const productMatch = assistantFindProducts(question)[0];
+  const add = (label, run) => { if (actions.length < 3) actions.push({ label, run }); };
+  if (productMatch && productMatch.score >= 4) add(`Bekijk ${String(productMatch.product.title || "product").slice(0, 30)}`, () => showProduct(productMatch.product.id));
+  if (/\b(offerte|maatwerk|eigen ontwerp|laten maken)\b/.test(q)) add("Offerte aanvragen", () => $("#requestQuoteBtn")?.click());
+  if (/\b(bestelling|bestellingen|order|track|track trace|status|volgen|bezorging|betaallink|retour)\b/.test(q)) add("Mijn bestellingen", () => { if (state.user) showMyOrders(); else authForm(); });
+  if (/\b(chat|chats|bericht|berichten|klantenservice)\b/.test(q)) add("Mijn chats", () => { if (state.user) showMyChats(); else authForm(); });
+  if (/\b(account|inloggen|registreren|wachtwoord|gebruikersnaam|log ik in|log in)\b/.test(q) && !state.user) add("Inloggen of account maken", () => authForm());
+  if (/\b(winkelwagen|mandje|afrekenen|bestellen)\b/.test(q)) add("Winkelwagen openen", () => { closeShopAssistant(); $("#cartBtn")?.click(); });
+  if (/\b(favoriet|favorieten|bewaren)\b/.test(q)) add("Favorieten openen", () => { closeShopAssistant(); $("#favoritesBtn")?.click(); });
+  if (/\b(privacy|cookies|cookie)\b/.test(q)) add("Privacy en cookies", () => { closeShopAssistant(); $("#openPrivacy")?.click(); });
+  if (/\b(voorwaarden|algemene voorwaarden)\b/.test(q)) add("Algemene voorwaarden", () => { closeShopAssistant(); openTermsPage(); });
+  if (/\b(contact|e-mail|email|telefoon|openingstijden|hulp|klacht)\b/.test(q)) add("Contactpagina", () => openContactPage());
+  if (/\b(product|producten|assortiment|kleur|filament|categorie|zoeken)\b/.test(q)) add("Bekijk assortiment", () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); });
+  return actions;
+}
+
+const ASSISTANT_FAQ = [
+  { id: "catalog", terms: ["assortiment", "welke producten", "wat verkopen", "wat hebben jullie", "alle producten", "collectie", "catalogus", "aanbod", "wat kan ik kopen", "wat bieden jullie", "wat is er te koop"], answer: () => assistantCatalogAnswer() },
+  { id: "shipping", terms: ["verzending", "verzendkosten", "verzenden", "levertijd", "bezorgen", "bezorging", "levering", "hoe lang duurt"], answer: () => "Verzenden binnen Nederland kost €3,95. Zelf ophalen is gratis. De webshop noemt een maximale levertijd van 14 dagen. De daadwerkelijke planning kan per bestelling verschillen; de actuele voortgang vind je bij Mijn bestellingen." },
+  { id: "pickup", terms: ["ophalen", "afhalen", "zelf ophalen", "gratis ophalen", "afhaalpunt"], answer: () => "Ophalen is gratis. Kies tijdens het bestellen de beschikbare ophaal-/afspraakroute. De bestelling wordt bij de status ‘klaar voor bezorging’ als klaar om op te halen weergegeven." },
+  { id: "shipping-abroad", terms: ["buitenland", "belgie", "duitsland", "internationaal", "naar het buitenland", "buiten nederland"], answer: () => "De huidige webshopinstellingen noemen Nederland als verzendland. Ik kan daarom geen verzending naar andere landen toezeggen. Vraag via de contactpagina na of een uitzondering mogelijk is." },
+  { id: "order", terms: ["bestellen", "bestelproces", "hoe bestel", "afrekenen", "checkout", "winkelwagen", "mandje"], answer: () => "Open een product, kies de gewenste opties en kleuren en voeg het toe aan de winkelwagen. Controleer daarna de aantallen en keuzes in je winkelwagen en rond de bestelling af. Voor online bestellen is een klantaccount nodig. De winkelwagen bewaart je keuzes in deze browser." },
+  { id: "account-create", terms: ["account maken", "account aanmaken", "account aan", "registreren", "registratie", "nieuw account", "aanmelden"], answer: () => "Een account maak je via ‘Mijn account’ en daarna de registratieoptie. Je e-mailadres moet uniek zijn. Je kiest een unieke gebruikersnaam van 3 tot en met 20 tekens; letters, cijfers, punt, underscore en koppelteken zijn toegestaan. Een nieuw wachtwoord moet minimaal 8 tekens lang zijn. Deel je wachtwoord nooit met de chatbot of iemand anders." },
+  { id: "account-login", terms: ["inloggen", "login", "log ik in", "log in", "aanmelden account", "kan niet inloggen", "account openen", "mijn account"], answer: () => "Open ‘Mijn account’ en log in met het e-mailadres dat bij je account hoort en je eigen wachtwoord. De chatbot kan je wachtwoord niet zien of ophalen. Na meerdere mislukte pogingen kan tijdelijk een oplopende wachttijd gelden. Deel geen inloggegevens in de chat." },
+  { id: "username", terms: ["gebruikersnaam wijzigen", "naam wijzigen", "nickname", "accountnaam", "gebruikersnaam aanpassen", "gebruikersnaam", "username"], answer: () => "Je kunt je gebruikersnaam via ‘Mijn account’ wijzigen. De gebruikersnaam moet uniek zijn en bestaat uit 3 tot en met 20 tekens. Toegestaan zijn letters, cijfers, punt, underscore en koppelteken. Je e-mailadres is niet je openbare profielnaam." },
+  { id: "logout", terms: ["uitloggen", "afmelden", "uitloggen account", "log uit", "log ik uit", "uit loggen"], answer: () => "Open het accountmenu en kies ‘Uitloggen’. Daarmee sluit je je huidige aanmeldsessie af op dit apparaat. De chatbot logt je niet uit en vraagt nooit om je wachtwoord." },
+  { id: "password", terms: ["wachtwoord vergeten", "wachtwoord reset", "wachtwoord wijzigen", "nieuw wachtwoord", "password reset", "password vergeten", "wachtwoord", "password"], answer: () => "In deze versie is er geen zelfbedieningsfunctie om een wachtwoord te resetten of te wijzigen. Neem via de contactpagina contact op voor hulp. Stuur je wachtwoord, herstelcodes of andere geheime gegevens nooit via de chat." },
+  { id: "address", terms: ["mijn adres", "huisadres", "woonadres", "verzendadres", "bezorgadres", "adres wijzigen", "adres aanpassen", "postcode", "huisnummer"], answer: () => "De chatbot haalt geen klantadressen op en kan ze niet tonen of wijzigen. Vul je bezorggegevens alleen in op de daarvoor bedoelde beveiligde stap van het bestelproces. Zet nooit je adres of postcode in deze chat." },
+  { id: "payment", terms: ["betalen", "betaalmethode", "betaling", "tikkie", "betaalverzoek", "betaallink", "hoe betaal ik"], answer: () => "De checkout werkt met een betaalverzoek via Tikkie. Als de beheerder een betaallink aan je bestelling heeft toegevoegd, vind je die bij ‘Mijn bestellingen’. Bestellingen die via de klantenchat worden afgesproken kunnen via die chat verder worden afgehandeld. Deel nooit je volledige betaalgegevens, kaartnummer of beveiligingscode in de chat." },
+  { id: "payment-status", terms: ["betaalstatus", "betaling gelukt", "betaling mislukt", "betaallink vinden", "link betalen"], answer: () => "Je persoonlijke betaalstatus en eventuele betaallink zijn alleen zichtbaar bij ‘Mijn bestellingen’ nadat je bent ingelogd. De chatbot haalt geen betalingsgegevens op en kan een betaling niet bevestigen of wijzigen." },
+  { id: "price", terms: ["prijs", "prijzen", "kosten", "wat kost", "hoe duur", "meerprijs", "toeslag", "korting"], answer: ({ question }) => assistantPriceAnswer(question) },
+  { id: "options", terms: ["opties", "keuzes", "variant", "varianten", "maat", "kleur kiezen", "productopties", "keuzelijst"], answer: ({ question }) => assistantOptionsAnswer(question) },
+  { id: "colors", terms: ["filamentkleuren", "beschikbare kleuren", "kleuren", "kleurkeuze", "filament kleur", "welke kleur", "kleurvoorraad"], answer: () => assistantColorsAnswer() },
+  { id: "material", terms: ["filament", "materiaal", "pla", "petg", "abs", "tpu", "kunststof", "printmateriaal"], answer: () => "De webshop gebruikt materiaalkeuzes zoals PLA, PETG, ABS en TPU waar die door de beheerder zijn ingesteld. Welke materialen en kleuren bestelbaar zijn, hangt af van het specifieke product en de actieve voorraad. Je ziet alleen de beschikbare keuzes op de productpagina." },
+  { id: "stock", terms: ["voorraad", "uitverkocht", "niet beschikbaar", "niet bestelbaar", "voorraadstatus", "op voorraad"], answer: ({ question }) => assistantStockAnswer(question) },
+  { id: "custom-text", terms: ["eigen tekst", "personaliseren", "personalisatie", "naam erop", "tekst op product", "tekst toevoegen", "tekstveld", "eigen naam"], answer: () => "Sommige producten hebben een eigen tekstveld. De titel van dat veld verschilt per product en is zichtbaar op de productpagina. Als het veld aanwezig is, kun je maximaal 160 tekens invoeren. Niet ieder product ondersteunt eigen tekst." },
+  { id: "quote", terms: ["offerte", "maatwerk", "eigen ontwerp", "eigen 3d ontwerp", "iets laten maken", "op maat", "custom ontwerp"], answer: () => "Voor maatwerk gebruik je de knop voor een eigen ontwerp/offerte. Je moet ingelogd zijn. Vul een titel (maximaal 90 tekens), beschrijving (maximaal 1.800 tekens), afmetingen en kleur in. Lengte, breedte en hoogte moeten elk een geheel getal van 1 t/m 180 mm zijn. Een ontwerpafbeelding is verplicht (PNG, JPG of WEBP; maximaal 12 MB). Na indienen wordt een persoonlijke chat voor de offerte geopend." },
+  { id: "quote-status", terms: ["offerte status", "offerte volgen", "offerte ingediend", "offerte bekijken", "mijn aanvraag", "aanvraag status"], answer: () => "Je eigen offerte en het gesprek daarover vind je na inloggen via ‘Mijn chats’. Een offerteaanvraag opent een persoonlijke chat waarin de aanvraag verder kan worden besproken. De chatbot kan geen persoonlijke offertegegevens ophalen of wijzigen." },
+  { id: "cart", terms: ["winkelwagen bewaren", "winkelwagen leeg", "winkelmand", "winkelwagen werkt", "keuzes bewaren", "bestelnotitie", "opmerking bestelling"], answer: () => "De winkelwagen bewaart aantallen, gekozen opties, eventuele eigen tekst en 3D-onderdeelskleuren in de browser. Je kunt bij online bestellen ook een bestelopmerking van maximaal 500 tekens toevoegen. Browsergegevens kunnen verdwijnen als je browseropslag wist of een andere browser gebruikt." },
+  { id: "favorites", terms: ["favorieten", "favoriet", "hartje", "bewaren voor later", "verlanglijst", "product bewaren"], answer: () => "Gebruik het hartje bij een product om het als favoriet te bewaren. Als je bent ingelogd, worden favorieten aan je account gekoppeld. Als gast blijven ze in de browser waarin je ze hebt opgeslagen." },
+  { id: "tracking", terms: ["bestelling volgen", "mijn bestelling", "volg ik mijn bestelling", "volg mijn bestelling", "pakket volgen", "mijn pakket", "track en trace", "track trace", "bestelstatus", "orderstatus", "voortgang bestelling", "waar is mijn pakket"], answer: () => "Je eigen bestelling volg je via ‘Mijn bestellingen’ nadat je bent ingelogd. Daar zie je de status en, wanneer beschikbaar, de voortgang en betaallink. Een openbare track-and-trace-deellink is alleen-lezen en toont beperkte bestelgegevens; geen account of chat. De chatbot zelf haalt geen bestellingen of adressen op." },
+  { id: "statuses", terms: ["bestelstatussen", "status ontvangen", "in de maak", "klaar voor bezorging", "bestelling verwerkt", "printstatus", "statussen"], answer: () => "De bestelstatus kan zijn: ontvangen, verwerkt, in de maak, gemaakt, klaar voor bezorging of bezorgd. Bij een bestelling die wordt opgehaald betekent ‘klaar voor bezorging’ dat die klaar is om op te halen. Tijdens ‘in de maak’ kan de voortgang per productstuk apart worden bijgehouden." },
+  { id: "agenda", terms: ["agenda", "planning", "printplanning", "ingepland", "tijdslot", "printtijd", "wanneer wordt mijn product gemaakt", "planning print"], answer: () => "De webshopbeheerder kan printtijd in de agenda plannen per productstuk. De agenda voorkomt dat tijdsloten overlappen. Klanten zien de bestelstatus en, wanneer die is bijgewerkt, de fase per productstuk bij ‘Mijn bestellingen’. De chatbot kan geen persoonlijke printdatum of planning uit je account ophalen." },
+  { id: "order-note", terms: ["bestelopmerking", "opmerking toevoegen", "notitie bij bestelling", "bericht bij mijn bestelling", "speciale instructie bestelling"], answer: () => "Bij een online bestelling kun je een optionele bestelopmerking toevoegen van maximaal 500 tekens. Zet geen wachtwoorden, betaalgegevens of onnodige persoonsgegevens in die opmerking." },
+  { id: "product-images", terms: ["productfoto", "productfotos", "afbeeldingen product", "meerdere foto's", "galerij", "productafbeelding"], answer: ({ question }) => { const best = assistantFindProducts(question)[0]; if (best && best.score >= 4) { const count = productImages(best.product).length; return `${best.product.title || "Dit product"} heeft ${count} productafbeelding(en) in de geladen webshopgegevens. Open de productpagina om de fotogalerij te bekijken.`; } return "Een product kan meerdere afbeeldingen hebben. Als er meer dan één afbeelding is ingesteld, toont de productpagina een fotogalerij."; } },
+  { id: "chat-attachments", terms: ["afbeelding in chat", "foto in chat", "bestand in chat", "bijlage chat", "foto sturen", "afbeelding sturen"], answer: () => "In de klantenchat kunnen afbeeldingen worden toegevoegd. De webshop verkleint afbeeldingen in de browser voor opslag. Stuur via de chat geen identiteitsdocumenten, betaalgegevens, wachtwoorden of andere gevoelige informatie." },
+  { id: "filament-stock", terms: ["filamentverbruik", "gram filament", "voorraad wordt afgeboekt", "voorraad afboeken", "voorraad terug", "materiaalverbruik"], answer: () => "Voor sommige producten is filamentverbruik per stuk ingesteld. De webshop controleert of de gekozen kleur genoeg beschikbare voorraad heeft. Bij een bestelling wordt het benodigde verbruik gereserveerd of afgeboekt; als de bestelling niet lukt, wordt die voorraad weer vrijgegeven. Exacte interne gramvoorraden zijn beheerinformatie." },
+  { id: "shared-options", terms: ["gedeelde opties", "opties meerdere producten", "zelfde opties", "keuzes bij meerdere producten", "opties gekoppeld"], answer: () => "Sommige keuze-opties kunnen door de beheerder als gedeelde set aan meerdere producten zijn gekoppeld. Daardoor kunnen dezelfde keuzes op meerdere productpagina's voorkomen. De concrete opties en prijzen die je kunt kiezen, zie je altijd bij het betreffende product." },
+  { id: "returns", terms: ["retour", "retourneren", "retourbeleid", "terugsturen", "retouraanvraag", "geld terug", "retourtermijn"], answer: () => "Een retourverzoek kan in deze webshop binnen 14 dagen na ontvangst of ophalen worden ingediend, wanneer de retourknop bij de bezorgde bestelling beschikbaar is. Het verzoek moet worden beoordeeld. Voor producten die volgens persoonlijke specificaties zijn gemaakt kan een wettelijke uitzondering op het herroepingsrecht gelden. Bekijk ook de algemene voorwaarden." },
+  { id: "reviews", terms: ["review", "reviews", "beoordeling", "beoordelingen", "sterren", "ervaring achterlaten", "product beoordelen"], answer: () => "Een review kan beschikbaar zijn nadat je een product hebt besteld en de bestelling is bezorgd of opgehaald. Als de reviewoptie bij je bestelling wordt getoond, kun je die gebruiken. Productpagina's tonen reviewinformatie wanneer er beoordelingen zijn." },
+  { id: "chat", terms: ["mijn chats", "klantenchat", "klantenservice chat", "chatbericht", "bericht sturen", "gesprek met beheerder"], answer: () => "Via ‘Mijn chats’ kun je na inloggen je eigen service- en offertegesprekken bekijken en berichten sturen. Bij een maatwerkofferte wordt automatisch een persoonlijk gesprek geopend. De chatbot kan geen privéberichten uit je account lezen." },
+  { id: "3d-preview", terms: ["3d voorbeeld", "3d preview", "3d model", "3d bestanden", "3d bestand", "stl bestand", "3mf bestand", "model draaien", "stl", "3mf", "voorbeeld bekijken", "model bekijken"], answer: () => "Producten met een gekoppeld model kunnen een interactieve 3D-preview tonen. De webshop ondersteunt STL en 3MF. Je kunt het model draaien; ondersteunde 3MF-bestanden kunnen meerdere onderdelen en onderdeelkleuren bevatten. Niet ieder product heeft een 3D-preview. De preview is geen slicer en berekent geen officiële printtijd, materiaalkosten of printbaarheid." },
+  { id: "slicer", terms: ["bambu studio", "orcaslicer", "prusa slicer", "prusa slicer", "slicer", "snijsoftware", "3mf export"], answer: () => "De webshop noemt Bambu Studio, OrcaSlicer en PrusaSlicer als compatibele slicers voor de bijbehorende 3D-bestanden. De browserpreview zelf is geen slicer en vervangt geen controle van instellingen, printbaarheid of printtijd in je eigen slicersoftware." },
+  { id: "camera", terms: ["printercamera", "camera", "live camera", "print bekijken", "printerbeeld"], answer: () => "Bij bestellingen kan een printercamera-weergave zichtbaar zijn als die voor de bestelling beschikbaar en door de beheerder ingeschakeld is. De camera kan tijdelijk worden uitgeschakeld. De chatbot kan geen camera inschakelen of de print bedienen." },
+  { id: "cookies", terms: ["cookies", "cookie instellingen", "browseropslag", "lokale opslag", "gegevens browser"], answer: () => "De webshop gebruikt noodzakelijke browseropslag voor functies zoals winkelwagen en sessie. In de huidige code zijn geen optionele statistiek- of marketingcookies ingesteld. Je kunt je voorkeuren aanpassen via ‘Cookie-instellingen’ onderaan de website." },
+  { id: "privacy", terms: ["privacy", "persoonsgegevens", "gegevens beveiligen", "gegevens verwijderen", "gegevens opslaan", "data", "chatbot privacy"], answer: () => "Onderaan de webshop staat de privacyverklaring met informatie over gegevensverwerking en je privacyrechten. Typ geen wachtwoorden, herstelcodes, betaalkaartgegevens, volledige adressen of andere gevoelige persoonsgegevens in de chatbot. De chatbot leest geen klantorders, profielen, adressen of privéchats uit Firebase." },
+  { id: "contact", terms: ["contact", "contact opnemen", "klantenservice", "hulp nodig", "klacht", "vraag stellen", "openingstijden"], answer: () => "Voor een vraag die niet in deze uitleg staat, gebruik je de contactpagina van de webshop. Daar staan de klantgerichte contactgegevens en eventuele openingstijden die door de beheerder zijn ingevuld. De chatbot toont geen privé- of accountgegevens." },
+  { id: "terms", terms: ["voorwaarden", "algemene voorwaarden", "regels webshop", "juridisch", "rechten en plichten"], answer: () => "De algemene voorwaarden zijn te openen via de link onderaan de webshop. Daar vind je de formele afspraken over bestellen, betalen, levering en retouren. Bij een verschil tussen een korte chatuitleg en de gepubliceerde voorwaarden zijn de voorwaarden leidend." },
+  { id: "admin", terms: ["beheerder", "sitebeheer", "admin", "beheeromgeving", "voorraadbeheer", "dashboard"], answer: () => "De beheeromgeving is alleen voor de webshopbeheerder. Deze klantenassistent kan geen beheeracties uitvoeren en deelt geen beheerwachtwoorden, interne voorraadgrammen, waarschuwingsgrenzen of afgeschermde dashboardinformatie." },
+  { id: "chatbot", terms: ["chatbot", "assistent", "werkt de bot", "kunstmatige intelligentie", "ai bot", "faq bot"], answer: () => "Deze assistent gebruikt een uitgebreide webshop-FAQ en actuele openbare productinformatie. Vragen die buiten de webshop-FAQ vallen, kunnen via de online zoekfunctie worden opgezocht. Er is geen lokaal AI-model of WebGPU-download nodig. Online zoekvragen worden naar de externe zoekdienst Tavily gestuurd; deel daarom geen persoonlijke of geheime gegevens." }
+];
+
+function assistantCatalogAnswer() {
+  const products = (state.products || []).filter(product => product && product.active !== false);
+  if (!state.loaded) return "De productcatalogus wordt nog geladen. Probeer het over een moment opnieuw of open het productoverzicht.";
+  if (!products.length) return "Er staan op dit moment geen actieve producten in het productoverzicht.";
+  const lines = products.slice(0, 24).map(product => `• ${product.title || "Product"} — vanaf €${(Number(product.price) || 0).toFixed(2).replace(".", ",")}${isSoldOut(product) ? " (momenteel niet beschikbaar)" : ""}`);
+  const extra = products.length > 24 ? `\nEr zijn nog ${products.length - 24} actieve producten. Bekijk het volledige assortiment op de website.` : "";
+  return `Dit is het actuele assortiment dat op dit moment is geladen:\n${lines.join("\n")}${extra}\n\nOpen een product voor de actuele opties, kleuren, meerprijzen en eventuele 3D-preview.`;
+}
+function assistantProductAnswer(product, question = "") {
+  const price = (Number(product.price) || 0).toFixed(2).replace(".", ",");
+  const lines = [`${product.title || "Dit product"} kost vanaf €${price}.`, `Beschikbaarheid: ${isSoldOut(product) ? "momenteel niet beschikbaar" : "volgens de webshop beschikbaar"}.`];
+  const description = String(product.description || "").trim();
+  if (description) lines.push(`Beschrijving: ${description.slice(0, 460)}${description.length > 460 ? "…" : ""}`);
   const groups = optionGroupsOf(product);
-  const normalizedQuestion = assistantNormalize(question);
-  const askedColor = /kleur|kleuren|filament/.test(normalizedQuestion);
-  const relevantGroups = askedColor
-    ? groups.filter(group => group.filamentGroup || /kleur/i.test(group.label))
-    : groups;
-  relevantGroups.slice(0, 6).forEach(group => {
-    if (group.inputType === "text") {
-      lines.push(`${group.label}: je kunt hier zelf tekst invullen (maximaal 160 tekens).`);
-      return;
-    }
-    const choices = (group.options || []).filter(option => !option.soldOut).map(option => `${option.name}${Number(option.priceDelta) ? ` (${deltaText(option.priceDelta)})` : ""}`);
-    const unavailable = (group.options || []).filter(option => option.soldOut).length;
-    if (choices.length) lines.push(`${group.label}: ${choices.slice(0, 10).join(", ")}${choices.length > 10 ? ` en ${choices.length - 10} meer` : ""}${unavailable ? ` · ${unavailable} keuze(s) niet beschikbaar` : ""}.`);
-    else if ((group.options || []).length) lines.push(`${group.label}: op dit moment zijn de ingestelde keuzes niet beschikbaar.`);
-  });
-  if (askedColor) lines.push("Let op: de beschikbare filamentkleuren kunnen per product verschillen. Bij producten die veel filament gebruiken, kan een kleur onvoldoende voorraad hebben.");
-  if (product.model3d) lines.push("Bij dit product is ook een interactief 3D-voorbeeld ingesteld. Je kunt het model op de productpagina met de muis of je vinger draaien en de beschikbare onderdeelkleuren kiezen.");
-  if (!groups.length && !soldOut) lines.push("Dit product heeft op dit moment geen verplichte extra keuzestappen. Bekijk de productpagina voor de volledige informatie.");
-  return lines.join("\n\n");
-}
-function assistantAvailableProducts() {
-  return (state.products || []).filter(product => product && product.active !== false && !isSoldOut(product));
-}
-function assistantProductsText() {
-  if (!state.loaded) return "Ik ben de producten en categorieën nog aan het laden. Probeer het over een paar seconden opnieuw.";
-  const available = assistantAvailableProducts();
-  if (!available.length) return "Er staan op dit moment geen beschikbare producten in het assortiment. Je kunt later opnieuw kijken of een offerte aanvragen voor een eigen ontwerp.";
-  const names = available.slice(0, 12).map(product => `${product.title} (${money(product.price)})`);
-  const categories = [...new Set((state.categories || []).filter(category => category.active !== false).map(category => category.name).filter(Boolean))];
-  return `Ik zie ${available.length} beschikbare product(en) in het assortiment.\n\n${names.join("\n")}${available.length > 12 ? `\n… en nog ${available.length - 12} product(en).` : ""}${categories.length ? `\n\nCategorieën: ${categories.join(", ")}.` : ""}\n\nJe kunt bovenaan de webshop zoeken of een categorie kiezen om het aanbod te filteren.`;
-}
-function assistantColorsText(product = null) {
-  if (product) {
-    const colorGroup = optionGroupsOf(product).find(group => group.filamentGroup);
-    if (!colorGroup) return `${product.title} heeft op dit moment geen actieve filamentkleurkeuze ingesteld. Kijk op de productpagina voor de overige opties of vraag een offerte aan.`;
-    const available = colorGroup.options.filter(option => !option.soldOut).map(option => option.name);
-    const unavailable = colorGroup.options.filter(option => option.soldOut).map(option => option.name);
-    return `${product.title} – filamentkleuren:\n${available.length ? `Beschikbaar: ${available.join(", ")}.` : "Er is op dit moment geen filamentkleur beschikbaar voor dit product."}${unavailable.length ? `\nNiet beschikbaar voor dit product: ${unavailable.join(", ")}.` : ""}\n\nDe voorraad wordt per productverbruik gecontroleerd. Een kleur kan dus wel bij een klein product beschikbaar zijn, maar niet bij een product dat meer filament nodig heeft.`;
+  if (groups.length) {
+    const optionText = groups.map(group => {
+      const values = (group.options || []).map(option => `${option.name || "Keuze"}${option.soldOut ? " (uitverkocht)" : ""}${Number(option.priceDelta) ? ` (${Number(option.priceDelta) > 0 ? "+" : "−"}€${Math.abs(Number(option.priceDelta)).toFixed(2).replace(".", ",")})` : ""}`).join(", ");
+      return `${group.label || "Keuze"}: ${values || "keuzes staan op de productpagina"}`;
+    });
+    lines.push(`Mogelijke keuzes: ${optionText.join("; ")}.`);
   }
-  const colors = activeFilaments();
-  if (!colors.length) return "Ik zie op dit moment geen actieve filamentkleuren in Filamentbeheer. Niet ieder product gebruikt dezelfde kleuren; kijk daarom altijd bij de productkeuze zelf.";
-  const names = [...new Set(colors.map(color => String(color.name || "Filamentkleur").trim()).filter(Boolean))];
-  return `De actieve filamentkleuren die in Filamentbeheer staan zijn: ${names.join(", ")}.\n\nLet op: dit is het algemene kleurenpalet. De webshop controleert per product of er genoeg filament over is. Daardoor kan een kleur voor sommige producten niet beschikbaar zijn, vooral als een product veel filament gebruikt. De kleurkeuze op de productpagina is leidend.`;
+  const colors = productColorChoices(product).filter(option => !option.soldOut).map(option => option.name).filter(Boolean);
+  if (colors.length) lines.push(`Beschikbare modelkleuren: ${[...new Set(colors)].slice(0, 12).join(", ")}.`);
+  if (product.customTextEnabled === true && String(product.customTextLabel || "").trim()) lines.push(`Eigen tekst: dit product heeft het veld ‘${String(product.customTextLabel).trim()}’ (maximaal 160 tekens).`);
+  if (product.model3d) lines.push("Er is een 3D-preview aan dit product gekoppeld.");
+  const reviews = reviewStats(product.id);
+  if (reviews.count) lines.push(`Reviews: ${reviews.count} beoordeling(en), gemiddeld ${Math.round(reviews.average * 10) / 10} van 5 sterren.`);
+  lines.push("De productpagina en winkelwagen tonen de definitieve prijs nadat je alle opties hebt gekozen.");
+  return lines.join("\n");
 }
-function assistantContactText() {
-  const details = [
-    contactSettings.name ? `Naam: ${contactSettings.name}` : "",
-    contactSettings.email ? `E-mail: ${contactSettings.email}` : "",
-    contactSettings.phone ? `Telefoon: ${contactSettings.phone}` : "",
-    contactSettings.hours ? `Openingstijden: ${contactSettings.hours}` : "",
-    contactSettings.address ? `Adres: ${contactSettings.address}` : ""
-  ].filter(Boolean);
-  return details.length ? `Dit zijn de contactgegevens die op dit moment op de webshop zijn ingesteld:\n${details.join("\n")}${contactSettings.extra ? `\n${contactSettings.extra}` : ""}` : "De contactgegevens zijn nog niet volledig ingevuld. Open de contactpagina voor de informatie die momenteel beschikbaar is.";
+function assistantPriceAnswer(question) {
+  const matches = assistantFindProducts(question);
+  const best = matches[0];
+  if (best && best.score >= 4) return assistantProductAnswer(best.product, question);
+  return "De actuele productprijzen staan bij de producten in het assortiment. De getoonde prijs is de basisprijs; gekozen opties kunnen een toeslag of korting hebben. De webshop berekent het totaal in de productkeuze en winkelwagen. Noem eventueel de productnaam, dan zoek ik de actuele basisprijs erbij.";
 }
-function assistantKnowledgeSearch(question) {
-  const q = assistantNormalize(question);
-  const tokens = assistantTokens(question);
-  const docs = [
-    { title: "Een product kiezen en bestellen", keys: "bestellen order product winkelwagen kopen afrekenen opties variant kiezen toevoegen account", phrases: ["hoe werkt bestellen", "hoe plaats ik een bestelling", "hoe koop ik iets"], answer: "Open een product, bekijk de beschrijving en kies alle getoonde opties. Bij sommige producten kun je een kleur, uitvoering of eigen tekst kiezen. Voeg het product daarna toe aan je winkelwagen. Voor online bestellen heb je een klantaccount nodig. Tijdens het afrekenen kies je voor verzenden of gratis ophalen." },
-    { title: "Eigen tekst op een product", keys: "eigen tekst personaliseren naam tekstveld typen invullen tekstkeuze titel", phrases: ["eigen tekst", "naam op product", "tekst laten drukken"], answer: "Bij producten waarvoor de beheerder dit heeft aangezet, verschijnt een tekstveld met een eigen titel, bijvoorbeeld ‘Welke naam mag erop?’. Vul daar de gewenste tekst in. Het veld ondersteunt maximaal 160 tekens en de tekst gaat mee naar de winkelwagen en bestelling. Niet elk product heeft deze optie." },
-    { title: "Filament en kleurvoorraad", keys: "filament kleur kleuren voorraad grams gram materiaal uitverkocht kleurkeuze", phrases: ["waarom is een kleur niet beschikbaar", "kleur is op", "filamentvoorraad"], answer: () => assistantColorsText() },
-    { title: "Maatwerk en offertes", keys: "maatwerk offerte eigen ontwerp idee custom speciaal laten maken aanvraag dimensions afmetingen", phrases: ["eigen product laten maken", "offerte aanvragen", "iets op maat"], answer: "Voor een eigen ontwerp kun je via ‘Offerte aanvragen’ een aanvraag indienen. Je hebt een klantaccount nodig. Vul een titel en beschrijving in, voer lengte, breedte en hoogte in (ieder maximaal 180 mm), kies een beschikbare offerte-kleur en upload een duidelijke afbeelding (PNG, JPG of WEBP, maximaal 12 MB). Na verzenden wordt een persoonlijke chat geopend om de aanvraag te bespreken. De offertekleuren zijn apart ingesteld en kunnen verschillen van de filamentkleuren bij gewone producten." },
-    { title: "Levertijd", keys: "levertijd bezorgen bezorging wanneer duurt dagen wachten verzending", phrases: ["hoe lang duurt het", "wanneer komt mijn bestelling"], answer: "De maximale levertijd is 14 dagen na het plaatsen van je bestelling. De voortgang van je eigen bestelling kun je na inloggen bekijken via ‘Mijn bestellingen’." },
-    { title: "Verzenden en ophalen", keys: "verzenden verzending bezorgkosten verzendkosten ophalen afhalen nederland adres", phrases: ["wat kost verzenden", "is ophalen gratis"], answer: () => `Verzenden kost ${money(SHIPPING)} per verzendbestelling. Ophalen is gratis. Verzenden is volgens de huidige voorwaarden beschikbaar voor adressen in Nederland. Je kiest tijdens het bestellen welke methode je wilt gebruiken.` },
-    { title: "Betalen", keys: "betalen betaling tikkie betaalverzoek betaallink betaalmethode", phrases: ["hoe kan ik betalen", "waar vind ik mijn betaallink"], answer: "Na een online bestelling ontvang je de betaalinstructies via de betaalmethode die bij je bestelling wordt aangegeven, bijvoorbeeld een persoonlijk betaalverzoek. De actuele betaalstatus en een eventuele betaallink vind je via ‘Mijn bestellingen’. Bij een bestelling via de klantenchat worden de betaalafspraken rechtstreeks in de chat besproken. Deel nooit je wachtwoord of volledige betaalgegevens met de chatbot." },
-    { title: "Bestelling volgen", keys: "volgen track trace tracking status bestelling mijn bestellingen voortgang gemaakt klaar bezorgd", phrases: ["waar is mijn bestelling", "bestelling volgen"], answer: "Log in en open ‘Mijn bestellingen’. Daar zie je je bestellingen, betaalstatus en voortgang. Mogelijke statussen zijn ontvangen, verwerkt, in de maak, gemaakt, klaar voor bezorging/ophalen en bezorgd/opgehaald. Bij een bestelling via ophalen kan ‘klaar voor bezorging’ worden weergegeven als klaar om op te halen." },
-    { title: "Retouren en problemen", keys: "retour terugsturen terugbrengen terugbetaling klacht defect beschadigd annuleren", phrases: ["retour aanvragen", "product is kapot"], answer: "Bij een bezorgde of opgehaalde bestelling kun je, wanneer de retourmogelijkheid beschikbaar is, via ‘Mijn bestellingen’ binnen 14 dagen na ontvangst of ophalen een retourverzoek indienen. Of een retour juridisch mogelijk is, hangt onder meer af van het product. Voor producten die volgens persoonlijke specificaties zijn gemaakt, kan een wettelijke uitzondering op het herroepingsrecht gelden. Neem bij een probleem contact op en vermeld je bestelnummer; ieder verzoek wordt beoordeeld." },
-    { title: "Reviews", keys: "review reviews beoordeling beoordelingen sterren ervaring mening feedback", phrases: ["review schrijven", "beoordeling plaatsen"], answer: "Wanneer je bestelling is bezorgd of opgehaald, kun je bij ‘Mijn bestellingen’ voor de betreffende producten een review schrijven als de reviewoptie beschikbaar is. Reviews kunnen daarna bij het product worden getoond." },
-    { title: "Favorieten", keys: "favoriet favorieten hart bewaren wishlist opslaan product", phrases: ["product bewaren", "favoriete producten"], answer: "Gebruik het hartje bij een product om het aan je favorieten toe te voegen. Via de knop ‘Favorieten’ in de navigatie kun je je bewaarde producten terugvinden." },
-    { title: "3D-productvoorbeeld", keys: "3d model 3mf stl draaien preview voorbeeld onderdeel configurator kleuren model", phrases: ["3d model bekijken", "model draaien"], answer: "Sommige producten hebben een interactief 3D-voorbeeld. Je kunt het model op de productpagina met de muis of je vinger draaien. Bij een model met meerdere onderdelen kun je de kleuren kiezen die voor dat product zijn ingesteld. Niet ieder product heeft een 3D-voorbeeld." },
-    { title: "Zoeken in de webshop", keys: "zoeken zoekbalk zoeken product categorie filter vinden assortiment", phrases: ["product zoeken", "waar vind ik"], answer: "Gebruik de zoekbalk bovenaan de webshop en typ de naam of een trefwoord van het product. Je kunt het aanbod ook filteren met de categorieknoppen boven de productlijst." },
-    { title: "Account", keys: "account registreren aanmelden inloggen gebruikersnaam wachtwoord e mail e-mailadres login profiel sessie registratie", phrases: ["account maken", "ik kan niet inloggen", "hoe log ik in", "waar kan ik inloggen", "mijn account"], answer: "Klik bovenaan op ‘Inloggen’. Vul bij ‘Welkom terug’ het e-mailadres en wachtwoord van je klantaccount in en klik op ‘Inloggen’. Een nieuw account maak je via ‘Account aanmaken’: kies een gebruikersnaam van 3–20 tekens (letters, cijfers, punt, _ of -), vul je e-mailadres in en kies een wachtwoord van minimaal 8 tekens. Daarna ben je direct ingelogd. Klik op je gebruikersnaam bovenaan om Mijn bestellingen, Mijn chats, Gebruikersnaam wijzigen en Uitloggen te openen. Er is momenteel geen automatische wachtwoordreset; neem bij een vergeten wachtwoord contact op via de contactpagina en stuur nooit je wachtwoord." },
-    { title: "Privacy en cookies", keys: "privacy persoonsgegevens gegevens cookies cookie toestemming privacyverklaring verwijderen", phrases: ["welke gegevens bewaren jullie", "cookie instellingen"], answer: "Onderaan de webshop vind je de privacyverklaring en cookie-instellingen. Noodzakelijke browseropslag wordt gebruikt voor functies zoals je winkelwagen en sessie. Optionele statistiek- of marketingcookies zijn in deze versie niet geconfigureerd. Dit chatbotgesprek wordt niet naar Firebase verzonden of in de webshop opgeslagen. Voor privacyverzoeken kun je contact opnemen via de contactgegevens op de website." }
-  ];
-  const ranked = docs.map(doc => {
-    const keySet = new Set(assistantTokens(doc.keys));
-    const tokenScore = tokens.reduce((sum, token) => sum + (keySet.has(token) ? 1 : 0), 0);
-    const phraseScore = (doc.phrases || []).reduce((sum, phrase) => sum + (q.includes(assistantNormalize(phrase)) ? 3 : 0), 0);
-    return { doc, score: tokenScore + phraseScore };
-  }).sort((a, b) => b.score - a.score);
-  return ranked[0]?.score >= 2 ? ranked[0].doc : null;
+function assistantOptionsAnswer(question) {
+  const best = assistantFindProducts(question)[0];
+  if (best && best.score >= 4) return assistantProductAnswer(best.product, question);
+  return "De beschikbare opties verschillen per product. Een product kan keuzevelden hebben voor bijvoorbeeld uitvoering, formaat of kleur; sommige keuzes hebben een meerprijs of zijn uitverkocht. Open de productpagina om precies te zien welke opties voor dat product beschikbaar zijn.";
 }
-function answerShopAssistant(question) {
-  const q = assistantNormalize(question);
-  const has = (...terms) => terms.some(term => q.includes(assistantNormalize(term)));
+function assistantColorsAnswer() {
+  const colors = activeFilaments().filter(filament => Number(filament.gramsAvailable || 0) > 0).map(filament => `${filament.name || "Kleur"} (${filament.material || "materiaal niet vermeld"})`);
+  if (!colors.length) return "Ik zie op dit moment geen actieve filamentkleur met beschikbare voorraad in de geladen webshopgegevens. De actuele kleurkeuzes worden per product op de productpagina getoond.";
+  return `De volgende actieve filamentkleuren hebben volgens de geladen gegevens voorraad: ${[...new Set(colors)].join(", ")}.\n\nNiet iedere kleur hoeft bij ieder product te passen. Op de productpagina zie je welke kleuren voor dat specifieke product bestelbaar zijn.`;
+}
+function assistantStockAnswer(question) {
+  const best = assistantFindProducts(question)[0];
+  if (best && best.score >= 4) {
+    const product = best.product;
+    const choices = optionGroupsOf(product).flatMap(group => (group.options || []).filter(option => option.soldOut).map(option => `${group.label || "Keuze"}: ${option.name}`));
+    const available = !isSoldOut(product);
+    return `${product.title || "Dit product"}: ${available ? "volgens de webshop beschikbaar" : "momenteel niet beschikbaar"}.${choices.length ? ` Deze keuze-opties zijn als uitverkocht gemarkeerd: ${choices.join(", ")}.` : " De bestelbare opties worden op de productpagina getoond."} Exacte interne voorraadhoeveelheden deelt de chatbot niet.`;
+  }
+  return "De webshop controleert of een product en de gekozen filamentkleur voldoende voorraad hebben. Opties die uitverkocht zijn of waarvoor onvoldoende filament beschikbaar is, worden niet als bestelbaar aangeboden. Exacte interne voorraadgrammen zijn beheerinformatie en worden hier niet getoond.";
+}
+function assistantFindFaq(question) {
+  const normalized = assistantNormalize(question);
+  if (!normalized) return null;
+  const asksCatalog = /\b(assortiment|catalogus|alle producten|welke producten|wat verkopen|wat hebben jullie|aanbod|collectie)\b/.test(normalized);
+  if (asksCatalog) return ASSISTANT_FAQ.find(item => item.id === "catalog");
   const productMatches = assistantFindProducts(question);
-  const bestProduct = productMatches[0]?.product;
-  const previousProduct = assistantLastProductId ? (state.products || []).find(product => product.id === assistantLastProductId) : null;
-  const followUp = /^(en|maar|en hoe|en wat|daarbij|en die|en deze|hoe zit dat)/.test(q);
-  const targetProduct = bestProduct || (followUp ? previousProduct : null);
-
-  if (has("hoi", "hallo", "goedemorgen", "goedemiddag", "goedenavond")) {
-    assistantLastTopic = "begroeting";
-    return { text: "Hoi! 👋 Ik help je graag met de hele webshop. Je kunt me vragen stellen over producten, prijzen, productkeuzes, kleuren, filament, maatwerk, bestellen, betalen, levertijd, verzending, bestellingen volgen, retouren, reviews, favorieten en je account. Ik zoek de informatie eerst even voor je op.", actions: [] };
+  if (productMatches[0]?.score >= 6) {
+    return { id: "dynamic-product", answer: () => assistantProductAnswer(productMatches[0].product, question) };
   }
-  if (has("wie ben je", "wat kan je", "wat kun je", "waarmee help", "wat doe je", "vertel alles", "wat weet je")) {
-    assistantLastTopic = "mogelijkheden";
-    return { text: "Ik ben de ingebouwde webshopassistent van 3D Printed Shop. Ik kan het actuele assortiment, productbeschrijvingen, prijzen, categorieën, productopties, actieve filamentkleuren en de ingestelde voorraadbeschikbaarheid raadplegen. Ook kan ik uitleggen hoe je bestelt, een eigen tekst invult, een offerte aanvraagt, betaalt, verzendt, een bestelling volgt, een retourverzoek doet, een review schrijft of je favorieten gebruikt. Ik gebruik de actuele informatie van deze webshop. Voor algemene kennis kan ik openbare Wikipedia-pagina’s zonder API-sleutel doorzoeken en voor volledige webresultaten kan ik een DuckDuckGo-zoekopdracht openen. Ik ben geen medewerker die je bestelling handmatig kan aanpassen.", actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Offerte aanvragen", run: () => $("#requestQuoteBtn")?.click() }, { label: "Contact", run: () => openContactPage() }] };
-  }
-
-  // Account-instructies zijn bewust heel concreet: dit voorkomt dat bezoekers
-  // alleen een korte algemene verwijzing naar "inloggen" krijgen.
-  if (has("wachtwoord vergeten", "wachtwoord kwijt", "wachtwoord reset", "wachtwoord herstellen", "password reset", "kan mijn wachtwoord niet herinneren")) {
-    assistantLastTopic = "wachtwoord-vergeten";
-    return { text: `Ben je je wachtwoord vergeten? Op dit moment heeft deze webshop nog geen knop voor ‘Wachtwoord vergeten’ en kan ik het wachtwoord niet automatisch resetten.
-
-Wat je kunt doen:
-1. Controleer eerst of je het e-mailadres gebruikt waarmee je het account hebt aangemaakt.
-2. Controleer of Caps Lock aanstaat en of je wachtwoord precies is getypt.
-3. Probeer niet steeds opnieuw willekeurige wachtwoorden: na meerdere mislukte pogingen kan inloggen tijdelijk worden geblokkeerd.
-4. Lukt het nog steeds niet? Open de contactpagina en vraag de beheerder om hulp bij je account. Vermeld je gebruikersnaam of het e-mailadres van je account, maar stuur nooit je wachtwoord.
-
-Ik kan je wachtwoord niet zien en vraag er ook niet om.`, actions: [{ label: "Contactpagina openen", run: () => openContactPage() }, { label: "Terug naar inloggen", run: () => authForm("login") }] };
-  }
-  if (has("account aanmaken", "account aan", "nieuw account", "account maken", "registreren", "registratie", "aanmelden als nieuwe klant", "ik heb nog geen account")) {
-    assistantLastTopic = "account-aanmaken";
-    return { text: "Zo maak je een klantaccount aan:\n1. Klik bovenaan de webshop op ‘Inloggen’ (het persoonsicoon).\n2. Klik in het venster op ‘Account aanmaken’.\n3. Kies een gebruikersnaam van 3 tot en met 20 tekens. Je mag letters, cijfers, punten (.), underscores (_) en streepjes (-) gebruiken. Spaties zijn niet toegestaan.\n4. Vul je e-mailadres in. Dit wordt gebruikt om je account terug te vinden en is niet je openbare profielnaam.\n5. Kies een wachtwoord van minimaal 8 tekens.\n6. Klik op ‘Account aanmaken’. Bij succes ben je meteen ingelogd.\n\nIs de gebruikersnaam al bezet? Kies dan een andere. Bestaat het e-mailadres al? Gebruik dan ‘Inloggen’ in plaats van nog een account aan te maken. Met je account kun je bestellingen plaatsen, je bestellingen bekijken, chats openen en een maatwerkofferte aanvragen.", actions: [{ label: "Account aanmaken", run: () => authForm("register") }, { label: "Ik heb al een account · Inloggen", run: () => authForm("login") }] };
-  }
-  if (has("kan niet inloggen", "lukt niet inloggen", "inloggen lukt niet", "login werkt niet", "aanmelden mislukt", "verkeerd wachtwoord", "e-mailadres of wachtwoord klopt niet")) {
-    assistantLastTopic = "inlogprobleem";
-    return { text: `Lukt inloggen niet? Probeer dit stap voor stap:
-1. Controleer of je het e-mailadres gebruikt waarmee je het klantaccount hebt aangemaakt. De website haalt spaties weg en zet het e-mailadres om naar kleine letters.
-2. Controleer je wachtwoord. Hoofdletters, kleine letters en cijfers moeten precies kloppen.
-3. Controleer Caps Lock en je toetsenbordtaal.
-4. Als je account al bestaat, kies dan ‘Inloggen’ en niet ‘Account aanmaken’.
-5. Na vijf mislukte pogingen kan er tijdelijk een beveiligingsblokkade komen. Wacht even voordat je opnieuw probeert.
-6. Ben je je wachtwoord vergeten? Deze webshop heeft op dit moment geen automatische wachtwoordreset. Neem contact op via de contactpagina. Stuur nooit je wachtwoord mee.`, actions: [{ label: "Opnieuw proberen", run: () => authForm("login") }, { label: "Wachtwoord vergeten · hulp", run: () => openContactPage() }] };
-  }
-  if (has("hoe log ik in", "hoe moet ik inloggen", "waar kan ik inloggen", "waar zit de inlogknop", "waar staat inloggen", "hoe werkt inloggen", "inloggen op mijn account", "ik wil inloggen", "login stappen", "inlog stappen", "inloggen")) {
-    assistantLastTopic = "inloggen";
-    if (state.user) return { text: `Je bent al ingelogd als ${state.user.username || "klant"}. Klik bovenaan op je gebruikersnaam om naar je accountmenu te gaan. Daar vind je ‘Mijn bestellingen’, ‘Mijn chats’, ‘Gebruikersnaam wijzigen’ en ‘Uitloggen’.`, actions: [{ label: "Mijn account openen", run: () => accountMenu() }, { label: "Mijn bestellingen", run: () => showMyOrders() }] };
-    return { text: "Zo log je in op je klantaccount:\n1. Ga naar de bovenkant van de webshop.\n2. Klik op ‘Inloggen’ (de knop met het persoonsicoon). Op een smal scherm kan deze knop tussen de compacte navigatieknoppen staan.\n3. In het venster ‘Welkom terug’ vul je het e-mailadres in waarmee je je account hebt aangemaakt.\n4. Vul het wachtwoord van dat account in. Let op hoofdletters en kleine letters.\n5. Klik op de blauwe knop ‘Inloggen’.\n\nGelukt? Bovenaan zie je nu je gebruikersnaam in plaats van ‘Inloggen’. Klik daarop om ‘Mijn bestellingen’, ‘Mijn chats’, ‘Gebruikersnaam wijzigen’ of ‘Uitloggen’ te openen.\n\nHeb je nog geen account? Klik in het inlogvenster op ‘Account aanmaken’. Gebruik je het account voor het eerst en vraagt de website om een gebruikersnaam, kies dan een naam van 3–20 tekens (letters, cijfers, punt, _ of -) en sla die op.", actions: [{ label: "Open het inlogscherm", run: () => authForm("login") }, { label: "Nieuw account aanmaken", run: () => authForm("register") }, { label: "Mijn bestellingen", run: () => assistantOpenOrders() }] };
-  }
-  if (has("gebruikersnaam wijzigen", "naam van mijn account wijzigen", "accountnaam wijzigen", "profielnaam wijzigen")) {
-    assistantLastTopic = "gebruikersnaam-wijzigen";
-    if (!state.user) return { text: "Je kunt je gebruikersnaam wijzigen nadat je bent ingelogd. Klik bovenaan op ‘Inloggen’ en log in. Klik daarna op je gebruikersnaam en kies ‘Gebruikersnaam wijzigen’. Je nieuwe naam moet 3–20 tekens bevatten: letters, cijfers, punt, _ of -. Een naam die al door iemand anders wordt gebruikt, kun je niet kiezen.", actions: [{ label: "Inloggen", run: () => authForm("login") }] };
-    return { text: "Je bent ingelogd. Klik bovenaan op je gebruikersnaam. Kies in het accountmenu ‘Gebruikersnaam wijzigen’ en volg de aanwijzingen. De naam moet 3–20 tekens bevatten: letters, cijfers, punt, _ of -. Kies een naam die nog niet door iemand anders wordt gebruikt.", actions: [{ label: "Accountmenu openen", run: () => accountMenu() }] };
-  }
-  if (has("uitloggen", "hoe log ik uit", "hoe moet ik uitloggen", "afmelden", "log uit", "uit mijn account", "uitgelogd worden")) {
-    assistantLastTopic = "uitloggen";
-    if (!state.user) return { text: "Je bent op dit moment niet ingelogd op een klantaccount.", actions: [{ label: "Inloggen", run: () => authForm("login") }] };
-    return { text: "Zo log je uit:\n1. Klik bovenaan op je gebruikersnaam.\n2. Het accountmenu wordt geopend.\n3. Klik op ‘Uitloggen’.\nDaarna zie je bovenaan weer de knop ‘Inloggen’. Je winkelwagen blijft een aparte functie.", actions: [{ label: "Accountmenu openen", run: () => accountMenu() }] };
-  }
-  if (has("sitebeheer", "beheerder inloggen", "inloggen als beheerder", "admin inloggen")) {
-    assistantLastTopic = "sitebeheer";
-    return { text: "Sitebeheer is alleen bedoeld voor de eigenaar/beheerder van de webshop, niet voor gewone klantaccounts. Klik bovenaan op ‘Sitebeheer’ en gebruik de beheerder-inloggegevens die bij de installatie zijn ingesteld. Je klantaccount werkt niet als beheerdersaccount. Deel je beheerderwachtwoord met niemand. Ben je de eigenaar en kom je er niet in? Gebruik dan de veilige herstel-/beheerprocedure van je eigen installatie en deel geen wachtwoord in de chatbot.", actions: [{ label: "Sitebeheer openen", run: () => { closeShopAssistant(); $("#adminEntry")?.click(); } }] };
-  }
-
-  // Gecombineerde praktische vragen worden in één antwoord behandeld.
-  const combined = [];
-  const combinedActions = [];
-  if (has("levertijd", "levering", "hoe lang", "wanneer komt", "bezorgtijd")) combined.push("De maximale levertijd is 14 dagen na het plaatsen van je bestelling.");
-  if (has("verzendkosten", "verzend kost", "kosten verzending", "ophalen", "afhalen", "verzenden")) combined.push(`Verzenden kost ${money(SHIPPING)} per bestelling. Ophalen is gratis. Verzenden is op dit moment beschikbaar voor adressen in Nederland.`);
-  if (has("betalen", "betaling", "betaalverzoek", "tikkie", "betaal")) combined.push("Na een online bestelling ontvang je de betaalinstructies via de betaalmethode die bij je bestelling wordt aangegeven. De betaalstatus en eventuele betaallink vind je via ‘Mijn bestellingen’.");
-  if (combined.length > 1) {
-    assistantLastTopic = "bestellen-en-verzenden";
-    if (has("bestelling", "volgen", "status")) combinedActions.push({ label: "Mijn bestellingen", run: assistantOpenOrders });
-    return { text: combined.join("\n\n"), actions: combinedActions };
-  }
-
-  if (has("levertijd", "levering", "hoe lang", "wanneer komt", "wanneer wordt", "bezorgtijd", "bezorgen", "hoeveel dagen")) {
-    assistantLastTopic = "levertijd";
-    return { text: "De maximale levertijd is 14 dagen na het plaatsen van je bestelling. We proberen bestellingen zo snel mogelijk te maken en te verzenden. Je kunt de actuele voortgang van je eigen bestelling bekijken via ‘Mijn bestellingen’ nadat je bent ingelogd.", actions: [{ label: "Mijn bestellingen", run: assistantOpenOrders }] };
-  }
-  if (has("verzendkosten", "verzend kost", "kosten verzending", "ophalen", "afhalen", "verzenden", "verzend")) {
-    assistantLastTopic = "verzenden";
-    return { text: `Verzenden kost ${money(SHIPPING)} per verzendbestelling. Ophalen is gratis. Verzenden is op dit moment beschikbaar voor adressen in Nederland. Je kiest tijdens het afrekenen of je wilt laten bezorgen of ophalen.`, actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
-  }
-  if (has("offerte", "maatwerk", "eigen ontwerp", "eigen idee", "zelf ontworpen", "custom product", "op maat", "laten maken")) {
-    assistantLastTopic = "offerte";
-    return { text: "Wil je iets laten maken dat nog niet in de webshop staat? Vraag dan een maatwerkofferte aan. Je hebt een klantaccount nodig. Vul de titel en beschrijving in, geef lengte, breedte en hoogte op (ieder maximaal 180 mm), kies een beschikbare offerte-kleur en upload een duidelijke afbeelding (PNG, JPG of WEBP, maximaal 12 MB). Na verzenden wordt een persoonlijke chat geopend om je ontwerp te bespreken. De offertekleuren zijn apart ingesteld en zijn niet automatisch hetzelfde als het filamentpalet van gewone producten.\n\nLet op: kleuren kunnen op zijn voor sommige producten als er veel filament nodig is.", actions: [{ label: "Offerte aanvragen", run: () => $("#requestQuoteBtn")?.click() }] };
-  }
-  if (has("kleur", "kleuren", "filament", "voorraad kleur", "gramvoorraad")) {
-    assistantLastTopic = "filament";
-    if (targetProduct) {
-      assistantLastProductId = targetProduct.id;
-      return { text: assistantColorsText(targetProduct), actions: [{ label: "Bekijk dit product", run: () => showProduct(targetProduct.id) }, { label: "Bekijk alle producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
+  let best = null;
+  let bestScore = 0;
+  for (const entry of ASSISTANT_FAQ) {
+    let score = 0;
+    for (const phrase of entry.terms) {
+      if (normalized.includes(assistantNormalize(phrase))) score += phrase.includes(" ") ? 3 : 1;
     }
-    return { text: assistantColorsText(), actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Offerte aanvragen", run: () => $("#requestQuoteBtn")?.click() }] };
+    if (score > bestScore) { best = entry; bestScore = score; }
   }
-  if (targetProduct && (has("prijs", "kosten", "kost", "beschrijving", "vertel", "meer", "opties", "keuzes", "beschikbaar", "uitverkocht", "kleur", "filament", "tekst", "maat", "model", "3d") || followUp || bestProduct)) {
-    assistantLastProductId = targetProduct.id;
-    assistantLastTopic = "product";
-    return { text: assistantProductSummary(targetProduct, question), actions: [{ label: "Open product", run: () => showProduct(targetProduct.id) }] };
-  }
-  if (has("tekst invoeren", "eigen tekst", "naam erop", "tekstveld", "personaliseren", "personalisatie", "tekstkeuze", "tekst toevoegen")) {
-    assistantLastTopic = "personalisatie";
-    return { text: "Sommige producten hebben een eigen tekstkeuze. Open het product en kijk bij de productopties. Als de beheerder een tekstkeuze heeft ingesteld, zie je een veld met een eigen titel, bijvoorbeeld ‘Welke naam mag erop?’. Daar kun je maximaal 160 tekens invoeren. Je moet de tekst invullen voordat je het product aan de winkelwagen kunt toevoegen. De tekst wordt bij je gekozen product en bestelling bewaard. Niet ieder product heeft deze mogelijkheid.", actions: productMatches.length || previousProduct ? [{ label: "Bekijk product", run: () => showProduct((bestProduct || previousProduct).id) }] : [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
-  }
-  if (has("bestelling volgen", "track", "track and trace", "status bestelling", "mijn bestelling", "waar is mijn bestelling", "bestelnummer", "bestelling staat", "voortgang")) {
-    assistantLastTopic = "bestelling-volgen";
-    return { text: "Je kunt je bestelling bekijken via ‘Mijn bestellingen’. Log in met je klantaccount om de actuele status, eventuele betaalinformatie en de bestelchat te bekijken. Je ziet daar ook wanneer je bestelling in de maak is, klaar is om op te halen of bezorgd is.", actions: [{ label: "Mijn bestellingen", run: assistantOpenOrders }, { label: "Inloggen", run: () => authForm() }] };
-  }
-  if (has("bestellen", "winkelwagen", "afrekenen", "account", "inloggen", "hoe koop", "hoe bestel", "plaats bestelling")) {
-    assistantLastTopic = "bestellen";
-    return { text: "Zo plaats je een bestelling:\n1. Open het product dat je wilt hebben.\n2. Kies de beschikbare opties, zoals filamentkleur, uitvoering of een eigen tekst.\n3. Voeg het product toe aan je winkelwagen en controleer de aantallen en gekozen opties.\n4. Log in of maak een klantaccount aan als je dat nog niet hebt.\n5. Kies tijdens het afrekenen voor verzenden of gratis ophalen en controleer je gegevens.\n6. Plaats je bestelling en volg daarna de status via ‘Mijn bestellingen’. De maximale levertijd is 14 dagen na het plaatsen van je bestelling.", actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Winkelwagen", run: () => { closeShopAssistant(); $("#cartBtn")?.click(); } }, { label: "Inloggen", run: () => authForm() }] };
-  }
-  if (has("betalen", "betaling", "betaalverzoek", "tikkie", "betaal", "betaallink")) {
-    assistantLastTopic = "betalen";
-    return { text: "Na het plaatsen van een online bestelling ontvang je de betaalinstructies via de betaalmethode die bij je bestelling wordt aangegeven, bijvoorbeeld een persoonlijk betaalverzoek. De betaalstatus en eventuele betaallink vind je via ‘Mijn bestellingen’. Bij een bestelling die via de klantenchat wordt aangemaakt, bespreek je de betaalafspraken rechtstreeks in de chat. Deel nooit je wachtwoord of volledige betaalgegevens met de chatbot.", actions: [{ label: "Mijn bestellingen", run: assistantOpenOrders }] };
-  }
-  if (has("retour", "terugsturen", "terugbrengen", "annuleren", "klacht", "defect", "kapot", "beschadigd", "terugbetaling")) {
-    assistantLastTopic = "retour";
-    return { text: "Heb je een probleem met een bestelling? Neem dan contact op via de klantenchat of de contactpagina en vermeld je bestelnummer. Voor een bezorgde of opgehaalde bestelling kun je, wanneer de mogelijkheid beschikbaar is, via ‘Mijn bestellingen’ binnen 14 dagen na ontvangst of ophalen een retourverzoek indienen. Bij producten die volgens persoonlijke specificaties zijn gemaakt, kan een wettelijke uitzondering op het herroepingsrecht gelden. Een retourverzoek wordt beoordeeld; het is dus niet automatisch goedgekeurd.", actions: [{ label: "Mijn bestellingen", run: assistantOpenOrders }, { label: "Contact", run: () => openContactPage() }] };
-  }
-  if (has("materiaal", "materialen", "pla", "petg", "abs", "tpu", "filamentsoort", "filament type")) {
-    const materials = [...new Set(activeFilaments().map(item => String(item.material || "").trim()).filter(Boolean))];
-    assistantLastTopic = "materiaal";
-    return { text: materials.length ? `De actieve materialen die momenteel bij Filamentbeheer staan zijn: ${materials.join(", ")}. Welke materiaal- of kleurkeuze je precies kunt gebruiken, hangt af van de opties van het product.` : "De materiaalgegevens zijn op dit moment niet beschikbaar in de actieve filamentlijst. Bekijk de productkeuzes of neem contact op als je een specifieke materiaalwens hebt.", actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
-  }
-  if (has("annuleren", "annulering", "bestelling wijzigen", "bestelling aanpassen", "verkeerd besteld")) {
-    assistantLastTopic = "bestelling-wijzigen";
-    return { text: "Wil je een bestelling annuleren of wijzigen? Neem dan zo snel mogelijk contact op via ‘Mijn chats’ of de contactpagina en vermeld je bestelnummer. Of een wijziging nog mogelijk is, hangt af van de status en of het product al in productie is. De chatbot kan een bestelling niet zelf aanpassen of annuleren.", actions: [{ label: "Mijn chats", run: () => showMyChats() }, { label: "Mijn bestellingen", run: assistantOpenOrders }, { label: "Contact", run: () => openContactPage() }] };
-  }
-  if (has("prijs", "prijzen", "meerprijs", "toeslag", "korting", "kortingen")) {
-    if (targetProduct) {
-      assistantLastProductId = targetProduct.id;
-      assistantLastTopic = "productprijs";
-      return { text: assistantProductSummary(targetProduct, question) + "\n\nDe getoonde productprijs is de basisprijs. Eventuele meerprijzen of kortingen van gekozen opties worden direct in de productconfigurator bij de totaalprijs opgeteld of afgetrokken. De definitieve prijs zie je voordat je afrekent.", actions: [{ label: "Open product", run: () => showProduct(targetProduct.id) }] };
-    }
-    assistantLastTopic = "prijzen";
-    return { text: "De actuele basisprijs staat op iedere productkaart en productpagina. Sommige productopties kunnen een meerprijs of korting hebben; de totaalprijs wordt bijgewerkt terwijl je de opties kiest. De definitieve prijs en eventuele verzendkosten worden vóór het plaatsen van je bestelling getoond.", actions: [{ label: "Bekijk prijzen", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
-  }
-  if (has("contact", "mailadres", "e-mailadres", "email", "telefoon", "bellen", "openingstijden", "adres")) {
-    assistantLastTopic = "contact";
-    return { text: assistantContactText(), actions: [{ label: "Contactpagina openen", run: () => openContactPage() }] };
-  }
-  if (has("mijn chats", "klantenchat", "persoonlijke chat", "gesprek", "chat openen", "chatten")) {
-    assistantLastTopic = "klantenchat";
-    return { text: "Via ‘Mijn chats’ kun je gesprekken over offertes en bestellingen terugvinden. Log in met je klantaccount om je persoonlijke gesprekken te openen. Na een offerteaanvraag wordt automatisch een chat aangemaakt zodat je de details kunt bespreken. Een bestelling die rechtstreeks via de klantenchat wordt aangemaakt, staat als ophalen geregistreerd; het ophaalmoment wordt in de chat afgesproken.", actions: [{ label: "Mijn chats openen", run: () => showMyChats() }, { label: "Inloggen", run: () => authForm() }] };
-  }
-  if (has("reviews", "review", "beoordelingen", "ervaringen", "sterren")) {
-    assistantLastTopic = "reviews";
-    return { text: "Bij producten kunnen reviews van klanten worden getoond. Nadat je bestelling is bezorgd of opgehaald, kun je via ‘Mijn bestellingen’ bij het product een review schrijven wanneer de reviewoptie beschikbaar is. Je kunt je ervaring en beoordeling daar delen.", actions: [{ label: "Mijn bestellingen", run: assistantOpenOrders }] };
-  }
-  if (has("favoriet", "favorieten", "hartje", "bewaren", "wishlist")) {
-    assistantLastTopic = "favorieten";
-    return { text: "Je kunt een product bewaren door op het hartje bij de productkaart te klikken. Open daarna ‘Favorieten’ in de navigatie om je bewaarde producten terug te vinden.", actions: [{ label: "Favorieten openen", run: () => { closeShopAssistant(); $("#favoritesBtn")?.click(); } }] };
-  }
-  if (has("categorie", "categorieen", "soorten producten", "productsoorten")) {
-    const categories = (state.categories || []).filter(category => category.active !== false).map(category => category.name).filter(Boolean);
-    assistantLastTopic = "categorieen";
-    return { text: categories.length ? `De actieve categorieën in de webshop zijn: ${[...new Set(categories)].join(", ")}. Kies een categorie boven de productlijst om het assortiment te filteren.` : "Er zijn op dit moment geen aparte categorieën ingesteld. Je kunt alle producten bekijken via het assortiment.", actions: [{ label: "Naar het assortiment", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
-  }
-  if (has("producten", "assortiment", "aanbod", "wat verkopen", "wat hebben jullie", "toon producten", "wat is er te koop")) {
-    assistantLastTopic = "assortiment";
-    return { text: assistantProductsText(), actions: [{ label: "Naar het assortiment", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
-  }
-  if (has("3mf", "stl", "modelbestand") && has("offerte", "offerteformulier", "upload", "uploaden", "ontwerp insturen")) {
-    assistantLastTopic = "offerte-bestand";
-    return { text: "Het huidige offerteformulier accepteert een afbeelding van je ontwerp (PNG, JPG of WEBP, maximaal 12 MB). Een STL- of 3MF-bestand kun je daar op dit moment niet rechtstreeks uploaden. Voeg een duidelijke afbeelding toe en beschrijf je ontwerp; neem via de contactpagina of de klantenchat contact op als je ook een 3D-bestand wilt bespreken.", actions: [{ label: "Offerte aanvragen", run: () => $("#requestQuoteBtn")?.click() }, { label: "Contact", run: () => openContactPage() }] };
-  }
-  if (has("niet beschikbaar", "niet op voorraad", "geen voorraad", "uitverkocht", "voorraadprobleem")) {
-    assistantLastTopic = "voorraad";
-    if (targetProduct) {
-      assistantLastProductId = targetProduct.id;
-      return { text: assistantProductSummary(targetProduct, question) + "\n\nEen product of optie kan niet beschikbaar zijn als het product is uitgezet of als de voorraad van een vereiste filamentkleur niet genoeg is voor het verbruik. De beschikbare keuzes op de productpagina zijn leidend.", actions: [{ label: "Bekijk product", run: () => showProduct(targetProduct.id) }] };
-    }
-    return { text: "Bij een 3D-geprint product kan de beschikbaarheid afhangen van de totale productvoorraad en van de hoeveelheid filament die nodig is. Een kleur kan daarom voor het ene product wel en voor een ander product niet beschikbaar zijn. Open het product en kijk welke keuzes actief zijn. Als alle vereiste keuzes uitverkocht zijn, kun je het product op dat moment niet bestellen.", actions: [{ label: "Bekijk assortiment", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Contact", run: () => openContactPage() }] };
-  }
-  if (has("3d", "3mf", "stl", "model draaien", "3d voorbeeld", "preview", "voorvertoning")) {
-    assistantLastTopic = "3d-model";
-    if (targetProduct) {
-      assistantLastProductId = targetProduct.id;
-      return { text: assistantProductSummary(targetProduct, question), actions: [{ label: "Open product", run: () => showProduct(targetProduct.id) }] };
-    }
-    return { text: "Sommige producten hebben een interactief 3D-voorbeeld op de productpagina. Je kunt het model met de muis of je vinger draaien en bij een model met meerdere onderdelen de ingestelde kleuren kiezen. Niet ieder product heeft een 3D-model. De beheerder kan per product een STL- of 3MF-bestand aan het product koppelen; klanten zien het voorbeeld op de productpagina wanneer dit is ingesteld.", actions: [{ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }] };
-  }
-  if (has("zoeken", "zoekbalk", "zoekfunctie", "vinden", "zoek product")) {
-    assistantLastTopic = "zoeken";
-    return { text: "Bovenaan de webshop staat een zoekbalk. Typ de productnaam of een trefwoord en druk op Enter of op ‘Zoeken’. Je kunt het aanbod ook filteren met de categorieknoppen boven de producten.", actions: [{ label: "Naar de zoekbalk", run: () => { closeShopAssistant(); $("#search")?.focus(); window.scrollTo({ top: 0, behavior: "smooth" }); } }] };
-  }
-  if (has("privacy", "persoonsgegevens", "gegevens verwijderen", "cookies", "cookie", "toestemming")) {
-    assistantLastTopic = "privacy";
-    return { text: "Onderaan de webshop vind je de privacyverklaring en cookie-instellingen. Noodzakelijke browseropslag wordt gebruikt voor functies zoals je winkelwagen en sessie. Optionele statistiek- of marketingcookies zijn in deze versie niet geconfigureerd. Dit gesprek met de webshopassistent wordt niet naar Firebase verzonden of in de webshop opgeslagen. Voor een persoonlijk privacyverzoek kun je contact opnemen via de contactgegevens op de website.", actions: [{ label: "Privacyverklaring", run: () => { closeShopAssistant(); $("#openPrivacy")?.click(); } }, { label: "Cookie-instellingen", run: () => { closeShopAssistant(); $("#openCookieSettings")?.click(); } }] };
-  }
-  if (has("winkelwagen", "mandje", "aantal aanpassen", "aantal wijzigen", "verwijderen uit winkelwagen")) {
-    assistantLastTopic = "winkelwagen";
-    return { text: "Open de winkelwagen via de knop bovenaan. Daar zie je je producten, aantallen, gekozen kleuren en andere opties. Je kunt aantallen aanpassen of een product verwijderen voordat je afrekent.", actions: [{ label: "Winkelwagen openen", run: () => { closeShopAssistant(); $("#cartBtn")?.click(); } }] };
-  }
-  if (has("account", "registreren", "aanmelden", "gebruikersnaam", "wachtwoord", "inloggen")) {
-    assistantLastTopic = "account";
-    return { text: "Voor online bestellingen heb je een klantaccount nodig. Bij het aanmaken kies je een gebruikersnaam van 3–20 tekens en een wachtwoord van minimaal 8 tekens. De chatbot kan je wachtwoord niet bekijken of opnieuw instellen. Lukt inloggen niet, controleer dan je e-mailadres en wachtwoord of neem contact op via de contactpagina.", actions: [{ label: "Inloggen of account maken", run: () => authForm() }, { label: "Contact", run: () => openContactPage() }] };
-  }
-
-  // Als de vraag een productnaam bevat, geef productspecifieke informatie.
-  if (bestProduct) {
-    assistantLastProductId = bestProduct.id;
-    assistantLastTopic = "product";
-    return { text: assistantProductSummary(bestProduct, question), actions: [{ label: "Open product", run: () => showProduct(bestProduct.id) }] };
-  }
-
-  // Herken natuurlijk geformuleerde vragen op basis van lokale webshopkennis.
-  const knowledge = assistantKnowledgeSearch(question);
-  if (knowledge) {
-    assistantLastTopic = knowledge.title;
-    const text = typeof knowledge.answer === "function" ? knowledge.answer() : knowledge.answer;
-    const actions = [];
-    if (knowledge.title === "Maatwerk en offertes") actions.push({ label: "Offerte aanvragen", run: () => $("#requestQuoteBtn")?.click() });
-    if (knowledge.title === "Verzenden en ophalen" || knowledge.title === "Levertijd") actions.push({ label: "Mijn bestellingen", run: assistantOpenOrders });
-    if (knowledge.title === "Een product kiezen en bestellen") actions.push({ label: "Bekijk producten", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } });
-    return { text, actions };
-  }
-
-  assistantLastTopic = "onbekend";
-  return { text: "Ik heb geen zeker antwoord gevonden in de informatie van deze webshop. Ik controleer daarom ook openbare informatie. Voor je persoonlijke bestelling heb je je klantaccount nodig: open ‘Mijn bestellingen’ of ‘Mijn chats’. Deel nooit je wachtwoord of betaalgegevens in de chat.", searchWeb: true, actions: [{ label: "Bekijk assortiment", run: () => { closeShopAssistant(); document.querySelector("#producten")?.scrollIntoView({ behavior: "smooth" }); } }, { label: "Contact opnemen", run: () => openContactPage() }] };
+  return bestScore >= 1 ? best : null;
 }
-function assistantWantsWebSearch(question) {
+function assistantIsSafetyRestricted(question) {
   const q = assistantNormalize(question);
-  return /\b(zoek|zoeken|zoekopdracht|vind|opzoeken)\b/.test(q) && /\b(internet|online|web|website|websites|buiten de webshop)\b/.test(q)
-    || /\b(op het internet|op internet|op het web|online zoeken|web zoeken|zoek op internet|zoek online)\b/.test(q);
-}
-function assistantWebQuery(question) {
-  let query = String(question || "").trim();
-  query = query.replace(/^(?:kun je|kan je|wil je|graag)?\s*(?:even\s*)?(?:zoek|zoeken|zoek op|zoek eens|vind|zoek uit)\s+(?:(?:eens|ook)\s+)?(?:(?:op|in)\s+)?(?:het\s+)?(?:internet|web|online)(?:\s+naar)?\s*/i, "");
-  query = query.replace(/^(?:zoek|zoeken|vind)\s+(?:op\s+)?(?:het\s+)?(?:internet|web|online)\s*(?:naar)?\s*/i, "");
-  return query.trim() || String(question || "").trim();
-}
-function assistantBlockedWebSearch(query) {
-  const q = assistantNormalize(query);
-  const restricted = [
-    /\b(wapen|wapens|pistool|pistolen|geweer|geweren|vuurwapen|munitie|kogels|messen|mes|switchblade|knife|knives|gun|firearm|ammunition)\b/,
+  return [
+    /\b(wapen|wapens|pistool|pistolen|geweer|geweren|vuurwapen|munitie|kogels|mes|messen|switchblade|knife|knives|gun|firearm|ammunition)\b/,
     /\b(drugs|wiet|cannabis|hasj|cocaine|xtc|mdma|speed|meth|heroine|vape|vapen|sigaret|nicotine|alcohol|drank)\b/,
     /\b(gokken|casino|sportweddenschap|weddenschap|betting|gambling|poker|slots)\b/,
     /\b(porno|pornografie|porn|sexvideo|adult video)\b/,
-    /\b(gevaarlijke challenge|choking challenge|fire challenge|treinsurfen|train surfing)\b/
+    /\b(zelfmoord|zelfdoding|zelfbeschadiging|zelfverwonding|suicide|self harm|self-harm)\b/,
+    /\b(gevaarlijke challenge|choking challenge|fire challenge|treinsurfen|train surfing|van een brug springen|extreme stunt)\b/
+  ].some(pattern => pattern.test(q));
+}
+function assistantContainsPrivateData(question) {
+  const value = String(question || "");
+  return /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i.test(value)
+    || /(?:\+31|0031|0)[\s.-]?(?:6|[1-9])[\d\s().-]{7,}/.test(value)
+    || /\b[1-9][0-9]{3}\s?[A-Z]{2}\b/i.test(value)
+    || /\bNL\d{2}[A-Z]{4}\d{10}\b/i.test(value)
+    || /\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){11,30}\b/i.test(value)
+    || /\b(?:kaartnummer|creditcardnummer|rekeningnummer|bankrekening|cvc|cvv)\s*(?:is|:|=)\s*[A-Z0-9 -]{3,}/i.test(value)
+    || /\b(?:wachtwoord|password|inlogcode|herstelcode|pincode|gebruikersnaam|login|accountnaam)\s*(?:is|:|=)\s*\S+/i.test(value)
+    || /\b(?:bestelnummer|ordernummer|klantnummer|offertenummer|trackingcode|track(?:\s|-)?en(?:\s|-)?trace)\s*(?:is|:|#|=)?\s*[A-Z0-9-]{4,}\b/i.test(value)
+    || /\b(?:mijn|ons|het)\s*(?:huisadres|woonadres|bezorgadres|verzendadres|adres)\s*(?:is|:|=)\s*[^,;]{5,}/i.test(value)
+    || /\b[A-ZÀ-ÿ][A-ZÀ-ÿ' -]{2,}(?:straat|laan|weg|plein|dreef|hof|pad)\s+\d{1,4}[A-Z]?\b/i.test(value);
+}
+function assistantIsWebSearchRequest(question) {
+  return /\b(op het internet|op internet|op het web|online zoeken|zoek online|zoek op internet|zoek op het web|web zoeken|zoekmachine|zoek op google|zoek op bing|zoek op duckduckgo)\b/i.test(question);
+}
+function assistantIsShopQuestion(question) {
+  return /\b(webshop|webwinkel|website|winkel|shop|jullie|uw|bedrijf|bestel|bestelling|order|product|producten|filament|kleur|voorraad|levering|verzend|retour|offerte|maatwerk|winkelwagen|winkelmand|account|inlog|wachtwoord|gebruikersnaam|betaal|betaling|tikkie|stl|3mf|slicer|review|favoriet|chat|printercamera|ophalen)\b/i.test(assistantNormalize(question));
+}
+function assistantWebQuery(question) {
+  return String(question || "").trim().replace(/\s+/g, " ").slice(0, 300);
+}
+function assistantSearchQuery(question, scope = "general") {
+  const query = assistantWebQuery(question);
+  if (scope !== "shop") return query;
+  const host = String(window.location.hostname || "").replace(/[^a-z0-9.-]/gi, "");
+  const firstPath = String(window.location.pathname || "/").split("/").filter(Boolean)[0] || "";
+  const siteTarget = host ? `${host}${firstPath ? `/${firstPath}` : ""}` : "";
+  return siteTarget ? `${query} site:${siteTarget}` : `${query} 3D Printed Shop`;
+}
+function assistantSearchEngineLinks(query) {
+  const q = encodeURIComponent(query);
+  return [
+    { label: "Google", url: `https://www.google.com/search?q=${q}` },
+    { label: "Bing", url: `https://www.bing.com/search?q=${q}` },
+    { label: "DuckDuckGo", url: `https://duckduckgo.com/?q=${q}` },
+    { label: "Brave", url: `https://search.brave.com/search?q=${q}` }
   ];
-  return restricted.some(pattern => pattern.test(q));
 }
-function assistantOpenFullWebSearch(query) {
-  if (assistantBlockedWebSearch(query)) return;
-  const url = `https://duckduckgo.com/?q=${encodeURIComponent(String(query || ""))}`;
-  window.open(url, "_blank", "noopener,noreferrer");
-}
-async function assistantFetchJson(url, timeoutMs = 9000) {
+async function assistantSearchOnline(question, scope = "general") {
+  const queryText = assistantSearchQuery(question, scope);
   const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  const timeout = window.setTimeout(() => controller.abort(), 20000);
   try {
-    const response = await fetch(url, { method: "GET", mode: "cors", credentials: "omit", headers: { Accept: "application/json" }, signal: controller.signal });
-    if (!response.ok) throw new Error(`Openbare zoekbron gaf HTTP ${response.status}`);
-    return await response.json();
-  } finally { window.clearTimeout(timer); }
-}
-function assistantPlainText(value) {
-  return String(value || "").replace(/<[^>]*>/g, " ").replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
-}
-async function assistantSearchWikipedia(query) {
-  // Eerst Nederlandstalige Wikipedia proberen en bij weinig/geen treffers
-  // uitwijken naar de Engelstalige encyclopedie. Beide endpoints zijn publiek.
-  for (const language of ["nl", "en"]) {
-    const endpoint = `https://${language}.wikipedia.org/w/api.php`;
-    const searchParams = new URLSearchParams({ action: "query", list: "search", srsearch: query, srlimit: "4", srnamespace: "0", format: "json", origin: "*" });
-    const searchData = await assistantFetchJson(`${endpoint}?${searchParams}`);
-    const hits = Array.isArray(searchData?.query?.search) ? searchData.query.search.slice(0, 4) : [];
-    if (!hits.length) continue;
-    const ids = hits.map(hit => hit.pageid).filter(Number.isFinite);
-    const extractParams = new URLSearchParams({ action: "query", prop: "extracts", pageids: ids.join("|"), exintro: "1", explaintext: "1", exchars: "560", format: "json", origin: "*" });
-    const detailData = await assistantFetchJson(`${endpoint}?${extractParams}`);
-    const pages = detailData?.query?.pages || {};
-    return hits.map(hit => {
-      const page = pages[String(hit.pageid)] || {};
-      return {
-        title: String(hit.title || page.title || "Wikipedia-pagina"),
-        extract: assistantPlainText(page.extract || hit.snippet || "").slice(0, 560),
-        url: `https://${language}.wikipedia.org/?curid=${encodeURIComponent(String(hit.pageid))}`,
-        language
-      };
-    }).filter(item => item.title && item.url);
-  }
-  return [];
-}
-async function assistantWebSearchAnswer(query) {
-  const actions = [];
-  let text = "Ik heb geen direct passend antwoord in de lokale webshopinformatie gevonden.";
-  try {
-    const results = await assistantSearchWikipedia(query);
-    if (results.length) {
-      text = `Ik heb openbare informatie gevonden via Wikipedia over “${query}”. Dit zijn korte samenvattingen (Nederlands waar beschikbaar, anders Engels); open een bron voor de volledige pagina:`;
-      results.slice(0, 3).forEach((result, index) => {
-        text += `\n\n${index + 1}. ${result.title}${result.extract ? `\n${result.extract}` : ""}`;
-        actions.push({ label: `Bron openen: ${result.title.slice(0, 34)}`, run: () => window.open(result.url, "_blank", "noopener,noreferrer") });
-      });
-    } else {
-      text = `Ik heb via de openbare Wikipedia-zoekfunctie geen passende samenvatting gevonden voor “${query}”. Voor algemene webpagina’s kun je de volledige zoekopdracht openen.`;
+    const response = await fetch("https://api.tavily.com/search", {
+      method: "POST",
+      mode: "cors",
+      credentials: "omit",
+      headers: { "Content-Type": "application/json", "X-Tavily-Access-Mode": "keyless" },
+      body: JSON.stringify({ query: queryText, topic: "general", search_depth: "basic", max_results: 5, include_answer: "basic", include_raw_content: false, include_favicon: false, include_published_date: true, safe_search: true, language: "nl" }),
+      signal: controller.signal
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = data?.detail?.error || data?.detail || data?.message || data?.error || `HTTP ${response.status}`;
+      throw new Error(String(detail).slice(0, 240));
     }
-  } catch (error) {
-    console.warn("Wikipedia search unavailable", error);
-    text = `De openbare encyclopedie kon nu niet worden bereikt voor “${query}”. Je kunt de volledige zoekopdracht rechtstreeks openen in DuckDuckGo. Ik heb geen API-sleutel nodig, maar de externe zoekdienst moet wel bereikbaar zijn.`;
+    const results = Array.isArray(data?.results) ? data.results.filter(item => item && /^https:\/\//i.test(String(item.url || ""))).slice(0, 5) : [];
+    return { query: queryText, answer: String(data?.answer || "").trim(), results, responseTime: data?.response_time || null };
+  } finally {
+    window.clearTimeout(timeout);
   }
-  actions.push({ label: "Volledige webresultaten openen", run: () => assistantOpenFullWebSearch(query) });
-  return { text, actions };
 }
-
+function assistantAddOnlineResults(question, data, shopSearch = false) {
+  const engineLinks = assistantSearchEngineLinks(data.query || question);
+  const hasAnswer = !!data.answer;
+  const searchLabel = shopSearch ? "de openbare webshopinformatie" : "het internet";
+  const summary = hasAnswer
+    ? `Ik heb ${searchLabel} doorzocht voor “${question}”. Hieronder staat een korte samenvatting op basis van de gevonden webbronnen. Controleer belangrijke of actuele informatie altijd bij de oorspronkelijke bron.`
+    : data.results.length
+      ? `Ik heb in ${searchLabel} bronnen gevonden voor “${question}”. Dit zijn de beste treffers en hun samenvattingen:`
+      : `De online zoekdienst gaf geen bruikbaar antwoord op “${question}”. Je kunt de zoekopdracht ook rechtstreeks in een zoekmachine openen.`;
+  const bubble = assistantAddMessage(hasAnswer ? `${summary}\n\n${data.answer}` : summary, "bot", assistantBuildActions(question));
+  if (!bubble) return;
+  if (data.results.length) {
+    const list = document.createElement("div");
+    list.className = "assistant-web-results";
+    data.results.forEach(item => {
+      const card = document.createElement("a");
+      card.className = "assistant-web-result";
+      card.href = item.url;
+      card.target = "_blank";
+      card.rel = "noopener noreferrer";
+      const title = document.createElement("strong");
+      title.textContent = String(item.title || item.url).slice(0, 140);
+      const snippet = document.createElement("span");
+      snippet.textContent = String(item.content || "").slice(0, 360);
+      const domain = document.createElement("small");
+      try { domain.textContent = new URL(item.url).hostname.replace(/^www\./, ""); } catch { domain.textContent = "Webbron"; }
+      if (item.published_date) domain.textContent += ` · ${String(item.published_date).slice(0, 16)}`;
+      card.append(title, snippet, domain);
+      list.append(card);
+    });
+    bubble.append(list);
+  }
+  const engines = document.createElement("div");
+  engines.className = "assistant-search-engines";
+  const label = document.createElement("span");
+  label.textContent = "Ook zoeken via:";
+  engines.append(label);
+  engineLinks.forEach(item => {
+    const link = document.createElement("a");
+    link.href = item.url; link.target = "_blank"; link.rel = "noopener noreferrer";
+    link.textContent = item.label;
+    engines.append(link);
+  });
+  bubble.append(engines);
+  assistantMessages.scrollTop = assistantMessages.scrollHeight;
+}
 async function sendShopAssistantQuestion(value) {
   const question = String(value || "").trim();
   if (!question || assistantBusy) return;
@@ -2948,30 +2797,48 @@ async function sendShopAssistantQuestion(value) {
   const submitButton = assistantForm?.querySelector('button[type="submit"]');
   if (submitButton) submitButton.disabled = true;
   assistantAddMessage(question, "user");
-  const explicitWebSearch = assistantWantsWebSearch(question);
-  const thinking = assistantAddThinking(explicitWebSearch ? "Ik doorzoek openbare informatie en controleer de bronnen…" : "Ik controleer de webshopinformatie…");
+  const thinking = assistantAddThinking("Ik controleer de webshop-FAQ…");
+  let searchScope = "general";
   try {
-    // Eerst de lokale webshopregels en actuele productgegevens controleren.
-    await new Promise(resolve => window.setTimeout(resolve, Math.min(700, 220 + question.length * 3)));
-    const answer = answerShopAssistant(question);
-    if (explicitWebSearch || answer.searchWeb) {
-      const query = assistantWebQuery(question);
-      if (assistantBlockedWebSearch(query)) {
-        thinking?.remove();
-        assistantAddMessage("Ik kan niet helpen met het zoeken naar gevaarlijke of leeftijdsgebonden producten, diensten of activiteiten. Ik kan wel algemene, veilige informatie geven over gezondheid, wetgeving of risico’s.", "bot");
-      } else {
-        const webAnswer = await assistantWebSearchAnswer(query);
-        thinking?.remove();
-        assistantAddMessage(webAnswer.text, "bot", webAnswer.actions || []);
-      }
-    } else {
+    if (assistantIsSafetyRestricted(question)) {
       thinking?.remove();
-      assistantAddMessage(answer.text, "bot", answer.actions || []);
+      assistantAddMessage("Ik kan niet helpen met praktische instructies of zoekhulp voor dit onderwerp.", "bot");
+    } else if (assistantContainsPrivateData(question)) {
+      thinking?.remove();
+      assistantAddMessage("Deel geen e-mailadres, telefoonnummer, postcode, IBAN, wachtwoord of herstelcode in deze chat. Ik heb je bericht niet doorgestuurd naar de online zoekdienst. Stel je vraag opnieuw zonder persoonlijke gegevens.", "bot");
+    } else {
+      const explicitWeb = assistantIsWebSearchRequest(question);
+      const faq = explicitWeb ? null : assistantFindFaq(question);
+      if (faq) {
+        thinking?.remove();
+        assistantAddMessage(faq.answer({ question }), "bot", assistantBuildActions(question));
+      } else {
+        searchScope = assistantIsShopQuestion(question) && !explicitWeb ? "shop" : "general";
+        const label = thinking?.querySelector(".assistant-thinking-label");
+        if (label) label.textContent = searchScope === "shop"
+          ? "Ik zoek op de openbare webshopsite en controleer de bronnen…"
+          : "Ik zoek actuele online bronnen en controleer de resultaten…";
+        const data = await assistantSearchOnline(question, searchScope);
+        thinking?.remove();
+        assistantAddOnlineResults(question, data, searchScope === "shop");
+      }
     }
   } catch (error) {
-    console.error("Shop assistant failed", error);
+    console.warn("Online shop assistant search failed", error);
     thinking?.remove();
-    assistantAddMessage("Er ging iets mis bij het opzoeken van de informatie. Probeer het nog eens of neem contact op.", "bot", [{ label: "Contact", run: () => openContactPage() }]);
+    const detail = String(error?.message || "");
+    const rateLimited = /429|rate|limit|quota|capacity/i.test(detail);
+    const fallback = assistantAddMessage(rateLimited
+      ? "De gratis sleutelvrije zoekdienst heeft tijdelijk zijn gebruikslimiet bereikt. Probeer het later opnieuw. Je kunt dezelfde vraag hieronder ook rechtstreeks in een zoekmachine openen."
+      : "De online zoekdienst is op dit moment niet bereikbaar. Je kunt dezelfde vraag hieronder rechtstreeks in een zoekmachine openen.", "bot");
+    if (fallback) {
+      const engines = document.createElement("div"); engines.className = "assistant-search-engines";
+      const label = document.createElement("span"); label.textContent = "Zoek verder via:"; engines.append(label);
+      assistantSearchEngineLinks(assistantSearchQuery(question, searchScope)).forEach(item => {
+        const link = document.createElement("a"); link.href = item.url; link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = item.label; engines.append(link);
+      });
+      fallback.append(engines);
+    }
   } finally {
     assistantBusy = false;
     if (assistantInput) assistantInput.disabled = false;

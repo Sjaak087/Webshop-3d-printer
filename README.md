@@ -1,4 +1,4 @@
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v21)
+# 3D Printed Shop — gratis GitHub/Firebase-editie (v27)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.
@@ -146,6 +146,8 @@ Publiceer de inhoud van deze ZIP in dezelfde GitHub-repository. De live Firebase
 
 De lokale controles controleren JavaScript-syntaxis, HTML-structuur en ZIP-integriteit. De weergave kan niet op ieder fysiek laptopscherm worden geverifieerd; test de gepubliceerde site ook even op jouw laptop.
 
+> **Let op bij de versiegeschiedenis:** versie 27 vervangt de lokale AI uit versie 26 door een uitgebreide webshop-FAQ met online zoeken zonder installatie, WebGPU of API-sleutel. Alleen de sectie **Versie 27** beschrijft de huidige chatbot; de onderdelen over versies 22–26 zijn historie.
+
 ## Versie 22 – webshopassistent
 
 Deze versie voegt een vaste webshopassistent rechtsonder toe. De assistent gebruikt de reeds geladen product-, categorie-, productoptie-, filament- en contactgegevens uit de webshop om vragen te beantwoorden over onder meer:
@@ -215,3 +217,37 @@ Let op: versie 22 voegt geen Cloudflare D1-database of Worker toe. Bestaande pro
 5. Vraag: “Zoek op internet naar wat is 3D-printen” — de bot doet een Wikipedia-zoekactie en biedt een knop voor volledige DuckDuckGo-resultaten.
 6. Stel een onbekende vraag — de bot probeert openbare kennis te zoeken, en meldt wanneer er geen samenvatting beschikbaar is.
 7. Controleer dat alle oude webshopacties, productinformatie en de 14-dagen-levertijd blijven werken.
+
+
+## Historische versie 26 — lokale generatieve AI (niet meer actief)
+
+De chatbot is omgebouwd van trefwoordherkenning en vooraf geschreven FAQ-teksten naar een lokaal generatief taalmodel. Hij gebruikt **Qwen3.5-2B** via **WebLLM** in de browser. Het model formuleert antwoorden zelf op basis van een actuele, compacte context uit de geladen Firebase-catalogus en feitelijke uitleg over de functies van de website.
+
+- Geen AI-API-sleutel, AI-account, betaalde AI-dienst of Cloudflare nodig.
+- De AI-inference gebeurt lokaal in de browser; chatberichten worden niet naar Firebase of een AI-cloud verstuurd.
+- Producten, basisprijzen, beschrijvingen, categorieën, opties, meerprijzen, actieve filamentkleuren, beschikbaarheid, 3D-preview- en reviewinformatie komen uit de actuele webshopstatus.
+- De assistent krijgt ook de feitelijke werking van accounts, bestellen, winkelwagen, maatwerkoffertes, chats, tracking, verzending, ophalen, betaling, retouren, reviews, favorieten, contact, privacy en Sitebeheer mee.
+- De eerste keer moet de browser de WebLLM-engine en het model downloaden. WebLLM vereist WebGPU; apparaten zonder geschikte GPU kunnen de chatbot niet lokaal gebruiken. Het gekozen model heeft volgens de gepubliceerde modeltabel een geschatte VRAM-behoefte van circa 2,2 GB. Dat is een indicatie; de werkelijke eisen verschillen per browser en apparaat.
+- De browsercache kan modelbestanden voor volgende bezoeken bewaren.
+- De chatbot heeft geen onbeperkte toegang tot alle websites. Een expliciete openbare zoekopdracht gebruikt de Wikimedia/Wikipedia-zoekfunctie; het openen van volledige DuckDuckGo-resultaten gebeurt buiten de chatbot en die pagina wordt niet automatisch gelezen.
+- De AI kan nog steeds fouten maken. Ontbrekende webshopgegevens moeten als onbekend worden gemeld, niet worden verzonnen.
+
+**Belangrijk:** test WebGPU en de eerste modeldownload na publicatie op een echte laptop/desktop en mobiel apparaat. Alleen JavaScript-syntaxis- en ZIP-controles kunnen de werking van de GPU-engine niet bewijzen. Zie `TEST-CHATBOT.md`.
+
+
+## Versie 27 — uitgebreide webshop-FAQ en sleutelvrij online zoeken
+
+De chatbot is opnieuw opgebouwd zodat bezoekers niets hoeven te downloaden of te installeren. De lokale WebLLM/WebGPU-engine uit versie 26 is verwijderd.
+
+- Webshopvragen worden beantwoord met een uitgebreide Nederlandse FAQ over assortiment, prijzen, productopties, filamentkleuren en materialen, voorraadstatus, maatwerkoffertes, eigen tekst, 3D-previews, STL/3MF, slicers, bestellen, winkelwagen, accountfuncties, betalen, verzending, ophalen, tracking, retouren, reviews, favorieten, klantenchat, printercamera, privacy, cookies, voorwaarden en contact.
+- De chatbot gebruikt de geladen publieke productcatalogus, basisprijzen, actuele productopties, actieve filamentkleuren en beschikbaarheidsstatus. Productvragen kunnen dus aansluiten bij de gegevens in Firebase die de webshop al publiek heeft geladen.
+- Algemene vragen buiten de FAQ worden automatisch online gezocht. De integratie gebruikt de sleutelvrije Tavily Search API met `X-Tavily-Access-Mode: keyless`; volgens de Tavily-documentatie vereist dit geen account, API-sleutel of configuratie. De sleutelvrije dienst is gratis maar wel begrensd in gebruik. Wanneer de limiet is bereikt of de dienst niet werkt, toont de chatbot directe links naar Google, Bing, DuckDuckGo en Brave.
+- Online zoekresultaten bevatten een korte door Tavily gegenereerde samenvatting plus links naar de gevonden websites. Bronnen openen in een nieuw tabblad. Controleer belangrijke, actuele of gevoelige informatie bij de oorspronkelijke bron.
+- Privacybescherming: de chatbot haalt geen klantprofielen, adressen, gebruikersnamen, bestellingen, offertes of privéchats uit Firebase op. Deze gegevens worden ook niet naar Tavily verstuurd. Berichten worden niet in Firebase opgeslagen. Invoer die lijkt op een e-mailadres, telefoonnummer, Nederlandse postcode, IBAN, ingevulde inloggegevens, klant-/bestelnummer, trackingcode of concreet huisadres wordt geblokkeerd vóór online zoeken.
+- De bot vraagt nooit om wachtwoorden, herstelcodes, volledige betaalkaartgegevens of persoonlijke adresgegevens. Voor eigen bestellingen en accountinformatie verwijst hij naar de normale, ingelogde schermen van de webshop.
+- Er is geen lokale AI-modeldownload, WebGPU-ondersteuning, externe API-sleutel, Cloudflare-onderdeel of aparte installatie nodig. Alleen de online zoekfunctie vereist een internetverbinding; de FAQ werkt met de webshopgegevens die de pagina al geladen heeft.
+- De volledige webzoekfunctie is afhankelijk van de beschikbaarheid en gebruikslimieten van Tavily. De rechtstreekse zoekmachineknoppen zijn een terugvalmogelijkheid, geen garantie dat een externe zoekmachine de inhoud in de chatbot teruglevert.
+
+### Testen versie 27
+
+Zie `TEST-CHATBOT.md` voor de uitgebreide checklist. Controleer in elk geval dat er geen WebGPU-download verschijnt, dat webshopantwoorden kloppen met de live catalogus, dat onbekende algemene vragen online worden opgezocht, dat bronlinks werken en dat de chatbot geen privégegevens uit Firebase kan ophalen. Test de sleutelvrije Tavily-aanroep ook op de gepubliceerde GitHub Pages-site; externe diensten kunnen hun voorwaarden, CORS-instellingen of gebruikslimieten wijzigen.
