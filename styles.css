@@ -1120,3 +1120,24 @@ body.maintenance-active>#toast{z-index:10002}
 .push-welcome .full{margin-top:8px;min-height:44px}
 .push-welcome-note{display:block;margin:14px auto 0;max-width:410px;color:#8492a5;font-size:10px;line-height:1.6}
 .push-welcome-note.is-error{color:#bd3c36}
+
+/* Productbadges, filamentcapaciteit en winkelwagen-aanbevelingen */
+.color-capacity-badge{display:inline-flex;align-items:center;margin:5px 0 0 24px;padding:4px 8px;border-radius:999px;background:#edf7f0;color:#176b39;font-size:11px;font-weight:700}
+.product-new-badge,.bestseller-badge{position:absolute;top:10px;left:10px;z-index:2;padding:6px 9px;border-radius:999px;font-size:10px;font-weight:800;letter-spacing:.04em}
+.product-new-badge{background:#e9f1ff;color:#2055a5}
+.bestseller-badge{top:42px;background:#fff0cf;color:#815300}
+.example-color-warning{margin-top:12px;padding:12px 14px;border:1px solid #e9c66b;border-radius:10px;background:#fff9e8;color:#73551b;font-size:13px;line-height:1.5}
+.cart-addons{margin-top:22px;padding-top:16px;border-top:1px solid var(--border,#e5e7eb)}
+.cart-addons h3{font-size:15px;margin:0 0 12px}
+.cart-addon-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cart-addon{display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--border,#e5e7eb);border-radius:12px;background:var(--surface,#fff);min-width:0}
+.cart-addon img,.cart-addon-placeholder{width:100%;height:112px;object-fit:cover;border-radius:8px;background:var(--surface-alt,#f2f3f5)}
+.cart-addon-placeholder{display:grid;place-items:center;font-size:30px;color:var(--muted,#87909b)}
+.cart-addon-info{display:flex;flex-direction:column;gap:4px;min-width:0}
+.cart-addon-info b{overflow-wrap:anywhere}
+.cart-addon-info span{font-weight:700}.cart-addon .secondary{width:100%}
+.maintenance-message{white-space:pre-line;overflow-wrap:anywhere}
+.maintenance-message-editor{display:grid;gap:10px;margin-top:14px}
+.maintenance-message-editor textarea{width:100%;min-height:90px;padding:12px;border:1px solid var(--border,#ddd);border-radius:10px;font:inherit}
+.maintenance-message a{color:inherit;text-decoration:underline;text-underline-offset:3px}
+@media(max-width:520px){.cart-addon-grid{grid-template-columns:1fr}}

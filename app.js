@@ -31,7 +31,7 @@ const statusLabel = (order, status = order?.status) => {
   return status || "ontvangen";
 };
 const fulfillmentLabel = order => isPickupOrder(order) ? "Ophalen" : "Verzenden";
-const state = { user: null, admin: false, maintenanceActive: false, products: [], categories: [], optionSets: {}, filaments: [], reviews: {}, favoriteIds: new Set(), categoryFilter: "all", cart: [], tab: "dashboard", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
+const state = { user: null, admin: false, maintenanceActive: false, maintenanceMessage: "We proberen dit zo snel mogelijk te fixen.", products: [], categories: [], optionSets: {}, filaments: [], reviews: {}, favoriteIds: new Set(), categoryFilter: "all", cart: [], tab: "dashboard", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 const DEFAULT_CONTACT = { title: "Neem contact met ons op", intro: "Heb je een vraag over een product of bestelling? Neem gerust contact met ons op.", name: "", address: "", email: "", phone: "", hours: "", extra: "" };
 let contactSettings = { ...DEFAULT_CONTACT };
@@ -387,9 +387,42 @@ function usernamePrompt(uid, email, suggested = "") {
     finally { btn.disabled = false; }
   };
 }
+function renderMaintenanceMessage(element, value) {
+  if (!element) return;
+  const message = String(value || "We proberen dit zo snel mogelijk te fixen.").slice(0, 1200);
+  const urlPattern = /https?:\/\/[^\s<>"']+/gi;
+  let cursor = 0;
+  element.replaceChildren();
+  for (const match of message.matchAll(urlPattern)) {
+    const start = match.index ?? 0;
+    const raw = match[0];
+    const cleanUrl = raw.replace(/[),.!?;:]+$/g, "");
+    const trailing = raw.slice(cleanUrl.length);
+    if (start > cursor) element.append(document.createTextNode(message.slice(cursor, start)));
+    let parsed = null;
+    try {
+      const candidate = new URL(cleanUrl);
+      if (candidate.protocol === "https:" || candidate.protocol === "http:") parsed = candidate;
+    } catch { /* Ongeldige URL blijft gewone tekst. */ }
+    if (parsed) {
+      const link = document.createElement("a");
+      link.href = parsed.href;
+      link.textContent = cleanUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      element.append(link);
+    } else {
+      element.append(document.createTextNode(cleanUrl));
+    }
+    if (trailing) element.append(document.createTextNode(trailing));
+    cursor = start + raw.length;
+  }
+  if (cursor < message.length) element.append(document.createTextNode(message.slice(cursor)));
+}
 function renderMaintenanceScreen() {
   const screen = $("#maintenanceScreen");
   if (!screen) return;
+  renderMaintenanceMessage(screen.querySelector(".maintenance-message"), state.maintenanceMessage);
   const visible = state.maintenanceActive && !state.admin;
   const wasVisible = screen.dataset.active === "true";
   const justOpened = visible && !wasVisible;
@@ -684,6 +717,65 @@ onValue(ref(db, "reviews"), snap => {
   if (productReviewBox?.dataset.productId) productReviewBox.innerHTML = productReviewsMarkup(productReviewBox.dataset.productId);
   refreshReviewActions();
 }, error => console.error("Firebase reviews load failed", error));
+function producibleCountForColor(filament, product) {
+  const grams = Math.max(0, Number(filament?.gramsAvailable) || 0);
+  const gramsPerUnit = filamentGramsFor(product);
+  if (!filament || gramsPerUnit <= 0) return null;
+  return Math.floor((grams + 0.000001) / gramsPerUnit);
+}
+function productCreatedTimestamp(product) {
+  const value = product?.createdAt ?? product?.created_at ?? product?.addedAt ?? product?.createdOn;
+  if (typeof value === "number" && Number.isFinite(value)) return value < 1e12 ? value * 1000 : value;
+  if (typeof value === "string" && value.trim()) {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric < 1e12 ? numeric * 1000 : numeric;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+function productIsNew(product) {
+  const timestamp = productCreatedTimestamp(product);
+  const age = Date.now() - timestamp;
+  return !!timestamp && age >= 0 && age < 7 * 24 * 60 * 60 * 1000;
+}
+function productSalesCount(product) {
+  return Math.max(0, Number(product?.salesCount ?? product?.soldCount ?? product?.totalSold ?? 0) || 0);
+}
+function productIsBestseller(product) {
+  return product?.bestseller === true || product?.isBestseller === true || productSalesCount(product) >= 5;
+}
+async function recordProductSales(items) {
+  const quantities = new Map();
+  for (const item of (items || [])) {
+    const productId = String(item?.id || "");
+    if (!productId || productId.startsWith("maatwerk-")) continue;
+    const quantity = Math.max(0, Math.floor(Number(item.qty) || 0));
+    if (quantity) quantities.set(productId, (quantities.get(productId) || 0) + quantity);
+  }
+  for (const [productId, quantity] of quantities) {
+    try {
+      await runTransaction(ref(db, `products/${productId}/salesCount`), current => {
+        const existing = Math.max(0, Number(current) || 0);
+        return existing + quantity;
+      }, { applyLocally: false });
+    } catch (error) {
+      console.warn(`Verkoopregistratie voor product ${productId} is niet bijgewerkt`, error);
+    }
+  }
+}
+async function recordConfirmedOrderSales(order) {
+  if (!order?.id) return;
+  const confirmed = order.paymentStatus === "paid" || (order.paymentStatus === "not_required" && order.status === "bezorgd");
+  if (!confirmed) return;
+  try {
+    const marker = await runTransaction(ref(db, `orders/${order.id}/salesRecordedAt`), current => current ? undefined : Date.now(), { applyLocally: false });
+    if (!marker.committed) return;
+    await recordProductSales(order.items || []);
+  } catch (error) {
+    console.warn(`Verkoop van bestelling ${order.id} kon niet worden geregistreerd`, error);
+  }
+}
 function renderProducts() {
   const productsEl = $("#products");
   if (!state.loaded) { productsEl.setAttribute("aria-busy", "true"); productsEl.innerHTML = productSkeletonMarkup(pendingProductSnapshot.length || 6); return; }
@@ -696,7 +788,7 @@ function renderProducts() {
     const out = isSoldOut(p), groups = optionGroupsOf(p), images = productImages(p), image = images[0];
     return `<article class="product-card ${out ? "sold-out" : ""}">
       <button class="product-open" data-open="${safe(p.id)}" aria-label="Bekijk ${safe(p.title)}">
-        <div class="product-image">${image ? `<div class="product-image-loader" role="status" aria-label="Product wordt geladen"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div>${a1MiniPrinterMarkup()}<span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div></div><img class="product-image-source" loading="lazy" decoding="async" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
+        <div class="product-image">${image ? `<div class="product-image-loader" role="status" aria-label="Product wordt geladen"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div>${a1MiniPrinterMarkup()}<span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div></div><img class="product-image-source" loading="lazy" decoding="async" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${productIsNew(p) ? `<span class="status-pill product-new-badge">NIEUW</span>` : ""}${productIsBestseller(p) ? `<span class="status-pill bestseller-badge">BESTSELLER</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
         <div class="product-info"><h3>${safe(p.title)}</h3>${categoryLabel(p.categoryId) ? `<span class="product-category-chip">${safe(categoryLabel(p.categoryId))}</span>` : ""}${productRatingSummary(p.id)}<strong>${money(p.price)}</strong>${groups.length ? `<small class="product-options-hint">${groups.length} ${groups.length === 1 ? "keuze" : "keuzes"} mogelijk</small>` : ""}</div>
       </button>
       <button type="button" class="product-favorite ${state.favoriteIds.has(p.id) ? "is-favorite" : ""}" data-favorite="${safe(p.id)}" aria-label="${state.favoriteIds.has(p.id) ? "Verwijder uit favorieten" : "Voeg toe aan favorieten"}" aria-pressed="${state.favoriteIds.has(p.id)}"><i data-lucide="heart"></i></button>
@@ -773,7 +865,7 @@ function showProduct(id) {
             : `<div class="option-choices">${(current.options || []).map((o, i) => {
                 const active = currentChoice === o.name;
                 return `<button type="button" class="option-choice ${active ? "active" : ""}" data-choice="${i}" ${o.soldOut ? "disabled" : ""}>
-                  <span class="option-choice-title">${validColorHex(o.colorHex) ? `<i class="product-option-swatch" style="--option-color:${safe(normalizeColorHex(o.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(o.name)}</b></span>
+                  <span class="option-choice-title">${validColorHex(o.colorHex) ? `<i class="product-option-swatch" style="--option-color:${safe(normalizeColorHex(o.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}<b>${safe(o.name)}</b>${current.filamentGroup && o.filamentId && producibleCountForColor(state.filaments.find(f => f.id === o.filamentId), p) !== null ? `<span class="color-capacity-badge">Nog ${producibleCountForColor(state.filaments.find(f => f.id === o.filamentId), p)} te maken</span>` : ""}</span>
                   <small>${deltaText(o.priceDelta)}${o.soldOut ? " · Uitverkocht" : ""}</small>
                 </button>`;
               }).join("")}</div>`}
@@ -836,7 +928,13 @@ function showProduct(id) {
 $("#cartBtn").onclick = showCart;
 function showCart() {
   const sub = state.cart.reduce((n, x) => n + x.price * x.qty, 0);
-  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x), modelColorsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(s.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}${modelColorsOf(x).map(c => `<small>3D ${safe(c.partName || "onderdeel")}: <i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(c.colorHex) || "#808080")}"></i> ${safe(c.colorName || c.colorHex || "kleur")}</small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)} bij verzenden · ophalen gratis</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  const recommendations = state.products
+    .filter(product => !state.cart.some(item => item.id === product.id) && !isSoldOut(product))
+    .slice()
+    .sort((a, b) => productSalesCount(b) - productSalesCount(a))
+    .slice(0, 2);
+  openDialog(`<p class="eyebrow">JOUW SELECTIE</p><h2>Winkelwagen</h2>${state.cart.length ? `<div class="cart-lines">${state.cart.map(x => { const k = safe(itemKey(x.id, selectionsOf(x), modelColorsOf(x))), issue = state.loaded ? cartIssue(x) : "", choices = selectionsOf(x); return `<div class="cart-line"><div class="cart-line-info"><b>${safe(x.title)}</b>${choices.map(s => `<small>${safe(s.label)}: <b>${validColorHex(s.colorHex) ? `<i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(s.colorHex))}" aria-label="Kleurvoorbeeld"></i>` : ""}${safe(s.value)}</b> <span class="muted">(${deltaText(s.priceDelta)})</span></small>`).join("")}${modelColorsOf(x).map(c => `<small>3D ${safe(c.partName || "onderdeel")}: <i class="product-option-swatch inline" style="--option-color:${safe(normalizeColorHex(c.colorHex) || "#808080")}"></i> ${safe(c.colorName || c.colorHex || "kleur")}</small>`).join("")}<small>${money(x.price)} per stuk</small>${issue ? `<small class="line-issue">${safe(issue)}</small>` : ""}<div class="quantity-control"><button type="button" aria-label="Minder" data-qty="${k}" data-delta="-1">−</button><span>${x.qty}</span><button type="button" aria-label="Meer" data-qty="${k}" data-delta="1">＋</button></div></div><div class="cart-line-actions"><b>${money(x.price * x.qty)}</b><button class="remove-item" data-remove="${k}">Verwijder</button></div></div>`; }).join("")}</div><div class="cart-sum"><div><span>Subtotaal</span><span>${money(sub)}</span></div><div><span>Verzendkosten</span><span>${money(SHIPPING)} bij verzenden · ophalen gratis</span></div></div><div class="cart-total"><span>Producttotaal</span><b>${money(sub)}</b></div><div class="stack note-field"><label>Opmerking bij je bestelling (optioneel)<textarea id="orderNote" rows="3" maxlength="500" placeholder="Bijv. gewenste afwerking of een wens voor de kleur">${safe(state.orderNote)}</textarea></label></div><button class="primary full" id="checkout">Verder naar bestellen</button>${recommendations.length ? `<section class="cart-addons"><h3>Misschien ook interessant</h3><div class="cart-addon-grid">${recommendations.map(product => { const image = productImages(product)[0]; return `<article class="cart-addon">${image ? `<img src="${safe(image)}" alt="${safe(product.title)}" loading="lazy">` : `<span class="cart-addon-placeholder">✦</span>`}<div class="cart-addon-info"><b>${safe(product.title)}</b><span>${money(product.price)}</span></div><button type="button" class="secondary" data-cart-addon="${safe(product.id)}">Bekijk product</button></article>`; }).join("")}</div></section>` : ""}` : `<div class="empty-state">Je winkelwagen is nog leeg.</div><button class="secondary full" id="continue">Verder winkelen</button>`}`);
+  content.querySelectorAll("[data-cart-addon]").forEach(b => b.onclick = () => { const productId = b.dataset.cartAddon; closeDialog(); showProduct(productId); });
   content.querySelectorAll("[data-remove]").forEach(b => b.onclick = () => { state.cart = state.cart.filter(x => itemKey(x.id, selectionsOf(x), modelColorsOf(x)) !== b.dataset.remove); saveCart(); showCart(); });
   content.querySelectorAll("[data-qty]").forEach(b => b.onclick = () => {
     const it = state.cart.find(x => itemKey(x.id, selectionsOf(x), modelColorsOf(x)) === b.dataset.qty); if (!it) return;
@@ -1885,7 +1983,19 @@ function maintenanceAdminTab(target) {
     </div>
     <button type="button" class="${active ? "secondary" : "primary"}" id="maintenanceToggle">${active ? "Website weer online zetten" : "Website in onderhoud zetten"}</button>
   </section>
+  <section class="maintenance-admin-card maintenance-message-editor"><label for="maintenanceCustomMessage"><b>Eigen onderhoudstekst</b></label><textarea id="maintenanceCustomMessage" rows="4" maxlength="1200" placeholder="Bijv. We zijn bezig met updates. Meer informatie: https://voorbeeld.nl">${safe(state.maintenanceMessage || "We proberen dit zo snel mogelijk te fixen.")}</textarea><p class="hint">Plak een volledige link die begint met https:// of http:// om deze klikbaar te maken. Nieuwe regels blijven behouden.</p><button type="button" class="secondary" id="saveMaintenanceMessage">Tekst opslaan</button></section>
   <div class="maintenance-admin-help"><b>Hoe kom je er weer in?</b><p>Wanneer de onderhoudspagina actief is, druk je op de letter <kbd>S</kbd> op je toetsenbord. Daarna kun je met je Sitebeheer-e-mailadres en wachtwoord inloggen.</p></div>`;
+  const saveMessageButton = $("#saveMaintenanceMessage");
+  saveMessageButton.onclick = async () => {
+    const message = String($("#maintenanceCustomMessage")?.value || "").trim();
+    if (!message) return toast("Vul eerst een onderhoudstekst in.");
+    saveMessageButton.disabled = true;
+    try {
+      await update(ref(db, "settings/maintenance"), { message, updatedAt: Date.now() });
+      state.maintenanceMessage = message; renderMaintenanceScreen(); toast("Onderhoudstekst opgeslagen.");
+    } catch (error) { console.error(error); toast("Onderhoudstekst opslaan mislukt."); }
+    finally { saveMessageButton.disabled = false; }
+  };
   const button = $("#maintenanceToggle");
   button.onclick = async () => {
     if (!state.admin) return openAdminLogin();
@@ -1893,7 +2003,7 @@ function maintenanceAdminTab(target) {
     if (next && !confirm("Weet je zeker dat je de webshop in onderhoud wilt zetten? Bezoekers zien dan alleen de onderhoudsmelding.")) return;
     button.disabled = true;
     try {
-      await set(ref(db, "settings/maintenance"), { active: next, updatedAt: Date.now() });
+      await set(ref(db, "settings/maintenance"), { active: next, message: state.maintenanceMessage || "We proberen dit zo snel mogelijk te fixen.", updatedAt: Date.now() });
       state.maintenanceActive = next;
       renderMaintenanceScreen();
       toast(next ? "Onderhoudsmodus ingeschakeld." : "De website is weer online.");
@@ -1934,11 +2044,11 @@ function adminTab() {
   else if (state.tab === "orders" || state.tab === "myorders") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => b.createdAt - a.createdAt);
     target.innerHTML = `<h3>${state.tab === "myorders" ? "Mijn bestellingen · overzicht en betaallinks" : "Bestellingen en status"}</h3>${os.length ? os.map(o => `<div class="admin-row order-admin"><div><b>#${short(o.id)} · ${safe(o.username || "Klant")}</b><small>${(o.items || []).map(i => `<span class="oi">${safe(i.title)}${optText(i)} × ${i.qty}</span>`).join("")}<span class="oi">${money(o.subtotal ?? o.total)} + ${money(o.shipping ?? 0)} verzending = <b>${money(o.total)}</b></span></small>${planBox(o, true)}<p class="order-note"><b>Afhandeling:</b> ${fulfillmentLabel(o)} · <b>Betaling:</b> ${safe(o.paymentStatus || "Niet geregistreerd")}</p>${o.paymentMethod === "tikkie" ? `<div class="stage-panel"><b>Betaallink voor klant</b><input type="url" data-tikkie-input="${safe(o.id)}" value="${safe(o.tikkieLink || "")}" placeholder="https://tikkie.me/... of https://betaalverzoek.rabobank.nl/..."><div class="admin-actions"><button class="secondary" data-tikkie-save="${safe(o.id)}">Betaallink opslaan</button><button class="secondary" data-tikkie-paid="${safe(o.id)}">Markeer als betaald</button></div></div>` : ""}${o.address ? `<p class="order-note"><b>Verzendadres:</b> ${safe([o.address.firstName, o.address.lastName].filter(Boolean).join(" "))}, ${safe(o.address.street || "")} ${safe(o.address.houseNumber || "")} ${safe(o.address.addition || "")}, ${safe(o.address.postcode || "")} ${safe(o.address.city || "")}, ${safe(o.address.country || "Nederland")}</p>` : ""}${o.note ? `<p class="order-note"><b>Opmerking klant:</b> ${safe(o.note)}</p>` : ""}${o.returnRequestAt ? `<div class="stage-panel"><b>Retouraanvraag ontvangen</b><p class="order-note">Aangevraagd op ${when(o.returnRequestAt)} · ${o.returnStatus === "handled" ? "Afgehandeld" : "Wacht op afhandeling"}</p>${o.returnStatus !== "handled" ? `<button class="secondary" data-return-handled="${safe(o.id)}">Markeer retouraanvraag als afgehandeld</button>` : ""}</div>` : ""}${o.deliveredAt ? `<p class="order-note">${isPickupOrder(o) ? "Opgehaald" : "Afgeleverd"} op ${when(o.deliveredAt)} · retourtermijn eindigt ${when(returnDeadline(o))}</p>` : ""}${o.status === "in de maak" ? `<div class="stage-panel"><b>Voortgang per product</b>${(o.items || []).map((i, n) => unitStages(i).map((cur, u, all) => `<div class="stage-row"><span>${safe(i.title)}${optText(i)}${all.length > 1 ? ` · stuk ${u + 1} van ${all.length}` : ""}</span><select data-stage="${safe(o.id)}" data-i="${n}" data-u="${u}">${STAGES.map(st => `<option ${cur === st ? "selected" : ""}>${st}</option>`).join("")}</select></div>`).join("")).join("")}</div>` : ""}</div><select data-status="${safe(o.id)}">${STATUSES.map(s => `<option value="${safe(s)}" ${s === o.status ? "selected" : ""}>${safe(statusLabel(o, s))}</option>`).join("")}</select><button class="secondary" data-ochat="${safe(o.chatId || "")}">Chat</button></div>`).join("") : "<p class='muted'>Nog geen bestellingen.</p>"}`;
-    target.querySelectorAll("[data-status]").forEach(s => s.onchange = async () => { try { const id = s.dataset.status, order = os.find(o => o.id === id); const changes = { status: s.value }; if (s.value === "bezorgd" && !order?.deliveredAt) changes.deliveredAt = Date.now(); if (s.value === "bezorgd" && order) changes.reviewEligibleProducts = { ...(order.reviewEligibleProducts || {}), ...eligibleProductsForOrder(order) }; if (s.value !== "bezorgd" && order?.status === "bezorgd") changes.deliveredAt = null; await update(ref(db, "orders/" + id), changes); await syncPublicTrack(id); toast("Bestelstatus bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
+    target.querySelectorAll("[data-status]").forEach(s => s.onchange = async () => { try { const id = s.dataset.status, order = os.find(o => o.id === id); const changes = { status: s.value }; if (s.value === "bezorgd" && !order?.deliveredAt) changes.deliveredAt = Date.now(); if (s.value === "bezorgd" && order) changes.reviewEligibleProducts = { ...(order.reviewEligibleProducts || {}), ...eligibleProductsForOrder(order) }; if (s.value !== "bezorgd" && order?.status === "bezorgd") changes.deliveredAt = null; await update(ref(db, "orders/" + id), changes); await syncPublicTrack(id); await recordConfirmedOrderSales({ ...order, status: s.value }); toast("Bestelstatus bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
     target.querySelectorAll("[data-return-handled]").forEach(b => b.onclick = async () => { try { await update(ref(db, `orders/${b.dataset.returnHandled}`), { returnStatus: "handled", returnHandledAt: Date.now() }); toast("Retouraanvraag als afgehandeld gemarkeerd."); } catch { toast("Bijwerken mislukt."); } });
     target.querySelectorAll("[data-stage]").forEach(sel => sel.onchange = async () => { const o = os.find(x => x.id === sel.dataset.stage), it = o && (o.items || [])[Number(sel.dataset.i)]; if (!it) return; const arr = unitStages(it); arr[Number(sel.dataset.u)] = sel.value; try { await update(ref(db, `orders/${o.id}/items/${sel.dataset.i}`), { stages: arr }); await syncPublicTrack(o.id); toast("Fase bijgewerkt"); } catch { toast("Opslaan mislukt"); } });
     target.querySelectorAll("[data-tikkie-save]").forEach(b => b.onclick = async () => { const id = b.dataset.tikkieSave, input = target.querySelector(`[data-tikkie-input="${id}"]`), link = (input?.value || "").trim(); let url; try { url = new URL(link); } catch { return toast("Vul een geldige Tikkie-link in."); } const allowedPaymentHosts = ["tikkie.me", "www.tikkie.me", "tikkie.nl", "www.tikkie.nl", "betaalverzoek.rabobank.nl"]; if (url.protocol !== "https:" || !allowedPaymentHosts.includes(url.hostname.toLowerCase())) return toast("Gebruik een geldige HTTPS Tikkie- of Rabobank-betaalverzoeklink."); try { await update(ref(db, `orders/${id}`), { tikkieLink: url.href, paymentStatus: "tikkie_link_added" }); toast("Tikkie-link opgeslagen. De klant ziet hem bij Mijn bestellingen."); } catch { toast("Opslaan van Tikkie-link mislukt."); } });
-    target.querySelectorAll("[data-tikkie-paid]").forEach(b => b.onclick = async () => { if (!confirm("Heb je gecontroleerd dat deze Tikkie-betaling binnen is?")) return; try { await update(ref(db, `orders/${b.dataset.tikkiePaid}`), { paymentStatus: "paid", paidAt: Date.now() }); toast("Bestelling als betaald gemarkeerd."); } catch { toast("Bijwerken mislukt."); } });
+    target.querySelectorAll("[data-tikkie-paid]").forEach(b => b.onclick = async () => { if (!confirm("Heb je gecontroleerd dat deze Tikkie-betaling binnen is?")) return; try { const order = os.find(item => item.id === b.dataset.tikkiePaid); await update(ref(db, `orders/${b.dataset.tikkiePaid}`), { paymentStatus: "paid", paidAt: Date.now() }); if (order) await recordConfirmedOrderSales({ ...order, paymentStatus: "paid" }); toast("Bestelling als betaald gemarkeerd."); } catch { toast("Bijwerken mislukt."); } });
     target.querySelectorAll("[data-ochat]").forEach(b => b.onclick = () => b.dataset.ochat && openChat(b.dataset.ochat, true));
   });
   else if (state.tab === "categories") categoryAdminTab(target);
@@ -2501,7 +2611,7 @@ async function productEditor(id = null) {
         <button type="button" class="secondary" id="unlinkOptionSet" ${linkedOptionSetId ? "" : "hidden"}>Loskoppelen en zelfstandig maken</button>
         <div id="optionGroupsEditor" class="choice-groups-editor"></div>
         <button type="button" class="secondary" id="addOptionGroup"><i data-lucide="plus"></i> Optiegroep toevoegen</button>
-        <p class="hint">Elke optiegroep wordt één stap in de productconfigurator. Kleurvoorbeelden, prijsverschillen en uitverkocht-statussen worden gedeeld. Na opslaan zien alle gekoppelde producten de update automatisch via Firebase.</p>
+        <p class="hint">Elke optiegroep wordt één stap in de productconfigurator. Kleurvoorbeelden, prijsverschillen en uitverkocht-statussen worden gedeeld. Na opslaan zien alle gekoppelde producten de update automatisch via Firebase.</p><aside class="example-color-warning"><b>Let op — voorbeeldkleuren:</b> de kleurbolletjes en kleurkeuzes die je hier zelf toevoegt zijn alleen productopties. Ze verbruiken geen filamentvoorraad en trekken geen gram af bij een bestelling. De werkelijke filamentkleur en voorraad worden apart gekozen via de kleurstap uit Filamentbeheer.</aside>
       </fieldset>
       <fieldset class="opt-editor">
         <legend>Eigen tekst van de klant</legend>
@@ -3878,6 +3988,7 @@ if (state.user?.uid || state.admin) syncPushForActiveAccount();
 onValue(ref(db, "settings/maintenance"), snap => {
   const config = snap.val() || {};
   state.maintenanceActive = config.active === true;
+  state.maintenanceMessage = String(config.message || "We proberen dit zo snel mogelijk te fixen.");
   renderMaintenanceScreen();
   if (!state.maintenanceActive) scheduleChatPushWelcome();
 }, error => console.warn("Onderhoudsstatus laden mislukt", error));
