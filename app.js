@@ -1,6 +1,7 @@
 import { db } from "./firebase.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ASSISTANT_EXTRA_FAQ } from "./assistant-faq-extra.js";
+import { ASSISTANT_EXTRA_300 } from "./assistant-faq-300.js";
 import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const $ = s => document.querySelector(s);
@@ -2601,8 +2602,8 @@ const ASSISTANT_FAQ = [
   { id: "terms", terms: ["voorwaarden", "algemene voorwaarden", "regels webshop", "juridisch", "rechten en plichten"], answer: () => "De algemene voorwaarden zijn te openen via de link onderaan de webshop. Daar vind je de formele afspraken over bestellen, betalen, levering en retouren. Bij een verschil tussen een korte chatuitleg en de gepubliceerde voorwaarden zijn de voorwaarden leidend." },
   { id: "admin", terms: ["beheerder", "sitebeheer", "admin", "beheeromgeving", "voorraadbeheer", "dashboard"], answer: () => "De beheeromgeving is alleen voor de webshopbeheerder. Deze klantenassistent kan geen beheeracties uitvoeren en deelt geen beheerwachtwoorden, interne voorraadgrammen, waarschuwingsgrenzen of afgeschermde dashboardinformatie." },
   { id: "chatbot", terms: ["chatbot", "assistent", "werkt de bot", "kunstmatige intelligentie", "ai bot", "faq bot"], answer: () => "Je kunt gewone vragen stellen of gewoon even praten. Voor webshopvragen gebruik ik de webshopuitleg en actuele openbare productinformatie. Je kiest zelf via het pijltje naast de verzendknop of ik in de webshop of op internet zoek. Voor internetvragen gebruik ik Wikipedia en DuckDuckGo. Ik ben geen vrij generatief AI-model zoals ChatGPT; ik combineer gesprekshulp met gevonden informatie. Deel nooit wachtwoorden, adressen, betaalgegevens of persoonlijke bestelgegevens in deze chat." }
-  ...ASSISTANT_EXTRA_FAQ
-  ...ASSISTANT_EXTRA_FAQ
+  ...ASSISTANT_EXTRA_FAQ,
+  ...ASSISTANT_EXTRA_300
 ];
 
 function assistantIsProductCountQuestion(question) {
@@ -3492,7 +3493,7 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
     if (assistantPanel && !assistantPanel.hidden) assistantInput?.focus();
   }
 }
-assistantToggle?.addEventListener("click", () => assistantPanel?.hidden ? openShopAssistant() : closeShopAssistant());
+// Open/dicht-knop wordt ook door een kleine HTML-fallback bediend, zodat het paneel opent als de module niet laadt.
 assistantClose?.addEventListener("click", closeShopAssistant);
 assistantForm?.addEventListener("submit", event => {
   event.preventDefault();

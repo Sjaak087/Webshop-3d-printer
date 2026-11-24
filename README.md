@@ -360,3 +360,8 @@ Zie `TEST-CHATBOT.md` voor de v30-controles. De externe Wikipedia/DuckDuckGo-ver
 - Test typefouten zoals “wat is filaament?” en “hoe werkt 3d prinen?”.
 - Test dat er bij een vraag over persoonlijke bestellingen, wachtwoorden, adressen of betaalgegevens geen persoonlijke informatie wordt opgehaald of verstuurd.
 - Test “Zoek in mijn webshop” en “Zoek op het internet” apart; deze handmatige opties blijven buiten de gewone FAQ-modus.
+
+
+## Versie 34 – chatbot herstel en 300 extra FAQ-vraagvarianten
+
+Deze versie bevat 300 aanvullende FAQ-items in `assistant-faq-300.js` naast de bestaande kennisbank. De chatknop heeft daarnaast een kleine HTML-noodbediening om het paneel ook te kunnen openen wanneer het JavaScript-modulebestand niet laadt. Dit herstelt de bediening van het paneel, maar het versturen van berichten vereist nog steeds dat `app.js` en de benodigde Firebase-modules correct laden.

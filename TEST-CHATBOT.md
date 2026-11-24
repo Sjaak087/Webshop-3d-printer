@@ -72,3 +72,11 @@ Aanbevolen controlevragen: “Wat is 3D-printen?”, “Waarom zie je laagjes?�
 - [ ] Controleer dat externe Wikipedia/DuckDuckGo-aanroepen vanuit het gepubliceerde domein blijven werken.
 
 Aanbevolen controlevragen: “Wat is 3D-printen?”, “Waarom zie je laagjes?”, “Wat is infill?”, “Wat is het verschil tussen PLA en PETG?”, “Kan een print tegen hitte?”, “Kan ik een foto laten printen?”, “Wat moet er in een offerte?”, “Hoe lang duurt een print?”, “Wat is STL?”, “Hoe werkt een slicer?”, “Wat betekent in de maak?”, “Hoe werkt retourneren?”, “Wat als mijn kleur uitverkocht is?”, “Wat is Firebase?” en “Wat is zwaartekracht?”.
+
+
+## Extra controle versie 34
+- [ ] Open de webshop en klik op **Vraag het de bot**; het paneel moet openen en sluiten.
+- [ ] Verstuur een gewone chatvraag.
+- [ ] Kies apart **Zoek in mijn webshop** en **Zoek op het internet**.
+- [ ] Test een aantal onderwerpen uit de 300 extra FAQ-items.
+- [ ] Controleer bij problemen de browserconsole en netwerkfouten voor `app.js`, `assistant-faq-300.js` en Firebase.
