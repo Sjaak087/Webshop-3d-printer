@@ -22,6 +22,27 @@ function targetPath(role, userId, token) {
   return `notificationTokens/customers/${userId}/${key}`;
 }
 
+
+function preferencePath(role, userId, chatId) {
+  if (!chatId) throw new Error("De chat ontbreekt voor deze meldingsinstelling.");
+  if (role === "admin") return `chatNotificationPreferences/${chatId}/admins/sitebeheer`;
+  if (!userId) throw new Error("Je moet ingelogd zijn om meldingen voor deze chat op te slaan.");
+  return `chatNotificationPreferences/${chatId}/customers/${userId}`;
+}
+
+export async function getChatPushPreference({ role, userId = null, chatId } = {}) {
+  const snapshot = await get(ref(db, preferencePath(role, userId, chatId)));
+  return snapshot.val()?.enabled === true;
+}
+
+export async function disableChatPushForChat({ role, userId = null, chatId } = {}) {
+  await set(ref(db, preferencePath(role, userId, chatId)), {
+    enabled: false,
+    updatedAt: Date.now()
+  });
+  return true;
+}
+
 function assertPushSetup() {
   if (!("Notification" in window)) throw new Error("Deze browser ondersteunt geen browsermeldingen.");
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) throw new Error("Deze browser ondersteunt geen pushmeldingen.");
@@ -37,7 +58,7 @@ export async function requestChatPushPermission() {
   return await Notification.requestPermission();
 }
 
-export async function enableChatPush({ role, userId = null } = {}) {
+export async function enableChatPush({ role, userId = null, chatId = null } = {}) {
   assertPushSetup();
 
   // De eigen toestemmingsknop roept requestChatPushPermission rechtstreeks aan.
@@ -63,6 +84,13 @@ export async function enableChatPush({ role, userId = null } = {}) {
     role: role === "admin" ? "admin" : "customer",
     updatedAt: Date.now()
   });
+  // Een token is apparaat/account-breed; de aan/uit-keuze wordt per chat apart bewaard.
+  if (chatId) {
+    await set(ref(db, preferencePath(role, userId, chatId)), {
+      enabled: true,
+      updatedAt: Date.now()
+    });
+  }
   try { localStorage.setItem("novashopChatPushChoice", "allowed"); } catch { }
 
   installForegroundListener(messaging);
@@ -103,6 +131,9 @@ function installForegroundListener(messaging) {
     const readPath = data.targetRole === "admin"
       ? `chats/${data.chatId}/readBy/admins/sitebeheer/${data.messageId}`
       : `chats/${data.chatId}/readBy/customers/${data.targetUserId || ""}/${data.messageId}`;
+    const preferencePath = data.targetRole === "admin"
+      ? `chatNotificationPreferences/${data.chatId}/admins/sitebeheer`
+      : `chatNotificationPreferences/${data.chatId}/customers/${data.targetUserId || ""}`;
     const showForegroundNotification = () => navigator.serviceWorker.ready.then(registration => registration.showNotification(
       data.title || "Nieuw bericht in je chat",
       {
@@ -115,11 +146,11 @@ function installForegroundListener(messaging) {
         data: { chatId: data.chatId, targetRole: data.targetRole || "customer" }
       }
     ));
-    get(ref(db, readPath)).then(readSnapshot => {
-      if (readSnapshot.val() === true) return;
+    Promise.all([get(ref(db, readPath)), get(ref(db, preferencePath))]).then(([readSnapshot, preferenceSnapshot]) => {
+      if (readSnapshot.val() === true || preferenceSnapshot.val()?.enabled !== true) return;
       return showForegroundNotification();
     }).catch(error => {
-      console.warn("Leesstatus kon niet worden gecontroleerd; voorgrondmelding wordt alsnog getoond:", error);
+      console.warn("Leesstatus of chatvoorkeur kon niet worden gecontroleerd; voorgrondmelding wordt getoond:", error);
       return showForegroundNotification();
     }).catch(error => console.warn("Voorgrondmelding kon niet worden getoond:", error));
   });

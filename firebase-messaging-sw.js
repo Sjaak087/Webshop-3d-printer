@@ -25,11 +25,17 @@ messaging.onBackgroundMessage(async payload => {
     const readPath = data.targetRole === "admin"
       ? `chats/${data.chatId}/readBy/admins/sitebeheer/${data.messageId}`
       : `chats/${data.chatId}/readBy/customers/${data.targetUserId || ""}/${data.messageId}`;
-    const readSnapshot = await firebase.database().ref(readPath).once("value");
-    if (readSnapshot.val() === true) return;
+    const preferencePath = data.targetRole === "admin"
+      ? `chatNotificationPreferences/${data.chatId}/admins/sitebeheer`
+      : `chatNotificationPreferences/${data.chatId}/customers/${data.targetUserId || ""}`;
+    const [readSnapshot, preferenceSnapshot] = await Promise.all([
+      firebase.database().ref(readPath).once("value"),
+      firebase.database().ref(preferencePath).once("value")
+    ]);
+    if (readSnapshot.val() === true || preferenceSnapshot.val()?.enabled !== true) return;
   } catch (error) {
-    // Fail open: bij een tijdelijke databasefout mag de pushmelding niet stil verloren gaan.
-    console.warn("Leesstatus voor achtergrondmelding kon niet worden gecontroleerd:", error);
+    // Fail open: een tijdelijke databasefout blokkeert de al verstuurde push niet.
+    console.warn("Leesstatus of chatvoorkeur voor achtergrondmelding kon niet worden gecontroleerd:", error);
   }
 
   const title = data.title || "Nieuw bericht in je chat";

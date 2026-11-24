@@ -39,6 +39,14 @@ function tokenRootFor(sender, chat) {
   return "notificationTokens/admins/sitebeheer";
 }
 
+function preferencePathFor(sender, chatId, chat) {
+  if (sender === "admin") {
+    const customerId = String(chat.userId || chat.customerId || "").trim();
+    return customerId ? `chatNotificationPreferences/${chatId}/customers/${customerId}` : null;
+  }
+  return `chatNotificationPreferences/${chatId}/admins/sitebeheer`;
+}
+
 function readMarkerPathFor(sender, chatId, chat) {
   if (sender === "admin") {
     const customerId = String(chat.userId || chat.customerId || "").trim();
@@ -104,8 +112,16 @@ exports.sendChatPush = onValueCreated({
 
   const tokenRoot = tokenRootFor(sender, chat);
   const readMarkerPath = readMarkerPathFor(sender, chatId, chat);
-  if (!tokenRoot || !readMarkerPath) {
+  const preferencePath = preferencePathFor(sender, chatId, chat);
+  if (!tokenRoot || !readMarkerPath || !preferencePath) {
     logger.warn("Chat push has no recipient mapping", { chatId, messageId, sender, chatUserId: chat.userId || null });
+    return;
+  }
+
+  // Stuur alleen een push als de ontvanger meldingen voor juist deze chat heeft aangezet.
+  const preferenceSnapshot = await database.ref(preferencePath).get();
+  if (preferenceSnapshot.val()?.enabled !== true) {
+    logger.info("Chat push skipped: notifications are disabled for this chat", { chatId, messageId, sender, preferencePath });
     return;
   }
 

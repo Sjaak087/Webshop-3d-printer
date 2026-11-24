@@ -137,6 +137,24 @@
           }
         }
       }
+    },
+    "chatNotificationPreferences": {
+      "$chatId": {
+        "customers": {
+          "$uid": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.hasChildren(['enabled','updatedAt']) && newData.child('enabled').isBoolean() && newData.child('updatedAt').isNumber()"
+          }
+        },
+        "admins": {
+          "sitebeheer": {
+            ".read": true,
+            ".write": true,
+            ".validate": "newData.hasChildren(['enabled','updatedAt']) && newData.child('enabled').isBoolean() && newData.child('updatedAt').isNumber()"
+          }
+        }
+      }
     }
   }
 }

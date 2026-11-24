@@ -70,3 +70,10 @@ Een succesvolle FCM-verzendstatus garandeert niet dat Windows het toastbericht z
 ## Bestaande projectbeperking
 
 De webshop gebruikt een eigen accountlogin en geen Firebase Authentication. De bestaande database-regels laten brede lees-/schrijfrechten op onder andere chats toe. De leesmarkers en tokenregistraties passen bij die bestaande structuur, maar vormen geen server-side identiteitscontrole. Herzie de Firebase-beveiligingsregels en koppel de database-acties aan betrouwbare server-side identiteiten voordat de webshop als beveiligde productieomgeving wordt gebruikt.
+
+
+## Per-chat meldingsvoorkeur (nieuw)
+
+De knop in een geopende chat bewaart de keuze nu afzonderlijk in Realtime Database op `chatNotificationPreferences/{chatId}/customers/{uid}` of `chatNotificationPreferences/{chatId}/admins/sitebeheer`. Bij het opnieuw openen van dezelfde chat wordt de keuze teruggelezen. De Cloud Function verstuurt alleen een push wanneer de ontvanger die specifieke chat heeft ingeschakeld.
+
+Na het uploaden van de bestanden naar GitHub moeten de gewijzigde Realtime Database-regels worden gepubliceerd in Firebase Console of met `firebase deploy --only database`. De Cloud Function moet opnieuw worden uitgerold met `firebase deploy --only functions:sendChatPush`.

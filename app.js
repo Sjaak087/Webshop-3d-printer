@@ -1,5 +1,5 @@
 import { db } from "./firebase.js";
-import { enableChatPush, installForegroundChatPush, removeChatPushRegistration, requestChatPushPermission } from "./chat-notifications.js";
+import { enableChatPush, installForegroundChatPush, removeChatPushRegistration, requestChatPushPermission, getChatPushPreference, disableChatPushForChat } from "./chat-notifications.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ASSISTANT_EXTRA_FAQ } from "./assistant-faq-extra.js";
 import { ASSISTANT_EXTRA_300 } from "./assistant-faq-300.js";
@@ -1329,34 +1329,59 @@ function openChat(id, asAdmin = false) {
     if (window.lucide) window.lucide.createIcons();
     const notificationButton = $("#enableChatNotifications");
     const notificationHint = $("#chatPushHint");
+    const chatPushTarget = { role: asAdmin ? "admin" : "customer", userId: asAdmin ? null : state.user?.uid, chatId: id };
+    let chatPushEnabled = false;
+    let chatPushPreferenceLoaded = false;
     if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
       notificationButton.hidden = true;
       notificationHint.textContent = "Deze browser ondersteunt geen pushmeldingen.";
-    } else if (Notification.permission === "granted") {
-      notificationButton.textContent = "🔔 Meldingen koppelen op dit apparaat";
-      notificationHint.textContent = "Je browsertoestemming is al gegeven. Koppel dit apparaat om chatmeldingen te ontvangen.";
     } else if (Notification.permission === "denied") {
       notificationButton.disabled = true;
       notificationButton.textContent = "Meldingen geblokkeerd in browser";
       notificationHint.textContent = "Je hebt meldingen eerder geblokkeerd. Wijzig dit via de site-instellingen van je browser.";
+    } else {
+      notificationButton.textContent = "🔔 Meldingen voor deze chat inschakelen";
+      notificationHint.textContent = "Je keuze wordt per chat in Firebase opgeslagen en blijft bewaard na opnieuw openen.";
+      getChatPushPreference(chatPushTarget).then(enabled => {
+        chatPushEnabled = enabled;
+        chatPushPreferenceLoaded = true;
+        notificationButton.textContent = enabled ? "✓ Meldingen voor deze chat aan" : "🔔 Meldingen voor deze chat inschakelen";
+        notificationHint.textContent = enabled
+          ? "Meldingen staan voor deze chat aan. Je kunt ze hier weer uitzetten."
+          : "Meldingen staan voor deze chat uit. Schakel ze in om nieuwe berichten te ontvangen.";
+      }).catch(error => {
+        console.warn("Chatmeldingsvoorkeur kon niet worden geladen:", error);
+        chatPushPreferenceLoaded = true;
+        notificationHint.textContent = "De opgeslagen meldingskeuze kon niet worden geladen. Probeer opnieuw.";
+      });
     }
     notificationButton.onclick = async () => {
+      if (!chatPushPreferenceLoaded && Notification.permission !== "denied") {
+        notificationHint.textContent = "Opgeslagen meldingsinstelling wordt geladen. Probeer zo nog eens.";
+        return;
+      }
       notificationButton.disabled = true;
-      notificationButton.textContent = "Bezig met inschakelen…";
+      notificationButton.textContent = "Bezig…";
       try {
-        await enableChatPush({ role: asAdmin ? "admin" : "customer", userId: asAdmin ? null : state.user?.uid });
-        notificationButton.textContent = "✓ Chatmeldingen ingeschakeld";
-        notificationHint.textContent = "Dit apparaat ontvangt nu een melding bij nieuwe chatberichten.";
-        toast("Chatmeldingen zijn ingeschakeld op dit apparaat.");
-      } catch (error) {
-        console.warn("Chatmeldingen inschakelen mislukt:", error);
-        notificationHint.textContent = error.message || "Chatmeldingen inschakelen is mislukt.";
-        if (Notification.permission !== "denied") {
-          notificationButton.textContent = "🔔 Opnieuw proberen";
-          notificationButton.disabled = false;
+        if (chatPushEnabled) {
+          await disableChatPushForChat(chatPushTarget);
+          chatPushEnabled = false;
+          notificationButton.textContent = "🔔 Meldingen voor deze chat inschakelen";
+          notificationHint.textContent = "Meldingen staan voor deze chat uit. Je kunt ze later weer inschakelen.";
+          toast("Meldingen voor deze chat zijn uitgezet.");
         } else {
-          notificationButton.textContent = "Meldingen geblokkeerd in browser";
+          await enableChatPush(chatPushTarget);
+          chatPushEnabled = true;
+          notificationButton.textContent = "✓ Meldingen voor deze chat aan";
+          notificationHint.textContent = "Meldingen staan voor deze chat aan. Je keuze is opgeslagen.";
+          toast("Meldingen voor deze chat zijn opgeslagen.");
         }
+      } catch (error) {
+        console.warn("Chatmeldingen instellen mislukt:", error);
+        notificationHint.textContent = error.message || "Chatmeldingen instellen is mislukt.";
+        notificationButton.textContent = chatPushEnabled ? "✓ Meldingen voor deze chat aan" : "🔔 Opnieuw proberen";
+      } finally {
+        notificationButton.disabled = Notification.permission === "denied";
       }
     };
     if (c.orderId) $("#chatTrack").onclick = () => showOrderTracking(c.orderId, asAdmin);
