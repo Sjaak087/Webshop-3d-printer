@@ -1075,3 +1075,32 @@ button:disabled{cursor:not-allowed;opacity:.62}
 .assistant-send-menu[hidden]{display:none!important}
 .shop-assistant-form .assistant-send-menu>button{width:100%;height:auto;min-height:36px;flex:none;border:0;border-radius:8px;padding:8px 10px;background:#fff;color:#25496f;text-align:left;font-size:11px;font-weight:750}
 .shop-assistant-form .assistant-send-menu>button:hover,.shop-assistant-form .assistant-send-menu>button:focus-visible{background:#edf5ff;color:#0756c9}
+
+
+/* Onderhoudspagina en bediening in Sitebeheer */
+.maintenance-screen{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 15% 10%,#254b77 0,transparent 38%),radial-gradient(circle at 88% 92%,#174e65 0,transparent 34%),#101d31;color:#fff;text-align:center}
+.maintenance-screen[hidden]{display:none!important}
+body.maintenance-active{overflow:hidden}
+.maintenance-card{width:min(560px,100%);padding:clamp(30px,6vw,58px) clamp(24px,6vw,54px);border:1px solid #ffffff25;border-radius:26px;background:#ffffff0d;box-shadow:0 30px 90px #0005;backdrop-filter:blur(12px)}
+.maintenance-logo{display:grid;place-items:center;width:66px;height:66px;margin:0 auto 22px;border-radius:20px;background:#fff;color:#1553a5;box-shadow:0 12px 30px #0003}
+.maintenance-logo svg{width:32px;height:32px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.maintenance-eyebrow{margin:0 0 14px;color:#a8caff;font-size:10px;font-weight:800;letter-spacing:2.4px}
+.maintenance-card h1{margin:0;color:#fff;font:800 clamp(26px,5vw,38px)/1.16 Manrope,sans-serif;letter-spacing:-.8px}
+.maintenance-message{margin:18px 0 0;color:#d5e2f2;font-size:15px;line-height:1.7}
+.overlay{z-index:10001}
+.toast{z-index:10002}
+.maintenance-admin-card{display:flex;align-items:center;gap:18px;padding:20px;border:1px solid #e6ebf3;border-radius:16px;background:#fbfcff}
+.maintenance-admin-icon{display:grid;place-items:center;flex:0 0 48px;width:48px;height:48px;border-radius:14px;background:#eaf2ff;color:#1759ae;font-size:22px;font-weight:800}
+.maintenance-admin-copy{flex:1;min-width:0}
+.maintenance-admin-copy .eyebrow{margin-bottom:6px}
+.maintenance-admin-copy h3{margin:0 0 6px!important}
+.maintenance-admin-copy .muted{margin:0;line-height:1.6}
+.maintenance-admin-state{display:inline-flex;align-items:center;gap:7px;margin-top:12px;padding:6px 10px;border-radius:999px;font-size:10px;font-weight:800}
+.maintenance-admin-state span{width:7px;height:7px;border-radius:50%;background:currentColor}
+.maintenance-admin-state.is-active{background:#fff0ef;color:#bd3c36}
+.maintenance-admin-state.is-online{background:#e9f8ef;color:#21834c}
+.maintenance-admin-card>button{flex:0 0 auto}
+.maintenance-admin-help{margin-top:16px;padding:15px 17px;border:1px solid #e8edf5;border-radius:13px;background:#fff;color:#4e607a;font-size:12px;line-height:1.7}
+.maintenance-admin-help p{margin:5px 0 0}
+.maintenance-admin-help kbd{display:inline-block;padding:2px 7px;border:1px solid #ccd6e4;border-bottom-width:2px;border-radius:5px;background:#f5f7fb;color:#203e68;font:700 12px ui-monospace,monospace}
+@media(max-width:620px){.maintenance-admin-card{align-items:stretch;flex-direction:column}.maintenance-admin-card>button{width:100%}.maintenance-card{border-radius:20px}.maintenance-message{font-size:14px}}

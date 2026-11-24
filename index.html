@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111827"><meta name="description" content="Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen."><title>3D Printed Shop</title>
-  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=34-chatbot-herstel-300-faq"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
+  <link rel="icon" href="./favicon.ico" sizes="any"><link rel="stylesheet" href="./styles.css?v=34-chatbot-herstel-300-faq-maintenance-1"><script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"}}</script><script defer src="https://unpkg.com/lucide@latest" onload="if(window.lucide){window.lucide.createIcons();new MutationObserver(records=>records.forEach(r=>r.addedNodes.forEach(n=>{if(n.nodeType===1)window.lucide.createIcons({root:n})}))).observe(document.body,{subtree:true,childList:true})}"></script>
 </head>
 <body class="min-h-screen bg-slate-50 text-slate-900 antialiased">
 <header class="topbar">
@@ -164,6 +164,15 @@
   </section>
 </div>
 
+<div id="maintenanceScreen" class="maintenance-screen" hidden role="alert" aria-live="assertive" aria-label="Website in onderhoud" tabindex="-1">
+  <section class="maintenance-card">
+    <div class="maintenance-logo" aria-hidden="true"><svg viewBox="0 0 24 24" focusable="false"><path d="M14.7 6.3a5 5 0 0 0-6.9 6.9L3.5 17.5a2.1 2.1 0 0 0 3 3l4.3-4.3a5 5 0 0 0 6.9-6.9l-3.1 3.1-3.2-3.2 3.3-2.9Z"/><path d="m5.2 18.8.1.1"/></svg></div>
+    <p class="maintenance-eyebrow">3D PRINTED SHOP</p>
+    <h1>Site is momenteel in onderhoud</h1>
+    <p class="maintenance-message">We proberen dit zo snel mogelijk te fixen.</p>
+  </section>
+</div>
+
 <div id="overlay" class="overlay hidden">
  <section class="dialog"><button class="close" id="closeDialog" aria-label="Sluiten">×</button><div id="dialogContent"></div></section>
 </div>
@@ -230,7 +239,7 @@
     <span class="shop-assistant-toggle-icon" aria-hidden="true">✦</span><span>Vraag het de bot</span>
   </button>
 </div>
-<script type="module" src="./app.js?v=34-chatbot-herstel-300-faq-fix1"></script>
+<script type="module" src="./app.js?v=34-chatbot-herstel-300-faq-maintenance-1"></script>
 <script>
   // Noodbediening: de chatknop blijft werken, ook wanneer een externe module niet laadt.
   (() => {

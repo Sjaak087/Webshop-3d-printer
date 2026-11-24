@@ -29,7 +29,7 @@ const statusLabel = (order, status = order?.status) => {
   return status || "ontvangen";
 };
 const fulfillmentLabel = order => isPickupOrder(order) ? "Ophalen" : "Verzenden";
-const state = { user: null, admin: false, products: [], categories: [], optionSets: {}, filaments: [], reviews: {}, favoriteIds: new Set(), categoryFilter: "all", cart: [], tab: "dashboard", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
+const state = { user: null, admin: false, maintenanceActive: false, products: [], categories: [], optionSets: {}, filaments: [], reviews: {}, favoriteIds: new Set(), categoryFilter: "all", cart: [], tab: "dashboard", loaded: false, productsError: false, orderNote: "", pendingQuoteRequest: false, plan: { orderId: null, key: null, week: null, form: { date: "", from: "", to: "", endDate: "" }, orders: [], scroll: 7 * 44 } };
 const overlay = $("#overlay"), content = $("#dialogContent");
 const DEFAULT_CONTACT = { title: "Neem contact met ons op", intro: "Heb je een vraag over een product of bestelling? Neem gerust contact met ons op.", name: "", address: "", email: "", phone: "", hours: "", extra: "" };
 let contactSettings = { ...DEFAULT_CONTACT };
@@ -305,6 +305,14 @@ async function copyTrackLink(token) {
 }
 $("#closeDialog").onclick = () => closeDialog();
 overlay.addEventListener("click", e => { if (e.target === overlay && !lockDialog) closeDialog(); });
+document.addEventListener("keydown", e => {
+  if (!state.maintenanceActive || state.admin || e.repeat || e.altKey || e.ctrlKey || e.metaKey || String(e.key).toLowerCase() !== "s") return;
+  if (!overlay.classList.contains("hidden")) return;
+  const target = e.target;
+  if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  e.preventDefault();
+  openAdminLogin();
+});
 document.addEventListener("keydown", e => { if (e.key === "Escape" && !overlay.classList.contains("hidden") && !lockDialog) closeDialog(); });
 
 /* ---------- wachtwoorden (PBKDF2, nooit meer platte tekst) ---------- */
@@ -351,7 +359,29 @@ function usernamePrompt(uid, email, suggested = "") {
     finally { btn.disabled = false; }
   };
 }
-function setAdmin() { state.admin = true; fails = 0; sessionStorage.setItem("novashopAdmin", "1"); refreshNav(); }
+function renderMaintenanceScreen() {
+  const screen = $("#maintenanceScreen");
+  if (!screen) return;
+  const visible = state.maintenanceActive && !state.admin;
+  const wasVisible = screen.dataset.active === "true";
+  const justOpened = visible && !wasVisible;
+  if (justOpened && !overlay.classList.contains("hidden")) closeDialog(true);
+  screen.hidden = !visible;
+  screen.dataset.active = String(visible);
+  document.body.classList.toggle("maintenance-active", visible);
+  for (const element of document.body.children) {
+    if (["maintenanceScreen", "overlay", "toast"].includes(element.id)) continue;
+    element.inert = visible;
+  }
+  if (justOpened) screen.focus({ preventScroll: true });
+}
+function setAdmin() {
+  state.admin = true;
+  fails = 0;
+  sessionStorage.setItem("novashopAdmin", "1");
+  refreshNav();
+  renderMaintenanceScreen();
+}
 function refreshNav() {
   $("#accountBtn").innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg><span>${state.user ? safe(state.user.username || "Mijn account") : "Inloggen"}</span>`;
   $("#adminEntry").innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h10M4 18h7"></path><circle cx="18" cy="15" r="3"></circle><path d="M18 10v2m0 6v2m-5-5h2m6 0h2"></path></svg><span>${state.admin ? "Sitebeheer · ingelogd" : "Sitebeheer"}</span>`;
@@ -829,7 +859,7 @@ function accountMenu() {
   $("#logout").onclick = logoutCustomer;
 }
 function logoutCustomer() { if (favoritesUnsubscribe) { favoritesUnsubscribe(); favoritesUnsubscribe = null; } state.user = null; sessionStorage.removeItem("novashopUser"); state.favoriteIds = readGuestFavorites(); refreshNav(); if (state.loaded) renderProducts(); closeDialog(); toast("Je bent uitgelogd"); }
-function logoutAdmin() { state.admin = false; sessionStorage.removeItem("novashopAdmin"); refreshNav(); closeDialog(); toast("Je bent uitgelogd bij Sitebeheer"); }
+function logoutAdmin() { state.admin = false; sessionStorage.removeItem("novashopAdmin"); refreshNav(); closeDialog(); renderMaintenanceScreen(); toast("Je bent uitgelogd bij Sitebeheer"); }
 
 /* ---------- voorraad reserveren bij bestelling ---------- */
 async function reserveInventory(items) {
@@ -1340,6 +1370,7 @@ function agendaTab(target, orders) {
 $("#adminEntry").onclick = () => state.admin ? adminPanel() : openAdminLogin();
 function openAdminLogin() {
   openDialog(`<p class="eyebrow">ALLEEN VOOR BEHEERDERS</p><h2>Sitebeheer</h2><form id="adminLoginForm" class="stack" autocomplete="off"><label>E-mailadres<input id="adminEmail" type="email" required autocomplete="off"></label><label>Wachtwoord<input id="adminPassword" type="password" required autocomplete="current-password"></label><button class="primary full">Inloggen als beheerder</button></form>`);
+  $("#adminEmail")?.focus();
   $("#adminLoginForm").onsubmit = async e => {
     e.preventDefault(); if (locked()) return;
     const email = $("#adminEmail").value.trim().toLowerCase(), pw = $("#adminPassword").value;
@@ -1456,7 +1487,7 @@ function filamentTab(target) {
 
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="products">Producten</button><button data-tab="filament">Filamentbeheer</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="products">Producten</button><button data-tab="filament">Filamentbeheer</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button data-tab="maintenance">Onderhoud</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
@@ -1606,6 +1637,40 @@ async function showQuoteConversion(quoteId) {
     } catch (err) { console.error("Quote conversion failed", err); toast("Omzetten naar bestelling is niet gelukt."); btn.disabled = false; btn.textContent = "Offerte omzetten naar bestelling en track & trace aanmaken"; }
   };
 }
+function maintenanceAdminTab(target) {
+  if (!state.admin) return openAdminLogin();
+  const active = state.maintenanceActive;
+  target.innerHTML = `<section class="maintenance-admin-card">
+    <div class="maintenance-admin-icon" aria-hidden="true">${active ? "⚠" : "✓"}</div>
+    <div class="maintenance-admin-copy">
+      <p class="eyebrow">WEBSHOPSTATUS</p>
+      <h3>${active ? "Onderhoudsmodus staat aan" : "De website is online"}</h3>
+      <p class="muted">${active ? "Bezoekers zien momenteel alleen de onderhoudsmelding. Jij kunt de website blijven beheren." : "De webshop is zichtbaar voor bezoekers en werkt normaal."}</p>
+      <div class="maintenance-admin-state ${active ? "is-active" : "is-online"}"><span></span>${active ? "Onderhoud actief" : "Website online"}</div>
+    </div>
+    <button type="button" class="${active ? "secondary" : "primary"}" id="maintenanceToggle">${active ? "Website weer online zetten" : "Website in onderhoud zetten"}</button>
+  </section>
+  <div class="maintenance-admin-help"><b>Hoe kom je er weer in?</b><p>Wanneer de onderhoudspagina actief is, druk je op de letter <kbd>S</kbd> op je toetsenbord. Daarna kun je met je Sitebeheer-e-mailadres en wachtwoord inloggen.</p></div>`;
+  const button = $("#maintenanceToggle");
+  button.onclick = async () => {
+    if (!state.admin) return openAdminLogin();
+    const next = !state.maintenanceActive;
+    if (next && !confirm("Weet je zeker dat je de webshop in onderhoud wilt zetten? Bezoekers zien dan alleen de onderhoudsmelding.")) return;
+    button.disabled = true;
+    try {
+      await set(ref(db, "settings/maintenance"), { active: next, updatedAt: Date.now() });
+      state.maintenanceActive = next;
+      renderMaintenanceScreen();
+      toast(next ? "Onderhoudsmodus ingeschakeld." : "De website is weer online.");
+      maintenanceAdminTab(target);
+    } catch (error) {
+      console.error("Onderhoudsmodus opslaan mislukt", error);
+      toast("Onderhoudsmodus opslaan mislukt. Controleer de Firebase-regels.");
+      button.disabled = false;
+    }
+  };
+}
+
 function adminTab() {
   content.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab === state.tab));
   cleanup(); const target = $("#adminContent"); if (!target) return;
@@ -1645,6 +1710,7 @@ function adminTab() {
   else if (state.tab === "quotes") quoteAdminTab(target);
   else if (state.tab === "camera") cameraTab(target);
   else if (state.tab === "contact") contactAdminTab(target);
+  else if (state.tab === "maintenance") maintenanceAdminTab(target);
   else if (state.tab === "agenda") listen(ref(db, "orders"), snap => agendaTab(target, toList(snap)));
   else if (state.tab === "history") listen(ref(db, "orders"), snap => {
     const os = toList(snap).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));   // oudste eerst
@@ -3535,6 +3601,11 @@ document.addEventListener("keydown", event => {
 /* ---------- start ---------- */
 try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid && s.role === "customer") state.user = s; else if (s?.role === "admin") { sessionStorage.removeItem("novashopUser"); sessionStorage.setItem("novashopAdmin", "1"); } } catch { sessionStorage.removeItem("novashopUser"); }
 if (sessionStorage.getItem("novashopAdmin") === "1") state.admin = true;
+onValue(ref(db, "settings/maintenance"), snap => {
+  const config = snap.val() || {};
+  state.maintenanceActive = config.active === true;
+  renderMaintenanceScreen();
+}, error => console.warn("Onderhoudsstatus laden mislukt", error));
 if (!state.user?.uid) state.favoriteIds = readGuestFavorites();
 refreshNav(); saveCart();
 if (state.user?.uid) { const cachedUser = state.user; get(ref(db, `profiles/${cachedUser.uid}`)).then(snap => { const profile = snap.val(); if (profile?.username) setCustomer({ ...cachedUser, username: profile.username }); else usernamePrompt(cachedUser.uid, cachedUser.email, cachedUser.username || ""); }).catch(() => {}); }
