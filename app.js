@@ -1,5 +1,5 @@
 import { db } from "./firebase.js";
-import { enableChatPush, installForegroundChatPush, removeChatPushRegistration } from "./chat-notifications.js";
+import { enableChatPush, installForegroundChatPush, removeChatPushRegistration, requestChatPushPermission } from "./chat-notifications.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ASSISTANT_EXTRA_FAQ } from "./assistant-faq-extra.js";
 import { ASSISTANT_EXTRA_300 } from "./assistant-faq-300.js";
@@ -332,7 +332,19 @@ let fails = 0, lockUntil = 0;           // simpele rem op gokken
 function locked() { const s = Math.ceil((lockUntil - Date.now()) / 1000); if (s > 0) { toast(`Te veel pogingen. Probeer het over ${s} seconden opnieuw.`); return true } return false; }
 function failed() { if (++fails >= 5) { lockUntil = Date.now() + Math.min(300000, 15000 * 2 ** (fails - 5)); } toast("E-mailadres of wachtwoord klopt niet."); }
 // klant en beheerder zijn twee aparte sessies: inloggen bij Sitebeheer logt je niet uit bij je klantaccount (en andersom)
-function setCustomer(u) { state.user = u; fails = 0; sessionStorage.setItem("novashopUser", JSON.stringify({ uid: u.uid, email: u.email, username: u.username || "", role: "customer" })); refreshNav(); attachCustomerFavorites(); }
+function syncPushForActiveAccount() {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  // Klant- en beheerderssessie zijn onafhankelijk; koppel beide als ze actief zijn.
+  if (state.user?.uid) {
+    enableChatPush({ role: "customer", userId: state.user.uid })
+      .catch(error => console.warn("Automatische FCM-koppeling klant mislukt:", error));
+  }
+  if (state.admin) {
+    enableChatPush({ role: "admin" })
+      .catch(error => console.warn("Automatische FCM-koppeling Sitebeheer mislukt:", error));
+  }
+}
+function setCustomer(u) { state.user = u; fails = 0; sessionStorage.setItem("novashopUser", JSON.stringify({ uid: u.uid, email: u.email, username: u.username || "", role: "customer" })); refreshNav(); attachCustomerFavorites(); syncPushForActiveAccount(); }
 function continuePendingQuoteRequest() { if (!state.pendingQuoteRequest || !state.user) return; state.pendingQuoteRequest = false; startQuoteRequest(); }
 const usernameKey = value => String(value || "").trim().toLowerCase();
 function validUsername(value) { return /^[a-zA-Z0-9._-]{3,20}$/.test(String(value || "").trim()); }
@@ -397,7 +409,83 @@ function setAdmin() {
   sessionStorage.setItem("novashopAdmin", "1");
   refreshNav();
   renderMaintenanceScreen();
+  syncPushForActiveAccount();
 }
+const CHAT_PUSH_CHOICE_KEY = "novashopChatPushChoice";
+function showChatPushWelcome() {
+  if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) return;
+  if (!window.isSecureContext || state.maintenanceActive) return;
+  let choice = "";
+  try { choice = localStorage.getItem(CHAT_PUSH_CHOICE_KEY) || ""; } catch { }
+  if (choice === "later" || Notification.permission === "denied") return;
+  if (Notification.permission === "granted") {
+    try { localStorage.setItem(CHAT_PUSH_CHOICE_KEY, "allowed"); } catch { }
+    syncPushForActiveAccount();
+    return;
+  }
+  // Voorkom dat deze introductie over een loginvenster of andere dialoog heen opent.
+  if (!overlay.classList.contains("hidden")) return;
+  openDialog(`<div class="push-welcome">
+    <div class="push-welcome-icon" aria-hidden="true">🔔</div>
+    <p class="eyebrow">BLIJF OP DE HOOGTE</p>
+    <h2>Mis geen nieuw chatbericht</h2>
+    <p class="muted">Ontvang een melding wanneer 3D Printed Shop een bericht stuurt in een van je chats. Je kunt dit later altijd aanpassen via je browserinstellingen.</p>
+    <button type="button" class="primary full" id="allowChatPushWelcome">Meldingen toestaan</button>
+    <button type="button" class="secondary full" id="laterChatPushWelcome">Niet nu</button>
+    <small class="push-welcome-note">Na je klik vraagt je browser zelf om toestemming. Je keuze wordt onthouden.</small>
+  </div>`);
+  lockDialog = true;
+  $("#closeDialog").hidden = true;
+  $("#allowChatPushWelcome").onclick = async () => {
+    const button = $("#allowChatPushWelcome");
+    button.disabled = true;
+    button.textContent = "Toestemming aanvragen…";
+    try {
+      // Dit verzoek start direct vanuit de klik zodat de browser de officiële prompt mag tonen.
+      const permission = await requestChatPushPermission();
+      if (permission !== "granted") {
+        if (permission === "denied") {
+          notificationWelcomeError("Meldingen zijn door je browser geblokkeerd. Je kunt dit wijzigen via de site-instellingen van je browser.");
+        } else {
+          button.disabled = false;
+          button.textContent = "Opnieuw proberen";
+        }
+        return;
+      }
+      try { localStorage.setItem(CHAT_PUSH_CHOICE_KEY, "allowed"); } catch { }
+      const hasAccount = !!state.admin || !!state.user?.uid;
+      if (hasAccount) {
+        const target = state.admin ? { role: "admin" } : { role: "customer", userId: state.user.uid };
+        await enableChatPush(target);
+      }
+      closeDialog(true);
+      toast(hasAccount ? "Chatmeldingen zijn ingeschakeld op dit apparaat." : "Toestemming opgeslagen. Log in om je chatmeldingen aan je account te koppelen.");
+      syncPushForActiveAccount();
+    } catch (error) {
+      console.warn("Chatmeldingen instellen mislukt:", error);
+      notificationWelcomeError(error.message || "Meldingen instellen is mislukt. Probeer het later opnieuw.");
+    }
+  };
+  $("#laterChatPushWelcome").onclick = () => {
+    try { localStorage.setItem(CHAT_PUSH_CHOICE_KEY, "later"); } catch { }
+    closeDialog(true);
+  };
+  function notificationWelcomeError(message) {
+    const note = document.querySelector(".push-welcome-note");
+    if (note) { note.textContent = message; note.classList.add("is-error"); }
+    const btn = $("#allowChatPushWelcome");
+    if (btn) { btn.disabled = false; btn.textContent = "Opnieuw proberen"; }
+  }
+}
+function scheduleChatPushWelcome(attempt = 0) {
+  if (attempt > 24) return;
+  window.setTimeout(() => {
+    if (state.maintenanceActive) return;
+    if (!overlay.classList.contains("hidden")) return scheduleChatPushWelcome(attempt + 1);
+    showChatPushWelcome();
+  }, attempt === 0 ? 900 : 500);
+}
+
 function refreshNav() {
   $("#accountBtn").innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path></svg><span>${state.user ? safe(state.user.username || "Mijn account") : "Inloggen"}</span>`;
   $("#adminEntry").innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6h16M4 12h10M4 18h7"></path><circle cx="18" cy="15" r="3"></circle><path d="M18 10v2m0 6v2m-5-5h2m6 0h2"></path></svg><span>${state.admin ? "Sitebeheer · ingelogd" : "Sitebeheer"}</span>`;
@@ -3687,10 +3775,12 @@ document.addEventListener("keydown", event => {
 try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid && s.role === "customer") state.user = s; else if (s?.role === "admin") { sessionStorage.removeItem("novashopUser"); sessionStorage.setItem("novashopAdmin", "1"); } } catch { sessionStorage.removeItem("novashopUser"); }
 if (sessionStorage.getItem("novashopAdmin") === "1") state.admin = true;
 installForegroundChatPush().catch(error => console.warn("Voorgrondmeldingen niet gestart:", error));
+if (state.user?.uid || state.admin) syncPushForActiveAccount();
 onValue(ref(db, "settings/maintenance"), snap => {
   const config = snap.val() || {};
   state.maintenanceActive = config.active === true;
   renderMaintenanceScreen();
+  if (!state.maintenanceActive) scheduleChatPushWelcome();
 }, error => console.warn("Onderhoudsstatus laden mislukt", error));
 if (!state.user?.uid) state.favoriteIds = readGuestFavorites();
 refreshNav(); saveCart();

@@ -1108,3 +1108,13 @@ body.maintenance-active>#toast{z-index:10002}
 .maintenance-admin-help p{margin:5px 0 0}
 .maintenance-admin-help kbd{display:inline-block;padding:2px 7px;border:1px solid #ccd6e4;border-bottom-width:2px;border-radius:5px;background:#f5f7fb;color:#203e68;font:700 12px ui-monospace,monospace}
 @media(max-width:620px){.maintenance-admin-card{align-items:stretch;flex-direction:column}.maintenance-admin-card>button{width:100%}.maintenance-card{border-radius:20px}.maintenance-message{font-size:14px}}
+
+
+/* Automatische introductie voor chatmeldingen: de browserprompt volgt pas na expliciete klik. */
+.push-welcome{max-width:480px;margin:0 auto;text-align:center;padding:8px 2px 2px}
+.push-welcome-icon{display:grid;place-items:center;width:66px;height:66px;margin:0 auto 18px;border-radius:20px;background:#edf4ff;color:#1558b5;font-size:29px;box-shadow:0 10px 28px #1558b51c}
+.push-welcome h2{margin:0 0 12px;font:800 25px/1.2 Manrope,sans-serif;color:var(--navy)}
+.push-welcome>.muted{font-size:13px;line-height:1.7;margin:0 auto 18px;max-width:410px}
+.push-welcome .full{margin-top:8px;min-height:44px}
+.push-welcome-note{display:block;margin:14px auto 0;max-width:410px;color:#8492a5;font-size:10px;line-height:1.6}
+.push-welcome-note.is-error{color:#bd3c36}

@@ -30,13 +30,19 @@ function assertPushSetup() {
   }
 }
 
+export async function requestChatPushPermission() {
+  assertPushSetup();
+  if (Notification.permission === "granted" || Notification.permission === "denied") return Notification.permission;
+  // Moet rechtstreeks vanuit de klik op de knop worden aangeroepen.
+  return await Notification.requestPermission();
+}
+
 export async function enableChatPush({ role, userId = null } = {}) {
   assertPushSetup();
 
-  // Deze functie wordt rechtstreeks door de knopklik aangeroepen.
-  // Daardoor toont de browser zelf zijn standaard toestemmingsvenster.
+  // De eigen toestemmingsknop roept requestChatPushPermission rechtstreeks aan.
   let permission = Notification.permission;
-  if (permission === "default") permission = await Notification.requestPermission();
+  if (permission === "default") permission = await requestChatPushPermission();
   if (permission !== "granted") {
     if (permission === "denied") throw new Error("Meldingen zijn in je browser geblokkeerd. Sta meldingen toe via de site-instellingen van je browser.");
     throw new Error("Je hebt geen toestemming gegeven voor meldingen.");
@@ -57,6 +63,7 @@ export async function enableChatPush({ role, userId = null } = {}) {
     role: role === "admin" ? "admin" : "customer",
     updatedAt: Date.now()
   });
+  try { localStorage.setItem("novashopChatPushChoice", "allowed"); } catch { }
 
   installForegroundListener(messaging);
   return { permission, tokenSaved: true };

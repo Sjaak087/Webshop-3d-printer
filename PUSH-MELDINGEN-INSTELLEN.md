@@ -30,10 +30,11 @@ De functie luistert naar nieuwe items onder `chats/{chatId}/messages/{messageId}
 ## 3. Browser toestemming geven
 
 1. Publiceer de volledige website op HTTPS (bijvoorbeeld GitHub Pages).
-2. Log in als klant en open **Mijn chats** → open een chat.
-3. Klik op **Meldingen inschakelen**. De browser toont nu zijn eigen standaard toestemmingsvenster.
-4. Sta meldingen toe.
-5. Herhaal dit op het apparaat van Sitebeheer: log in bij Sitebeheer, open een klantchat en druk op **Meldingen inschakelen**.
+2. Bij het eerste bezoek verschijnt automatisch een korte uitleg-popup.
+3. Klik op **Meldingen toestaan**. Pas na deze klik opent de officiële browserprompt; automatisch openen bij paginalaad wordt door moderne browsers geblokkeerd.
+4. Geef toestemming. De browser onthoudt die keuze en de website bewaart de keuze ook lokaal.
+5. Als de bezoeker nog niet is ingelogd, wordt de toestemming onthouden en wordt het FCM-token automatisch aan het klantaccount gekoppeld zodra die persoon inlogt. Voor Sitebeheer gebeurt dit na het inloggen.
+6. Met **Niet nu** wordt de keuze lokaal bewaard en verschijnt de introductie-popup niet telkens opnieuw. Meldingen kunnen later nog vanuit een chat worden ingeschakeld.
 
 Klantmeldingen worden naar het account van die klant gestuurd wanneer Sitebeheer antwoordt. Berichten van klanten sturen een melding naar apparaten waarop Sitebeheer meldingen heeft ingeschakeld. Uitloggen verwijdert de registratie van dat account/apparaat.
 
