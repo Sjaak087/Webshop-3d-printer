@@ -1390,12 +1390,57 @@ function openChat(id, asAdmin = false) {
       } catch (err) { console.error(err); toast(err.message || "Bericht of foto verzenden mislukt."); }
       finally { submit.disabled = false; submit.textContent = "Verstuur"; }
     };
+    const readByPath = asAdmin
+      ? `chats/${id}/readBy/admins/sitebeheer`
+      : `chats/${id}/readBy/customers/${state.user.uid}`;
+    const locallyReadMessageIds = new Set();
+    const pendingReadMessageIds = new Set();
+    let pendingReadMessages = [];
+    const markVisibleChatMessagesRead = async () => {
+      const box = $("#messages");
+      if (!box || !box.isConnected || document.visibilityState !== "visible" || !document.hasFocus()) return;
+      // Alleen als de nieuwste berichten onderin zichtbaar zijn, gelden ze als gelezen.
+      if (box.scrollHeight - box.scrollTop - box.clientHeight > 70) return;
+      const incoming = pendingReadMessages.filter(message => message.sender !== "system" && message.sender !== (asAdmin ? "admin" : "user"));
+      const updates = {};
+      for (const message of incoming) {
+        const messageId = String(message.id || "");
+        if (!messageId || locallyReadMessageIds.has(messageId) || pendingReadMessageIds.has(messageId)) continue;
+        updates[`${readByPath}/${messageId}`] = true;
+        pendingReadMessageIds.add(messageId);
+      }
+      if (!Object.keys(updates).length) return;
+      try {
+        // Alleen berichten die daadwerkelijk zichtbaar zijn in een actieve chat krijgen een leesvink.
+        await update(ref(db), updates);
+        Object.keys(updates).forEach(path => {
+          const messageId = path.slice(path.lastIndexOf("/") + 1);
+          locallyReadMessageIds.add(messageId);
+          pendingReadMessageIds.delete(messageId);
+        });
+      } catch (error) {
+        Object.keys(updates).forEach(path => pendingReadMessageIds.delete(path.slice(path.lastIndexOf("/") + 1)));
+        console.warn("Leesstatus chat kon niet worden opgeslagen:", error);
+      }
+    };
+    const onChatVisibilityChange = () => markVisibleChatMessagesRead();
+    document.addEventListener("visibilitychange", onChatVisibilityChange);
+    window.addEventListener("focus", onChatVisibilityChange);
+    const chatMessagesBox = $("#messages");
+    chatMessagesBox?.addEventListener("scroll", onChatVisibilityChange, { passive: true });
+    unsubs.push(() => {
+      document.removeEventListener("visibilitychange", onChatVisibilityChange);
+      window.removeEventListener("focus", onChatVisibilityChange);
+      chatMessagesBox?.removeEventListener("scroll", onChatVisibilityChange);
+    });
     listen(ref(db, `chats/${id}/messages`), snap => {
       const box = $("#messages"); if (!box) return;
       const msgs = toList(snap).sort((a, b) => a.createdAt - b.createdAt);
+      pendingReadMessages = msgs;
       const stick = box.scrollHeight - box.scrollTop - box.clientHeight < 70 || !box.children.length;
       box.innerHTML = msgs.map(m => `<div class="message ${m.sender === "admin" ? "theirs" : m.sender === "system" ? "system" : "mine"}">${chatMessageMarkup(m)}</div>`).join("");
       if (stick) box.scrollTop = box.scrollHeight;
+      markVisibleChatMessagesRead();
     });
   }).catch(() => toast("Chat laden mislukt."));
 }

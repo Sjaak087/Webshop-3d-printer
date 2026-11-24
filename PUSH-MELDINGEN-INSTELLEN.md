@@ -1,53 +1,72 @@
 # Chatmeldingen via Firebase Cloud Messaging (FCM)
 
-De webshop kan hiermee echte browser-pushmeldingen tonen voor nieuwe berichten in de bestaande chats. De browser vraagt zelf toestemming via het standaard toestemmingsvenster. Er wordt niets geregistreerd voordat iemand op **Meldingen inschakelen** in een chat drukt.
+Deze webshop gebruikt Firebase Cloud Messaging voor browserpushmeldingen bij nieuwe, nog niet gelezen chatberichten.
 
 ## 1. Public VAPID-sleutel
 
-De door jou aangeleverde Public VAPID Key is al ingevuld in `push-config.js`. Controleer in Firebase Console dat dit inderdaad de **Public key** is onder **Projectinstellingen → Cloud Messaging → Web Push-certificaten**.
+De public VAPID-key die je hebt aangeleverd staat al in `push-config.js`. Controleer dat deze overeenkomt met Firebase Console → Projectinstellingen → Cloud Messaging → Web Push-certificaten. Deel nooit de private VAPID-key of een service-accountbestand.
 
-Plak nooit de private VAPID key of een service-account JSON in de websitecode.
+## 2. Cloud Function bijwerken en uitrollen
 
-## 2. Cloud Functions activeren en deployen
+De Realtime Database-campagne in Firebase Messaging is niet hetzelfde als een automatische trigger op een chatbericht. De meegeleverde Cloud Function `sendChatPush` luistert naar:
 
-De realtime chatmelding komt uit een serverfunctie. De Firebase-console-campagne/testmelding triggert niet vanzelf op een nieuwe database-chatregel.
+`/chats/{chatId}/messages/{messageId}`
 
-Cloud Functions vereist voor dit project het Firebase **Blaze**-abonnement (gekoppeld factureringsaccount). Stel in Google Cloud/Firebase eerst een budgetmelding in.
-
-Installeer Node.js 22 en Firebase CLI, open een terminal in de hoofdmap van dit project en voer uit:
+Installeer Node.js 22 en Firebase CLI. Open de terminal in de hoofdmap van dit project en voer uit:
 
 ```bash
 npm install -g firebase-tools
 firebase login
 firebase use webshop-3cf70
 npm --prefix functions install
+npm --prefix functions run lint
 firebase deploy --only functions:sendChatPush
-firebase deploy --only database
 ```
 
-De functie luistert naar nieuwe items onder `chats/{chatId}/messages/{messageId}` in de bestaande Realtime Database-regio `europe-west1`.
+De Firebase Cloud Functions-trigger vereist het Blaze-abonnement en een gekoppeld factureringsaccount. Stel desgewenst budgetmeldingen in.
 
-## 3. Browser toestemming geven
+## 3. Leesstatus en meldingsregels
 
-1. Publiceer de volledige website op HTTPS (bijvoorbeeld GitHub Pages).
-2. Bij het eerste bezoek verschijnt automatisch een korte uitleg-popup.
-3. Klik op **Meldingen toestaan**. Pas na deze klik opent de officiële browserprompt; automatisch openen bij paginalaad wordt door moderne browsers geblokkeerd.
-4. Geef toestemming. De browser onthoudt die keuze en de website bewaart de keuze ook lokaal.
-5. Als de bezoeker nog niet is ingelogd, wordt de toestemming onthouden en wordt het FCM-token automatisch aan het klantaccount gekoppeld zodra die persoon inlogt. Voor Sitebeheer gebeurt dit na het inloggen.
-6. Met **Niet nu** wordt de keuze lokaal bewaard en verschijnt de introductie-popup niet telkens opnieuw. Meldingen kunnen later nog vanuit een chat worden ingeschakeld.
+- De afzender wordt herkend uit `sender` (`admin` of `user`) en, als dat veld ontbreekt, uit de afzender-ID.
+- Een beheerderbericht gaat naar de klant die bij `chats/{chatId}/userId` hoort.
+- Een klantbericht gaat naar de Sitebeheer-apparaten die pushmeldingen hebben ingeschakeld.
+- De chat schrijft een leesmarker weg per afzonderlijk bericht, maar alleen wanneer de chat zichtbaar is, het browservenster focus heeft en de gebruiker naar de nieuwste berichten kijkt.
+- De Cloud Function wacht kort op die leesmarker. Is het bericht al gelezen, dan wordt geen push verstuurd.
+- Als de push later op het apparaat aankomt, controleert de service worker de leesmarker nogmaals. Zo wordt een offline bewaarde melding onderdrukt wanneer het bericht intussen op een ander apparaat is gelezen.
+- De FCM Web Push TTL is ingesteld op 28 dagen. Een melding kan dus worden afgeleverd zodra het apparaat weer online komt, zolang FCM/browser en token de melding nog accepteren.
+- De systeemmelding bevat geen privé-chattekst.
 
-Klantmeldingen worden naar het account van die klant gestuurd wanneer Sitebeheer antwoordt. Berichten van klanten sturen een melding naar apparaten waarop Sitebeheer meldingen heeft ingeschakeld. Uitloggen verwijdert de registratie van dat account/apparaat.
+## 4. Browser en Windows
 
-Als de browser eerder op **Blokkeren** is gezet, moet de gebruiker meldingen eerst toestaan via de site-instellingen van de browser. De standaard browserprompt kan dan niet opnieuw automatisch worden getoond.
+Webpush vereist HTTPS (of localhost tijdens lokaal testen), een browser met Notification API, Service Worker en Push API, en toestemming van de gebruiker. De service worker `firebase-messaging-sw.js` moet in de root van de website staan.
 
-## 4. Gedrag
+Op Windows kun je testen met een actuele versie van Microsoft Edge of Google Chrome:
 
-- De melding verschijnt wanneer de website op de achtergrond staat of gesloten is, zolang het apparaat/browser push ondersteunt en online is.
-- Bij een open website wordt een melding via de service worker getoond.
-- De melding bevat geen privé-chattekst; alleen de melding dat er een nieuw bericht is.
-- Klikken op de melding opent de betreffende chat. Is de gebruiker uitgelogd, dan wordt eerst het juiste inlogscherm getoond.
-- FCM werkt voor deze webapp alleen via HTTPS en een browser die service workers en Push API ondersteunt.
+1. Open de gepubliceerde website via HTTPS.
+2. Sta meldingen toe wanneer de browser dit vraagt.
+3. Controleer Windows Instellingen → Systeem → Meldingen en zorg dat meldingen voor Edge of Chrome aanstaan.
+4. Controleer dat Niet storen / Focus niet actief is.
+5. Laat de site open op de achtergrond of sluit het tabblad en stuur vanuit een ander apparaat een testbericht.
 
-## Belangrijke bestaande projectbeperking
+Windows kan een melding alsnog verbergen wanneer meldingen voor de browser of Windows zelf uitstaan, de browserprofielinstellingen meldingen blokkeren of Niet storen is ingeschakeld. De website kan die besturingssysteeminstellingen niet zelf overrulen.
 
-De webshop gebruikt een eigen accountlogin en geen Firebase Authentication. Dit is een aangepaste koppeling op de bestaande account-ID's en is geen vervanging voor een beveiligde Firebase Auth-gebaseerde autorisatie. De huidige database heeft al brede lees-/schrijfrechten voor verschillende bestaande gegevens. Herzie die regels afzonderlijk voordat dit project als beveiligde productieomgeving wordt gebruikt.
+## 5. Toestemming
+
+De eigen introductiepopup verschijnt bij een eerste geschikt bezoek. De officiële browserprompt verschijnt pas nadat de bezoeker op **Meldingen toestaan** klikt. De browser bewaart de toestemming; de website bewaart daarnaast de eigen keuze. Na het inloggen wordt het FCM-token aan de juiste klant- of Sitebeheer-registratie gekoppeld.
+
+Als toestemming eerder is geblokkeerd, moet de gebruiker deze eerst via de browserinstellingen weer toestaan. De site kan de browserprompt niet forceren.
+
+## 6. Testen en logboeken
+
+Na het uitrollen van de functie kun je in Firebase Console → Functions → `sendChatPush` de logs controleren. Relevante logregels zijn onder meer:
+
+- `Chat push sent`: een of meer FCM-registraties zijn door FCM geaccepteerd.
+- `No FCM recipients registered`: er is nog geen apparaat voor de ontvangende klant/Sitebeheer geregistreerd.
+- `Chat push skipped: recipient already read message`: het bericht had al een leesmarker.
+- `Chat push ignored: sender is not a customer/admin message`: het bericht was een systeembericht of de afzender kon niet worden herkend.
+
+Een succesvolle FCM-verzendstatus garandeert niet dat Windows het toastbericht zichtbaar toont; controleer ook browser- en Windows-meldingsinstellingen.
+
+## Bestaande projectbeperking
+
+De webshop gebruikt een eigen accountlogin en geen Firebase Authentication. De bestaande database-regels laten brede lees-/schrijfrechten op onder andere chats toe. De leesmarkers en tokenregistraties passen bij die bestaande structuur, maar vormen geen server-side identiteitscontrole. Herzie de Firebase-beveiligingsregels en koppel de database-acties aan betrouwbare server-side identiteiten voordat de webshop als beveiligde productieomgeving wordt gebruikt.

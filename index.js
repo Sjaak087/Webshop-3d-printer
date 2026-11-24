@@ -6,12 +6,45 @@ admin.initializeApp({ databaseURL: "https://webshop-3cf70-default-rtdb.europe-we
 
 const DATABASE_INSTANCE = "webshop-3cf70-default-rtdb";
 const DATABASE_REGION = "europe-west1";
+const OFFLINE_TTL_SECONDS = 60 * 60 * 24 * 28; // FCM Web Push: maximaal 28 dagen bewaren.
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 function tokenList(snapshot) {
   const raw = snapshot.val() || {};
   return Object.entries(raw)
     .map(([key, value]) => ({ key, token: typeof value === "string" ? value : value?.token }))
     .filter(item => typeof item.token === "string" && item.token.length > 20);
+}
+
+function detectSender(message, chat) {
+  const candidates = [message.sender, message.senderRole, message.role, message.fromRole]
+    .map(value => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+  if (candidates.some(value => ["system", "systeem", "bot"].includes(value))) return "system";
+  if (candidates.some(value => ["admin", "sitebeheer", "beheerder", "owner", "staff", "support"].includes(value))) return "admin";
+  if (candidates.some(value => ["user", "customer", "klant", "client", "buyer"].includes(value))) return "customer";
+
+  const uid = String(message.uid || message.userId || message.senderId || "");
+  if (uid === "admin" || message.isAdmin === true) return "admin";
+  const chatUserId = String(chat.userId || chat.customerId || "");
+  if (uid && chatUserId && uid === chatUserId) return "customer";
+  return null;
+}
+
+function tokenRootFor(sender, chat) {
+  if (sender === "admin") {
+    const customerId = String(chat.userId || chat.customerId || "").trim();
+    return customerId ? `notificationTokens/customers/${customerId}` : null;
+  }
+  return "notificationTokens/admins/sitebeheer";
+}
+
+function readMarkerPathFor(sender, chatId, chat) {
+  if (sender === "admin") {
+    const customerId = String(chat.userId || chat.customerId || "").trim();
+    return customerId ? `chats/${chatId}/readBy/customers/${customerId}` : null;
+  }
+  return `chats/${chatId}/readBy/admins/sitebeheer`;
 }
 
 async function sendToTokens(tokens, data, tokenRoot) {
@@ -23,7 +56,12 @@ async function sendToTokens(tokens, data, tokenRoot) {
     const result = await admin.messaging().sendEachForMulticast({
       tokens: batch.map(item => item.token),
       data,
-      webpush: { headers: { TTL: "3600" } }
+      webpush: {
+        headers: {
+          TTL: String(OFFLINE_TTL_SECONDS),
+          Urgency: "high"
+        }
+      }
     });
     sent += result.successCount;
     result.responses.forEach((response, index) => {
@@ -51,50 +89,71 @@ exports.sendChatPush = onValueCreated({
 }, async event => {
   const message = event.data.val();
   const { chatId, messageId } = event.params;
-  if (!message || !["admin", "user"].includes(message.sender)) return;
+  if (!message) return;
 
-  const chatSnapshot = await admin.database().ref(`chats/${chatId}`).get();
+  const database = admin.database();
+  const chatSnapshot = await database.ref(`chats/${chatId}`).get();
   const chat = chatSnapshot.val();
   if (!chat) return;
 
-  let tokenRoot;
-  let title;
-  if (message.sender === "admin") {
-    if (!chat.userId) return;
-    tokenRoot = `notificationTokens/customers/${chat.userId}`;
-    title = "Nieuw bericht van 3D Printed Shop";
-  } else {
-    tokenRoot = "notificationTokens/admins/sitebeheer";
-    title = `Nieuw bericht van ${String(chat.username || "een klant").slice(0, 60)}`;
+  const sender = detectSender(message, chat);
+  if (!sender || sender === "system") {
+    logger.info("Chat push ignored: sender is not a customer/admin message", { chatId, messageId, sender: message.sender || null });
+    return;
   }
 
-  // Idempotency marker avoids duplicate sends when an event is retried.
-  const marker = admin.database().ref(`chatPushProcessed/${chatId}/${messageId}`);
+  const tokenRoot = tokenRootFor(sender, chat);
+  const readMarkerPath = readMarkerPathFor(sender, chatId, chat);
+  if (!tokenRoot || !readMarkerPath) {
+    logger.warn("Chat push has no recipient mapping", { chatId, messageId, sender, chatUserId: chat.userId || null });
+    return;
+  }
+
+  // Geef de open chat tijd om de leesbevestiging naar Realtime Database te schrijven.
+  // Zo krijgt iemand die het bericht al zichtbaar heeft gelezen geen onnodige push.
+  await sleep(1800);
+  const readSnapshot = await database.ref(`${readMarkerPath}/${messageId}`).get();
+  if (readSnapshot.val() === true) {
+    logger.info("Chat push skipped: recipient already read message", { chatId, messageId, sender });
+    return;
+  }
+
+  const snapshot = await database.ref(tokenRoot).get();
+  const tokens = tokenList(snapshot);
+  if (!tokens.length) {
+    logger.info("No FCM recipients registered", { chatId, messageId, sender, tokenRoot });
+    return;
+  }
+
+  // Idempotency marker avoids duplicate sends when the event is retried.
+  const marker = database.ref(`chatPushProcessed/${chatId}/${messageId}`);
   const claim = await marker.transaction(current => current ? undefined : { claimedAt: Date.now() }, undefined, false);
   if (!claim.committed) return;
 
-  try {
-    const snapshot = await admin.database().ref(tokenRoot).get();
-    const tokens = tokenList(snapshot);
-    if (!tokens.length) {
-      logger.info("No FCM recipients registered", { chatId, sender: message.sender });
-      return;
-    }
+  const customerId = String(chat.userId || chat.customerId || "");
+  const targetRole = sender === "admin" ? "customer" : "admin";
+  const title = sender === "admin"
+    ? "Nieuw bericht van 3D Printed Shop"
+    : `Nieuw bericht van ${String(chat.username || "een klant").slice(0, 60)}`;
 
-    // Do not include chat text in OS notifications, to avoid exposing private messages on a locked screen.
-    const data = {
-      type: "chat-message",
-      chatId: String(chatId),
-      messageId: String(messageId),
-      title,
-      targetRole: message.sender === "admin" ? "customer" : "admin",
-      body: message.imageData ? "Je hebt een nieuw bericht of een foto ontvangen." : "Je hebt een nieuw bericht ontvangen."
-    };
+  // Geen privé-chattekst in de systeemmelding. Alle FCM datawaarden zijn strings.
+  const data = {
+    type: "chat-message",
+    chatId: String(chatId),
+    messageId: String(messageId),
+    createdAt: String(Number(message.createdAt) || Date.now()),
+    targetRole,
+    targetUserId: targetRole === "customer" ? customerId : "sitebeheer",
+    title,
+    body: message.imageData ? "Je hebt een nieuw bericht of een foto ontvangen." : "Je hebt een nieuw bericht ontvangen."
+  };
+
+  try {
     const sent = await sendToTokens(tokens, data, tokenRoot);
-    logger.info("Chat push sent", { chatId, sender: message.sender, sent });
+    logger.info("Chat push sent", { chatId, messageId, sender, targetRole, sent });
   } catch (error) {
     await marker.remove().catch(() => {});
-    logger.error("Chat push failed", { chatId, messageId, error });
+    logger.error("Chat push failed", { chatId, messageId, sender, error });
     throw error;
   }
 });

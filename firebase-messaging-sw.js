@@ -1,6 +1,7 @@
 /* Firebase Cloud Messaging service worker. Must stay in the website root. */
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging-compat.js");
+importScripts("https://www.gstatic.com/firebasejs/10.14.1/firebase-database-compat.js");
 
 firebase.initializeApp({
   apiKey: "AIzaSyCBLpFJIC0yppKjQAwazMqv9QC0X4MBNa",
@@ -14,15 +15,31 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-messaging.onBackgroundMessage(payload => {
+messaging.onBackgroundMessage(async payload => {
   const data = payload?.data || {};
   if (data.type !== "chat-message" || !data.chatId) return;
+
+  // Controleer bij aflevering opnieuw of de ontvanger dit bericht inmiddels op een ander apparaat las.
+  // Dit voorkomt verlate Windows/browsermeldingen na offline-periodes.
+  try {
+    const readPath = data.targetRole === "admin"
+      ? `chats/${data.chatId}/readBy/admins/sitebeheer/${data.messageId}`
+      : `chats/${data.chatId}/readBy/customers/${data.targetUserId || ""}/${data.messageId}`;
+    const readSnapshot = await firebase.database().ref(readPath).once("value");
+    if (readSnapshot.val() === true) return;
+  } catch (error) {
+    // Fail open: bij een tijdelijke databasefout mag de pushmelding niet stil verloren gaan.
+    console.warn("Leesstatus voor achtergrondmelding kon niet worden gecontroleerd:", error);
+  }
+
   const title = data.title || "Nieuw bericht in je chat";
   const options = {
     body: data.body || "Je hebt een nieuw bericht ontvangen.",
     icon: new URL("./favicon.ico", self.registration.scope).href,
     badge: new URL("./favicon.ico", self.registration.scope).href,
     tag: `chat-${data.chatId}`,
+    renotify: true,
+    timestamp: Number(data.createdAt) || Date.now(),
     data: { chatId: data.chatId, targetRole: data.targetRole || "customer" }
   };
   return self.registration.showNotification(title, options);

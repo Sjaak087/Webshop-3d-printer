@@ -1,6 +1,6 @@
 import { app, db } from "./firebase.js";
 import { FCM_VAPID_KEY } from "./push-config.js";
-import { ref, set, remove } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
+import { ref, set, get, remove } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 import { getMessaging, getToken, isSupported, onMessage } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-messaging.js";
 
 let foregroundListenerInstalled = false;
@@ -100,15 +100,27 @@ function installForegroundListener(messaging) {
   onMessage(messaging, payload => {
     const data = payload?.data || {};
     if (data.type !== "chat-message" || !data.chatId || Notification.permission !== "granted") return;
-    navigator.serviceWorker.ready.then(registration => registration.showNotification(
+    const readPath = data.targetRole === "admin"
+      ? `chats/${data.chatId}/readBy/admins/sitebeheer/${data.messageId}`
+      : `chats/${data.chatId}/readBy/customers/${data.targetUserId || ""}/${data.messageId}`;
+    const showForegroundNotification = () => navigator.serviceWorker.ready.then(registration => registration.showNotification(
       data.title || "Nieuw bericht in je chat",
       {
         body: data.body || "Je hebt een nieuw bericht ontvangen.",
         icon: new URL("./favicon.ico", import.meta.url).href,
         badge: new URL("./favicon.ico", import.meta.url).href,
         tag: `chat-${data.chatId}`,
+        renotify: true,
+        timestamp: Number(data.createdAt) || Date.now(),
         data: { chatId: data.chatId, targetRole: data.targetRole || "customer" }
       }
-    )).catch(error => console.warn("Voorgrondmelding kon niet worden getoond:", error));
+    ));
+    get(ref(db, readPath)).then(readSnapshot => {
+      if (readSnapshot.val() === true) return;
+      return showForegroundNotification();
+    }).catch(error => {
+      console.warn("Leesstatus kon niet worden gecontroleerd; voorgrondmelding wordt alsnog getoond:", error);
+      return showForegroundNotification();
+    }).catch(error => console.warn("Voorgrondmelding kon niet worden getoond:", error));
   });
 }
