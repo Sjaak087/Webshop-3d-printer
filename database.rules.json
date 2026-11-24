@@ -117,6 +117,26 @@
           }
         }
       }
+    },
+    "notificationTokens": {
+      "customers": {
+        "$uid": {
+          ".read": false,
+          "$tokenId": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['token','role','updatedAt']) && newData.child('token').isString() && newData.child('token').val().length >= 20 && newData.child('token').val().length <= 5000 && newData.child('role').val() === 'customer' && newData.child('updatedAt').isNumber()"
+          }
+        }
+      },
+      "admins": {
+        "sitebeheer": {
+          ".read": false,
+          "$tokenId": {
+            ".write": true,
+            ".validate": "newData.hasChildren(['token','role','updatedAt']) && newData.child('token').isString() && newData.child('token').val().length >= 20 && newData.child('token').val().length <= 5000 && newData.child('role').val() === 'admin' && newData.child('updatedAt').isNumber()"
+          }
+        }
+      }
     }
   }
 }

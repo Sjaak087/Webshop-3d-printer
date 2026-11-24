@@ -17,7 +17,7 @@
 .chat-heading{align-items:center;padding-bottom:12px;border-bottom:1px solid var(--line)}
 .chat-title-wrap h2{margin:0 0 3px}
 .chat-subtitle{font-size:11px;color:var(--muted)}
-.chat-notice{font-size:11px;color:#526781;background:#f2f6fc;border-radius:9px;padding:9px 12px}
+.chat-notice{font-size:11px;color:#526781;background:#f2f6fc;border-radius:9px;padding:9px 12px}.chat-push-settings{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:3px 0}.chat-push-settings button{white-space:nowrap}.chat-push-settings small{font-size:10px;color:#718097;line-height:1.4;flex:1;min-width:170px}
 .messages{height:min(48vh,430px);min-height:240px;margin:4px 0;padding:16px;background:#f4f7fb;border:1px solid #e8edf5}
 .message{max-width:min(82%,520px);padding:11px 14px;border-radius:14px}
 .message.mine{border-bottom-right-radius:5px}

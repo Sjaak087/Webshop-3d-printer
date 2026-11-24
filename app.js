@@ -1,4 +1,5 @@
 import { db } from "./firebase.js";
+import { enableChatPush, installForegroundChatPush, removeChatPushRegistration } from "./chat-notifications.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ASSISTANT_EXTRA_FAQ } from "./assistant-faq-extra.js";
 import { ASSISTANT_EXTRA_300 } from "./assistant-faq-300.js";
@@ -343,9 +344,23 @@ async function claimUsername(uid, username) {
   await set(ref(db, `profiles/${uid}`), { username: clean, usernameKey: key, updatedAt: Date.now() });
   return clean;
 }
+function openPendingNotificationChat() {
+  const chatId = sessionStorage.getItem("pendingNotificationChat");
+  const role = sessionStorage.getItem("pendingNotificationRole") || "customer";
+  if (!chatId) return false;
+  if (role === "admin" && state.admin) {
+    sessionStorage.removeItem("pendingNotificationChat"); sessionStorage.removeItem("pendingNotificationRole");
+    openChat(chatId, true); return true;
+  }
+  if (role !== "admin" && state.user?.uid) {
+    sessionStorage.removeItem("pendingNotificationChat"); sessionStorage.removeItem("pendingNotificationRole");
+    openChat(chatId, false); return true;
+  }
+  return false;
+}
 async function activateCustomer(uid, email, suggested = "") {
   const profile = (await get(ref(db, `profiles/${uid}`))).val();
-  if (profile?.username) { setCustomer({ uid, email, username: profile.username, role: "customer" }); closeDialog(); toast("Je bent ingelogd"); continuePendingQuoteRequest(); return; }
+  if (profile?.username) { setCustomer({ uid, email, username: profile.username, role: "customer" }); closeDialog(); toast("Je bent ingelogd"); if (!openPendingNotificationChat()) continuePendingQuoteRequest(); return; }
   usernamePrompt(uid, email, suggested);
 }
 function usernamePrompt(uid, email, suggested = "") {
@@ -355,7 +370,7 @@ function usernamePrompt(uid, email, suggested = "") {
     e.preventDefault(); const btn = e.submitter; btn.disabled = true;
     try {
       const username = await claimUsername(uid, $("#usernameInput").value);
-      setCustomer({ uid, email, username, role: "customer" }); closeDialog(true); toast("Gebruikersnaam ingesteld!"); continuePendingQuoteRequest();
+      setCustomer({ uid, email, username, role: "customer" }); closeDialog(true); toast("Gebruikersnaam ingesteld!"); if (!openPendingNotificationChat()) continuePendingQuoteRequest();
     } catch (err) { toast(err.message || "Gebruikersnaam opslaan mislukt"); }
     finally { btn.disabled = false; }
   };
@@ -859,8 +874,8 @@ function accountMenu() {
   $("#editUsername").onclick = () => usernamePrompt(state.user.uid, state.user.email, state.user.username || "");
   $("#logout").onclick = logoutCustomer;
 }
-function logoutCustomer() { if (favoritesUnsubscribe) { favoritesUnsubscribe(); favoritesUnsubscribe = null; } state.user = null; sessionStorage.removeItem("novashopUser"); state.favoriteIds = readGuestFavorites(); refreshNav(); if (state.loaded) renderProducts(); closeDialog(); toast("Je bent uitgelogd"); }
-function logoutAdmin() { state.admin = false; sessionStorage.removeItem("novashopAdmin"); refreshNav(); closeDialog(); renderMaintenanceScreen(); toast("Je bent uitgelogd bij Sitebeheer"); }
+function logoutCustomer() { const previousUid = state.user?.uid; if (previousUid) removeChatPushRegistration({ role: "customer", userId: previousUid }).catch(error => console.warn("Pushregistratie klant opruimen mislukt:", error)); if (favoritesUnsubscribe) { favoritesUnsubscribe(); favoritesUnsubscribe = null; } state.user = null; sessionStorage.removeItem("novashopUser"); state.favoriteIds = readGuestFavorites(); refreshNav(); if (state.loaded) renderProducts(); closeDialog(); toast("Je bent uitgelogd"); }
+function logoutAdmin() { removeChatPushRegistration({ role: "admin" }).catch(error => console.warn("Pushregistratie beheerder opruimen mislukt:", error)); state.admin = false; sessionStorage.removeItem("novashopAdmin"); refreshNav(); closeDialog(); renderMaintenanceScreen(); toast("Je bent uitgelogd bij Sitebeheer"); }
 
 /* ---------- voorraad reserveren bij bestelling ---------- */
 async function reserveInventory(items) {
@@ -1222,8 +1237,40 @@ function openChat(id, asAdmin = false) {
     const c = s.val(); if (!c) return toast("Chat niet gevonden");
     if (!asAdmin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
     const isQuoteChat = c.kind === "quote";
-    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>${isQuoteChat ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div>${c.orderId ? `<button class="secondary" id="chatTrack">Bestelling volgen</button>` : `<span class="status-pill">Offertegesprek</span>`}</div><div class="chat-notice">${isQuoteChat ? (c.orderId ? `Deze offerte is omgezet naar bestelling #${short(c.orderId)}. Bespreek hier eventuele vragen over je bestelling.` : "Bespreek hier de mogelijkheden en details van je maatwerkproduct.") : "Deel hier je vraag, een link of een foto. Foto's worden automatisch sterk verkleind voordat ze worden opgeslagen."}</div><div id="messages" class="messages" aria-live="polite"></div><div id="chatImagePending" class="chat-image-pending" hidden></div><form id="sendMessage" class="send-message"><label for="chatImageInput" class="chat-attach-button" title="Foto toevoegen" aria-label="Foto toevoegen"><i data-lucide="paperclip"></i></label><input id="chatImageInput" type="file" accept="image/*" hidden><input id="messageText" placeholder="Typ je bericht…" maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form><small class="chat-upload-hint">Maximaal 12 MB origineel · automatisch verkleind tot ongeveer 65 KB.</small></div>`);
+    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>${isQuoteChat ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div>${c.orderId ? `<button class="secondary" id="chatTrack">Bestelling volgen</button>` : `<span class="status-pill">Offertegesprek</span>`}</div><div class="chat-notice">${isQuoteChat ? (c.orderId ? `Deze offerte is omgezet naar bestelling #${short(c.orderId)}. Bespreek hier eventuele vragen over je bestelling.` : "Bespreek hier de mogelijkheden en details van je maatwerkproduct.") : "Deel hier je vraag, een link of een foto. Foto's worden automatisch sterk verkleind voordat ze worden opgeslagen."}</div><div class="chat-push-settings"><button type="button" class="secondary" id="enableChatNotifications">🔔 Meldingen inschakelen</button><small id="chatPushHint">Ontvang een browsermelding als er een nieuw bericht in deze chat staat. Je browser vraagt eerst toestemming.</small></div><div id="messages" class="messages" aria-live="polite"></div><div id="chatImagePending" class="chat-image-pending" hidden></div><form id="sendMessage" class="send-message"><label for="chatImageInput" class="chat-attach-button" title="Foto toevoegen" aria-label="Foto toevoegen"><i data-lucide="paperclip"></i></label><input id="chatImageInput" type="file" accept="image/*" hidden><input id="messageText" placeholder="Typ je bericht…" maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form><small class="chat-upload-hint">Maximaal 12 MB origineel · automatisch verkleind tot ongeveer 65 KB.</small></div>`);
     if (window.lucide) window.lucide.createIcons();
+    const notificationButton = $("#enableChatNotifications");
+    const notificationHint = $("#chatPushHint");
+    if (!("Notification" in window) || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      notificationButton.hidden = true;
+      notificationHint.textContent = "Deze browser ondersteunt geen pushmeldingen.";
+    } else if (Notification.permission === "granted") {
+      notificationButton.textContent = "🔔 Meldingen koppelen op dit apparaat";
+      notificationHint.textContent = "Je browsertoestemming is al gegeven. Koppel dit apparaat om chatmeldingen te ontvangen.";
+    } else if (Notification.permission === "denied") {
+      notificationButton.disabled = true;
+      notificationButton.textContent = "Meldingen geblokkeerd in browser";
+      notificationHint.textContent = "Je hebt meldingen eerder geblokkeerd. Wijzig dit via de site-instellingen van je browser.";
+    }
+    notificationButton.onclick = async () => {
+      notificationButton.disabled = true;
+      notificationButton.textContent = "Bezig met inschakelen…";
+      try {
+        await enableChatPush({ role: asAdmin ? "admin" : "customer", userId: asAdmin ? null : state.user?.uid });
+        notificationButton.textContent = "✓ Chatmeldingen ingeschakeld";
+        notificationHint.textContent = "Dit apparaat ontvangt nu een melding bij nieuwe chatberichten.";
+        toast("Chatmeldingen zijn ingeschakeld op dit apparaat.");
+      } catch (error) {
+        console.warn("Chatmeldingen inschakelen mislukt:", error);
+        notificationHint.textContent = error.message || "Chatmeldingen inschakelen is mislukt.";
+        if (Notification.permission !== "denied") {
+          notificationButton.textContent = "🔔 Opnieuw proberen";
+          notificationButton.disabled = false;
+        } else {
+          notificationButton.textContent = "Meldingen geblokkeerd in browser";
+        }
+      }
+    };
     if (c.orderId) $("#chatTrack").onclick = () => showOrderTracking(c.orderId, asAdmin);
     const chatForm = $("#sendMessage"), messageInput = $("#messageText"), imageInput = $("#chatImageInput"), pendingImage = $("#chatImagePending");
     let pendingObjectUrl = "";
@@ -1377,7 +1424,7 @@ function openAdminLogin() {
     const email = $("#adminEmail").value.trim().toLowerCase(), pw = $("#adminPassword").value;
     const hash = await hashPw(pw, CFG.salt, CFG.iterations);
     if (email !== CFG.adminEmail.toLowerCase() || hash !== CFG.hash) return failed();
-    setAdmin(); closeDialog(); adminPanel();
+    setAdmin(); closeDialog(); if (!openPendingNotificationChat()) adminPanel();
   };
 }
 function dashboardTab(target) {
@@ -3639,6 +3686,7 @@ document.addEventListener("keydown", event => {
 /* ---------- start ---------- */
 try { const s = JSON.parse(sessionStorage.getItem("novashopUser") || "null"); if (s?.uid && s.role === "customer") state.user = s; else if (s?.role === "admin") { sessionStorage.removeItem("novashopUser"); sessionStorage.setItem("novashopAdmin", "1"); } } catch { sessionStorage.removeItem("novashopUser"); }
 if (sessionStorage.getItem("novashopAdmin") === "1") state.admin = true;
+installForegroundChatPush().catch(error => console.warn("Voorgrondmeldingen niet gestart:", error));
 onValue(ref(db, "settings/maintenance"), snap => {
   const config = snap.val() || {};
   state.maintenanceActive = config.active === true;
@@ -3647,7 +3695,23 @@ onValue(ref(db, "settings/maintenance"), snap => {
 if (!state.user?.uid) state.favoriteIds = readGuestFavorites();
 refreshNav(); saveCart();
 if (state.user?.uid) { const cachedUser = state.user; get(ref(db, `profiles/${cachedUser.uid}`)).then(snap => { const profile = snap.val(); if (profile?.username) setCustomer({ ...cachedUser, username: profile.username }); else usernamePrompt(cachedUser.uid, cachedUser.email, cachedUser.username || ""); }).catch(() => {}); }
-const publicTrackToken = new URLSearchParams(location.search).get("track");
+const startupParams = new URLSearchParams(location.search);
+const notificationChatId = startupParams.get("openChat");
+const notificationRole = startupParams.get("openRole") === "admin" ? "admin" : "customer";
+if (notificationChatId) {
+  sessionStorage.setItem("pendingNotificationChat", notificationChatId);
+  sessionStorage.setItem("pendingNotificationRole", notificationRole);
+  if (notificationRole === "admin") {
+    if (state.admin) openPendingNotificationChat();
+    else openAdminLogin();
+  } else if (state.user?.uid) openPendingNotificationChat();
+  else authForm("login", "Log in om het nieuwe chatbericht te bekijken.");
+  startupParams.delete("openChat");
+  startupParams.delete("openRole");
+  const cleanUrl = `${location.pathname}${startupParams.toString() ? `?${startupParams}` : ""}${location.hash}`;
+  history.replaceState({}, "", cleanUrl);
+}
+const publicTrackToken = startupParams.get("track");
 if (publicTrackToken) showPublicTracking(publicTrackToken);
 const returnedOrder = new URLSearchParams(location.search).get("order");
 if (returnedOrder) { toast("Je bent terug van de betaalpagina. De betaalstatus wordt door Mollie bevestigd."); history.replaceState({}, "", location.pathname); }
