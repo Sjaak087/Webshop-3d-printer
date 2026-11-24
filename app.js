@@ -1631,7 +1631,7 @@ function filamentTab(target) {
     const active = filaments.filter(item => item.active !== false);
     const totalGrams = active.reduce((sum, item) => sum + Math.max(0, Number(item.gramsAvailable) || 0), 0);
     const low = active.filter(item => Number(item.gramsAvailable || 0) <= Number(item.lowStockThreshold ?? 100));
-    target.innerHTML = `<div class="admin-toolbar"><div><h3>Filamentbeheer</h3><p class="muted">Beheer je kleurenpalet en gramvoorraad. Actieve kleuren verschijnen automatisch bij alle gewone producten; offertes gebruiken hun eigen kleurenlijst.</p></div><span class="status-pill">${active.length} actieve kleuren</span></div>
+    target.innerHTML = `<div class="admin-toolbar"><div><h3>Filamentbeheer</h3><p class="muted">Beheer je kleurenpalet en gramvoorraad. Actieve kleuren verschijnen automatisch bij alle gewone producten; offertes gebruiken hun eigen kleurenlijst.</p></div><div class="filament-toolbar-actions"><button type="button" class="secondary" id="downloadFilamentOverview">Download overzicht</button><span class="status-pill">${active.length} actieve kleuren</span></div></div>
       <div class="inventory-summary filament-summary"><div><small>Actieve kleuren</small><b>${active.length}</b></div><div><small>Filament op voorraad</small><b>${Math.round(totalGrams * 10) / 10} g</b></div><div><small>Lage voorraad</small><b>${low.length}</b></div></div>
       <form id="filamentCreateForm" class="filament-create-form"><label>Naam van de kleur<input name="name" maxlength="50" required placeholder="Bijv. Mat zwart"></label><label>Kies een kleur<div class="filament-color-picker"><input name="hex" type="color" value="#222222" aria-label="Kleur kiezen"><span>Gebruik het kleurenpalet</span></div></label><label>Hoeveelheid op voorraad (gram)<input name="gramsAvailable" type="number" min="0" max="1000000" step="0.1" value="1000" required></label><label>Materiaal<select name="material"><option>PLA</option><option>PETG</option><option>ABS</option><option>TPU</option><option>Andere</option></select></label><label>Waarschuwingsgrens (gram)<input name="lowStockThreshold" type="number" min="0" max="1000000" step="1" value="100" required></label><button type="submit" class="primary">Kleur toevoegen</button></form>
       <div class="filament-list">${filaments.length ? filaments.map(item => {
@@ -1639,6 +1639,35 @@ function filamentTab(target) {
         return `<form class="filament-row ${isLow ? "is-low" : ""} ${item.active === false ? "is-inactive" : ""}" data-filament-form="${safe(item.id)}"><div class="filament-color-preview"><span style="--filament-color:${safe(filamentHexOf(item) || "#808080")}"></span></div><label>Naam<input name="name" maxlength="50" required value="${safe(item.name || "")}"></label><label>Kleurpalet<input name="hex" type="color" value="${safe(filamentHexOf(item) || "#808080")}" aria-label="${safe(item.name || "Filamentkleur")} kleur kiezen"></label><label>Voorraad (gram)<input name="gramsAvailable" type="number" min="0" max="1000000" step="0.1" value="${grams}" required></label><label>Materiaal<select name="material">${["PLA","PETG","ABS","TPU","Andere"].map(m => `<option ${String(item.material || "PLA") === m ? "selected" : ""}>${m}</option>`).join("")}</select></label><label>Waarschuw bij (gram)<input name="lowStockThreshold" type="number" min="0" max="1000000" step="1" value="${threshold}" required></label><div class="filament-row-actions"><small>${item.active === false ? "Niet zichtbaar bij producten" : isLow ? "Bijna op" : "Actief bij producten"} · ${grams} g</small><button type="submit" class="primary">Opslaan</button><button type="button" class="secondary" data-filament-toggle="${safe(item.id)}">${item.active === false ? "Activeren" : "Pauzeren"}</button><button type="button" class="remove-item" data-filament-delete="${safe(item.id)}">Verwijderen</button></div></form>`;
       }).join("") : `<p class="empty-state">Je hebt nog geen filamentkleuren toegevoegd. Voeg hierboven je eerste kleur toe.</p>`}</div>
       <p class="hint filament-private-note">Het gramverbruik per product is alleen zichtbaar in Sitebeheer. Bij een bestelling wordt het opgegeven aantal gram automatisch van de gekozen kleur afgehaald. Een kleur wordt automatisch uitverkocht voor een product zodra er minder gram over is dan dat product nodig heeft.</p>`;
+    const downloadButton = target.querySelector("#downloadFilamentOverview");
+    if (downloadButton) downloadButton.onclick = () => {
+      if (!filaments.length) return toast("Er zijn nog geen filamentkleuren om te downloaden.");
+      // Export all filament entries (including paused colours), using the latest
+      // values received from Firebase. Keep the file limited to the three
+      // columns requested for the stock overview.
+      const csvCell = value => `"${String(value ?? "").replace(/"/g, '""')}"`;
+      const rows = [
+        ["Kleur", "Materiaal", "Aantal over (gram)"],
+        ...filaments.map(item => [
+          item.name || "Onbenoemde kleur",
+          item.material || "Niet opgegeven",
+          new Intl.NumberFormat("nl-NL", { maximumFractionDigits: 1 }).format(Math.max(0, Number(item.gramsAvailable) || 0))
+        ])
+      ];
+      const csv = "\uFEFF" + rows.map(row => row.map(csvCell).join(";")).join("\r\n");
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const date = new Date().toISOString().slice(0, 10);
+      link.href = url;
+      link.download = `filamentvoorraad-${date}.csv`;
+      link.hidden = true;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast("Filamentoverzicht gedownload.");
+    };
     const createForm = target.querySelector("#filamentCreateForm");
     createForm.onsubmit = async event => {
       event.preventDefault(); const form = event.currentTarget, data = new FormData(form);

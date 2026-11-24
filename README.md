@@ -365,3 +365,8 @@ Zie `TEST-CHATBOT.md` voor de v30-controles. De externe Wikipedia/DuckDuckGo-ver
 ## Versie 34 – chatbot herstel en 300 extra FAQ-vraagvarianten
 
 Deze versie bevat 300 aanvullende FAQ-items in `assistant-faq-300.js` naast de bestaande kennisbank. De chatknop heeft daarnaast een kleine HTML-noodbediening om het paneel ook te kunnen openen wanneer het JavaScript-modulebestand niet laadt. Dit herstelt de bediening van het paneel, maar het versturen van berichten vereist nog steeds dat `app.js` en de benodigde Firebase-modules correct laden.
+
+
+## Nieuwe toevoeging — filamentvoorraad downloaden
+
+In Sitebeheer → Filamentbeheer staat nu de knop **Download overzicht**. Die downloadt de actuele Firebase-voorraad als CSV-bestand dat je direct in Excel kunt openen. Het bestand bevat uitsluitend de kolommen **Kleur**, **Materiaal** en **Aantal over (gram)**. Zowel actieve als gepauzeerde filamentkleuren worden opgenomen; de voorraadhoeveelheid wordt uit de meest recente geladen Firebase-gegevens gehaald.

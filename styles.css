@@ -885,6 +885,8 @@ body.privacy-open{overflow:hidden}
 
 
 /* Filamentbeheer */
+.filament-toolbar-actions { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:10px; }
+.filament-toolbar-actions .status-pill { margin-top:0; }
 .filament-summary { margin-top: 12px; }
 .filament-create-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; align-items:end; padding:16px; margin:14px 0 18px; border:1px solid #e2e8f0; border-radius:14px; background:#f8fafc; }
 .filament-create-form>label,.filament-row>label { display:grid; gap:6px; min-width:0; color:#526176; font-size:11px; font-weight:700; }
