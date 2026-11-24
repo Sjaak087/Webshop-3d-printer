@@ -2,6 +2,7 @@ import { db } from "./firebase.js";
 import { BEHEER_CONFIG as CFG } from "./beheer-config.js";
 import { ASSISTANT_EXTRA_FAQ } from "./assistant-faq-extra.js";
 import { ASSISTANT_EXTRA_300 } from "./assistant-faq-300.js";
+import { ASSISTANT_CONVERSATION_MESSAGES, ASSISTANT_GENERAL_MESSAGES } from "./assistant-chat-messages.js";
 import { ref, onValue, get, push, set, update, remove, query, orderByChild, equalTo, runTransaction } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
 const $ = s => document.querySelector(s);
@@ -3065,20 +3066,54 @@ function assistantLastUserMessage() {
   }
   return "";
 }
+const assistantMessageCursors = {
+  conversation: Object.fromEntries(Object.entries(ASSISTANT_CONVERSATION_MESSAGES).map(([key, messages]) => [key, Math.floor(Math.random() * messages.length)])),
+  general: Object.fromEntries(Object.entries(ASSISTANT_GENERAL_MESSAGES).map(([key, messages]) => [key, Math.floor(Math.random() * messages.length)]))
+};
+function assistantPickStoredMessage(bank, group, kind = "conversation") {
+  const messages = bank?.[group];
+  if (!Array.isArray(messages) || !messages.length) return "Vertel gerust iets meer, dan denk ik met je mee.";
+  const cursors = assistantMessageCursors[kind] || (assistantMessageCursors[kind] = {});
+  const index = Number(cursors[group] || 0) % messages.length;
+  cursors[group] = index + 1;
+  return messages[index];
+}
+function assistantGeneralMessageGroup(question) {
+  const q = assistantNormalize(question);
+  if (/\b(schrijf|herschrijf|tekst|mail|e-mail|bericht|verhaal|formuleer|spelling|taalgebruik|presentatie)\b/.test(q)) return "writing";
+  if (/\b(plan|planning|plannen|schema|agenda|deadline|studieplanning|organiseer|indelen)\b/.test(q)) return "planning";
+  if (/\b(idee|bedenk|verzin|brainstorm|creatief|ontwerp|concept)\b/.test(q)) return "brainstorm";
+  if (/\b(leg uit|uitleg|begrijp|betekent|verklaar|wat is|hoe werkt)\b/.test(q)) return "explain";
+  if (/\b(vergelijk|verschil|beter|voordeel|nadelen|tegenover|welke kiezen)\b/.test(q)) return "compare";
+  if (/\b(fout|werkt niet|probleem|kapot|lukt niet|error|storing|mislukt|bug)\b/.test(q)) return "troubleshoot";
+  if (/\b(samenvat|samenvatting|korter|hoofdlijnen|kernpunten|vat samen)\b/.test(q)) return "summary";
+  if (/\b(ordenen|ordenen|structuur|overzicht|sorteren|categorie|indeling)\b/.test(q)) return "organize";
+  if (/\b(advies|raad je|aanraden|kiezen|keuze|beslissen|beslissing|wat zou ik)\b/.test(q)) return "decision";
+  return "clarify";
+}
+function assistantGeneralHelpReply(question) {
+  const group = assistantGeneralMessageGroup(question);
+  return assistantPickStoredMessage(ASSISTANT_GENERAL_MESSAGES, group, "general");
+}
+function assistantIsGeneralHelpRequest(question) {
+  const q = assistantNormalize(question);
+  return /\b( help |kun je me helpen|kan je me helpen|help me|maak|schrijf|herschrijf|bedenk|verzin|plan|planning|vergelijk|samenvat|vat samen|leg uit|controleer|verbeter|bereken|organiseer|orden|formuleer|ontwerp|stappenplan|advies|raad je aan|idee)\b/.test(` ${q} `)
+    || /^(help|hulp|ik heb hulp nodig|ik loop vast|ik weet niet hoe verder)$/.test(q);
+}
 function assistantSmallTalkReply(question) {
   const q = assistantNormalize(question).replace(/[.,!?]+$/g, "").trim();
   if (!q) return null;
   if (/^(hoi|hoi ik wil gewoon even praten|ik wil gewoon even praten|hallo|hallo daar|hey|heyy|heyyy|yo|goedemorgen|goeiemorgen|goedemiddag|goedenavond|dag|he|hoi hoi|heya)$/.test(q)) {
-    return "Hoi! 😊 Gezellig dat je even komt praten. Hoe is je dag tot nu toe? We kunnen het over iets leuks, je hobby's, techniek, games, dieren of echt iets heel anders hebben.";
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "greeting");
   }
   if (/^(hoe gaat het|hoe gaat het met je|alles goed|alles goed met jou|hoe is het|hoe gaat ie|hoe gaatie)$/.test(q)) {
-    return "Met mij gaat het goed — ik ben er klaar voor om met je mee te denken en gezellig te praten. 😊 Hoe gaat het met jou? Is het een drukke dag of valt het mee?";
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "checkIn");
   }
   if (/^(bedankt|dank je|dankjewel|thanks|thx|dank je wel|super bedankt|heel erg bedankt)$/.test(q)) {
-    return "Graag gedaan! 😊 Fijn dat ik kon helpen. Waar zullen we het hierna over hebben?";
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "thanks");
   }
   if (/^(doei|tot ziens|tot later|later|bye|ik ga weer|spreek je later)$/.test(q)) {
-    return "Tot later! 😊 Je kunt hier altijd weer verder praten. Fijne dag!";
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "goodbye");
   }
   if (/^(wie ben jij|wat ben jij|ben je een robot|ben je echt|ben je een ai|ben jij ai|wat is je naam)$/.test(q)) {
     return "Ik ben de digitale assistent van deze webshop. Ik ben software, geen mens, maar ik kan wel met je kletsen, ideeën uitwerken, productvragen beantwoorden en je helpen informatie te vinden. Waar ben je benieuwd naar?";
@@ -3090,10 +3125,10 @@ function assistantSmallTalkReply(question) {
     return "Je kunt me van alles vragen over de webshop, maar ook gewoon met me praten. Denk aan hobby's, sport, games, dieren, wetenschap, geschiedenis, techniek, films, muziek of een creatief idee. Ik kan meedenken en uitleg geven; voor actuele feiten kun je via het pijltje bewust kiezen om online te zoeken.";
   }
   if (/^(ok|oke|okay|ja|nee|aha|hmm|hmmm|precies|klopt|snap ik|duidelijk|is goed|prima)$/.test(q)) {
-    return "Helemaal goed! 😊 We hoeven niet bij hetzelfde onderwerp te blijven. Wat houdt je op dit moment bezig?";
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "acknowledgement");
   }
   if (/^(ik verveel me|ik ben verveeld|ik weet niet wat ik moet doen|ik heb niks te doen|ik heb niets te doen)$/.test(q)) {
-    return "Dan bedenken we iets! We kunnen een raadsel doen, een grappig weetje uitwisselen, een mini-quiz spelen, een creatief 3D-printidee bedenken of gewoon over je dag praten. Welke klinkt het leukst?";
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "openChat");
   }
   if (/^(vertel een grap|maak me aan het lachen|heb je een grap|grapje)$/.test(q)) {
     return "Waarom nam de 3D-printer een pauze? Omdat hij even een nieuwe laag nodig had. 😄 Zal ik nog een grap vertellen, een raadsel geven of een ander onderwerp kiezen?";
@@ -3117,7 +3152,7 @@ function assistantSmallTalkReply(question) {
     return "Wat leuk om te horen! 😊 Wat maakte je dag zo fijn? Is er iets bijzonders gebeurd of is het gewoon zo'n fijne dag?";
   }
   if (/^(ik ben verdrietig|ik voel me rot|ik heb een rotdag|ik ben gestrest|ik ben boos|ik zit ergens mee|ik voel me niet zo goed)$/.test(q)) {
-    return "Dat klinkt niet fijn. Je mag er best iets over vertellen. Wat is er gebeurd of wat zit je dwars? Ik kan luisteren en rustig met je meedenken.";
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "empathy");
   }
   if (/^(ik ben moe|ik heb slecht geslapen|ik ben uitgeput)$/.test(q)) {
     return "Dat is vervelend. Was het een drukke dag, of heb je gewoon niet zo goed kunnen slapen? Misschien is het fijn om het even rustig aan te doen.";
@@ -3169,7 +3204,7 @@ function assistantConversationReply(question) {
   if (/\b(ik ga|ik ben van plan|straks ga ik|morgen ga ik|dit weekend ga ik)\b/.test(q)) return "Oh, dat klinkt als iets om naar uit te kijken! Is het iets wat je vaker doet, of juist een bijzonder plan?";
   if (/\b(mijn hobby|ik hobby|ik speel|ik game|ik kijk graag|ik kijk|ik luister graag|ik luister|ik sport|ik teken|ik bouw|ik maak graag)\b/.test(q)) {
     const cleaned = question.trim();
-    return `Dat klinkt als iets waar je plezier in hebt! 😊 ${cleaned.length > 100 ? "" : ""}Wat vind je daar het leukste aan? Doe je dat vooral voor ontspanning, of probeer je er ook steeds beter in te worden?`;
+    return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "interest");
   }
   if (/\b(ik ben|ik voel|ik vind|ik denk|ik hou van|ik houd van|ik heb|mijn dag|vandaag|gisteren|morgen)\b/.test(q)) {
     if (/\b(school|huiswerk|toets|leren|les)\b/.test(q)) return "School kan soms best veel tegelijk zijn. Gaat het om een vak dat je leuk vindt, of juist iets waar je tegenop ziet? Ik kan ook helpen iets uit te leggen of samen een planning te bedenken.";
@@ -3193,7 +3228,7 @@ function assistantConversationReply(question) {
   if (/\b(film|films|serie|series|bioscoop|acteur)\b/.test(q)) return "Films en series zijn een leuk gespreksonderwerp. Hou je meer van actie, komedie, avontuur, sciencefiction of juist spannende mysteries?";
   if (/\b(eten|koken|pizza|pasta|gerecht|recept)\b/.test(q)) return "Lekker onderwerp! Ben je meer iemand die graag kookt en nieuwe dingen probeert, of kies je meestal iets wat je al kent?";
   if (/\b(vriend|vrienden|klas|familie|thuis)\b/.test(q)) return "Dat kan van alles betekenen. Wil je vertellen wat er speelt? Ik kan luisteren en samen met je bekijken wat je ermee zou kunnen doen.";
-  if (!assistantLooksLikeInformationQuestion(question)) return "Ik ben benieuwd! Vertel nog iets meer, dan kan ik beter op jouw verhaal reageren. Je hoeft niet netjes of uitgebreid te typen; ik probeer te begrijpen wat je bedoelt.";
+  if (!assistantLooksLikeInformationQuestion(question)) return assistantPickStoredMessage(ASSISTANT_CONVERSATION_MESSAGES, "followUp");
   return "Dat is een interessante vraag. Ik wil geen feiten verzinnen die ik niet zeker weet. Ik kan er wel met je over meedenken; voor een feitelijk antwoord kun je via het pijltje naast de verzendknop ‘Zoek op het internet’ kiezen. Als je vooral een mening of gesprek bedoelt, vertel dan gerust wat je zelf denkt.";
 }
 
@@ -3526,6 +3561,9 @@ async function sendShopAssistantQuestion(value, selectedMode = "chat") {
           assistantLastTopicQuestion = contextualQuestion;
           assistantLastTopicScope = "shop";
           assistantAddMessage(answer, "bot", assistantBuildActions(contextualQuestion));
+        } else if (!assistantIsShopQuestion(contextualQuestion) && assistantIsGeneralHelpRequest(contextualQuestion)) {
+          thinking?.remove();
+          assistantAddMessage(assistantGeneralHelpReply(contextualQuestion), "bot");
         } else if ((!assistantLooksLikeInformationQuestion(contextualQuestion) || assistantIsConversationalPrompt(contextualQuestion)) && !assistantIsShopQuestion(contextualQuestion)) {
           thinking?.remove();
           assistantAddMessage(assistantConversationReply(question), "bot");
