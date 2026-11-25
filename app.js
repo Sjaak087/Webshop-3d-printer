@@ -1133,7 +1133,7 @@ function showProduct(id) {
     const launchLaptopWebcamAR = async () => {
       const modelContext = arModelContext;
       if (!navigator.mediaDevices?.getUserMedia || !modelContext?.modelRoot || !modelContext?.THREE) {
-        toast("Webcam-AR is niet beschikbaar. Gebruik een recente Chrome-versie via HTTPS en controleer je cameratoestemming.");
+        toast("Webcam-weergave is niet beschikbaar. Gebruik Chrome via HTTPS en controleer je cameratoestemming.");
         return false;
       }
       const { THREE, modelRoot } = modelContext;
@@ -1141,11 +1141,14 @@ function showProduct(id) {
       stage.className = "ar-webcam-stage";
       stage.setAttribute("role", "dialog");
       stage.setAttribute("aria-label", "Webcam 3D-weergave");
-      stage.innerHTML = `<video class="ar-webcam-video" autoplay playsinline muted></video><canvas class="ar-webcam-canvas"></canvas><div class="ar-webcam-topnote">Webcam-weergave · Sleep het model naar de gewenste plek</div><div class="ar-webcam-controls"><p class="ar-webcam-status" role="status" aria-live="polite">Camera starten…</p><div class="ar-webcam-actions"><button type="button" class="ar-webcam-close">Sluiten</button><button type="button" class="ar-webcam-freeze">Bevriezen</button></div><label class="ar-webcam-zoom">Grootte <input class="ar-webcam-scale" type="range" min="0.5" max="2.5" step="0.05" value="1"></label><small>Tip: sleep het model met je muis. Bevriezen zet de huidige schermpositie vast.</small></div>`;
+      stage.innerHTML = `<video class="ar-webcam-video" autoplay playsinline muted></video><canvas class="ar-webcam-canvas"></canvas><div class="ar-webcam-topnote">Webcam-weergave · Sleep het geselecteerde model naar de gewenste plek</div><div class="ar-webcam-controls"><p class="ar-webcam-status" role="status" aria-live="polite">Camera starten…</p><div class="ar-webcam-actions"><button type="button" class="ar-webcam-close">Sluiten</button><button type="button" class="ar-webcam-duplicate">Kerstboom dupliceren</button></div><div class="ar-webcam-model-controls"></div><small>Selecteer een kerstboom om hem te verplaatsen. Elke kerstboom heeft een eigen Bevries-knop. De grootte blijft altijd standaard.</small></div>`;
       document.body.appendChild(stage);
       const video = stage.querySelector(".ar-webcam-video"), canvas = stage.querySelector(".ar-webcam-canvas");
-      const status = stage.querySelector(".ar-webcam-status"), freeze = stage.querySelector(".ar-webcam-freeze");
-      let stream = null, renderer = null, camera = null, animationId = 0, frozen = false, finished = false;
+      const status = stage.querySelector(".ar-webcam-status"), modelControls = stage.querySelector(".ar-webcam-model-controls");
+      let stream = null, renderer = null, camera = null, animationId = 0, finished = false, drag = null;
+      let selectedId = 1, nextId = 2;
+      const instances = [];
+      const materials = [];
       const resize = () => {
         if (!renderer || !camera) return;
         const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight);
@@ -1153,30 +1156,103 @@ function showProduct(id) {
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
       };
-      let drag = null, x = 0, y = 0, scale = 1;
-      const materials = [];
       const finish = () => {
         if (finished) return; finished = true;
         cancelAnimationFrame(animationId);
         try { renderer?.dispose(); } catch (_) {}
         window.removeEventListener("resize", resize);
-        materials.forEach(m => { try { m.dispose(); } catch (_) {} });
+        materials.forEach(material => { try { material.dispose(); } catch (_) {} });
         stream?.getTracks().forEach(track => track.stop());
         stage.remove();
       };
+      const renderModelControls = () => {
+        modelControls.replaceChildren();
+        instances.forEach(instance => {
+          const row = document.createElement("div");
+          row.className = "ar-webcam-model-row";
+          const select = document.createElement("button");
+          select.type = "button";
+          select.className = "ar-webcam-select";
+          select.textContent = `Kerstboom ${instance.id}${selectedId === instance.id ? " · geselecteerd" : ""}`;
+          select.setAttribute("aria-pressed", String(selectedId === instance.id));
+          select.addEventListener("click", () => {
+            selectedId = instance.id;
+            renderModelControls();
+            status.textContent = `Kerstboom ${instance.id} geselecteerd. Sleep hem naar de gewenste plek.`;
+          });
+          const freeze = document.createElement("button");
+          freeze.type = "button";
+          freeze.className = "ar-webcam-freeze";
+          freeze.textContent = instance.frozen ? "Verder bewegen" : `Bevries ${instance.id}`;
+          freeze.setAttribute("aria-pressed", String(instance.frozen));
+          freeze.addEventListener("click", () => {
+            instance.frozen = !instance.frozen;
+            renderModelControls();
+            status.textContent = instance.frozen
+              ? `Kerstboom ${instance.id} staat vast op deze plek. De webcam mag bewegen; de kerstboom blijft op dezelfde schermpositie.`
+              : `Kerstboom ${instance.id} kan weer worden verplaatst.`;
+          });
+          row.append(select, freeze);
+          modelControls.append(row);
+        });
+      };
+      const makeInstance = (id, startX = 0, startY = 0) => {
+        const model = modelRoot.clone(true);
+        model.scale.set(1, 1, 1);
+        model.position.set(0, 0, 0);
+        model.updateMatrixWorld(true);
+        const bounds = new THREE.Box3().setFromObject(model);
+        if (bounds.isEmpty()) throw new Error("Dit productmodel heeft geen geldige afmetingen.");
+        const center = bounds.getCenter(new THREE.Vector3());
+        model.position.set(-center.x, -bounds.min.y, -center.z);
+        model.traverse(child => {
+          if (!child.isMesh) return;
+          const source = Array.isArray(child.material) ? child.material : [child.material];
+          const copies = source.map(material => {
+            const copy = material?.clone ? material.clone() : new THREE.MeshStandardMaterial({ color: 0x9aa7b8 });
+            materials.push(copy);
+            return copy;
+          });
+          child.material = Array.isArray(child.material) ? copies : copies[0];
+        });
+        const group = new THREE.Group();
+        group.name = `Kerstboom-${id}`;
+        group.add(model);
+        // 0.001 zet modelafmetingen in millimeters om naar meters.
+        // Deze standaardgrootte is bewust niet door de gebruiker aanpasbaar.
+        group.scale.setScalar(0.001);
+        group.position.set(startX * 0.8, startY * 0.55 - 0.08, -1.25);
+        scene.add(group);
+        const instance = { id, group, x: startX, y: startY, frozen: false };
+        instances.push(instance);
+        return instance;
+      };
       stage.querySelector(".ar-webcam-close").addEventListener("click", finish);
-      freeze.addEventListener("click", () => {
-        frozen = !frozen;
-        freeze.textContent = frozen ? "Verder bewegen" : "Bevriezen";
-        freeze.setAttribute("aria-pressed", String(frozen));
-        status.textContent = frozen ? "Positie bevroren. Het model blijft op deze plek in beeld." : "Model vrij verplaatsbaar. Sleep het naar een andere plek.";
+      stage.querySelector(".ar-webcam-duplicate").addEventListener("click", () => {
+        const source = instances.find(item => item.id === selectedId) || instances[0];
+        const offset = instances.length % 2 === 0 ? 0.55 : -0.55;
+        const duplicate = makeInstance(nextId++, (source?.x || 0) + offset, source?.y || 0);
+        selectedId = duplicate.id;
+        renderModelControls();
+        status.textContent = `Kerstboom ${duplicate.id} is gedupliceerd. Je kunt beide kerstbomen apart verplaatsen en bevriezen.`;
       });
-      canvas.addEventListener("pointerdown", event => { if (frozen) return; drag = { x: event.clientX, y: event.clientY, ox: x, oy: y }; canvas.setPointerCapture(event.pointerId); });
-      canvas.addEventListener("pointermove", event => { if (!drag || frozen) return; x = drag.ox + (event.clientX - drag.x) / Math.max(1, stage.clientWidth) * 2; y = drag.oy - (event.clientY - drag.y) / Math.max(1, stage.clientHeight) * 2; });
+      canvas.addEventListener("pointerdown", event => {
+        const instance = instances.find(item => item.id === selectedId);
+        if (!instance || instance.frozen) return;
+        drag = { id: instance.id, x: event.clientX, y: event.clientY, ox: instance.x, oy: instance.y };
+        canvas.setPointerCapture(event.pointerId);
+      });
+      canvas.addEventListener("pointermove", event => {
+        if (!drag) return;
+        const instance = instances.find(item => item.id === drag.id);
+        if (!instance || instance.frozen) return;
+        instance.x = drag.ox + (event.clientX - drag.x) / Math.max(1, stage.clientWidth) * 2;
+        instance.y = drag.oy - (event.clientY - drag.y) / Math.max(1, stage.clientHeight) * 2;
+        instance.group.position.set(instance.x * 0.8, instance.y * 0.55 - 0.08, -1.25);
+      });
       canvas.addEventListener("pointerup", () => { drag = null; });
-      stage.querySelector(".ar-webcam-scale").addEventListener("input", event => { scale = Number(event.target.value) || 1; });
+      canvas.addEventListener("pointercancel", () => { drag = null; });
       try {
-        // Toestemming wordt direct vanuit de klik gevraagd. Werkt op HTTPS of localhost.
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
         if (finished) { stream.getTracks().forEach(track => track.stop()); return false; }
         video.srcObject = stream;
@@ -1189,22 +1265,19 @@ function showProduct(id) {
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         scene.add(new THREE.HemisphereLight(0xffffff, 0x68758a, 2));
         const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2, 4, 3); scene.add(key);
-        const model = modelRoot.clone(true); model.scale.set(1,1,1); model.position.set(0,0,0); model.updateMatrixWorld(true);
-        const bounds = new THREE.Box3().setFromObject(model);
-        if (bounds.isEmpty()) throw new Error("Dit productmodel heeft geen geldige afmetingen.");
-        const center = bounds.getCenter(new THREE.Vector3());
-        model.position.set(-center.x, -bounds.min.y, -center.z);
-        model.traverse(child => { if (!child.isMesh) return; const src = Array.isArray(child.material) ? child.material : [child.material]; const copies = src.map(m => { const c = m?.clone ? m.clone() : new THREE.MeshStandardMaterial({color:0x9aa7b8}); materials.push(c); return c; }); child.material = Array.isArray(child.material) ? copies : copies[0]; });
-        const group = new THREE.Group(); group.add(model); group.scale.setScalar(0.001); scene.add(group);
+        makeInstance(1, 0, 0);
+        renderModelControls();
         resize(); window.addEventListener("resize", resize);
         const renderFrame = () => {
           if (finished) return;
-          if (!frozen) { group.position.set(x * 0.8, y * 0.55 - 0.08, -1.25); group.scale.setScalar(0.001 * scale); }
-          renderer.render(scene,camera); animationId = requestAnimationFrame(renderFrame);
+          // De posities worden niet aan de camerabeweging gekoppeld. Bevroren modellen
+          // blijven daardoor exact op hun schermpositie staan.
+          renderer.render(scene, camera);
+          animationId = requestAnimationFrame(renderFrame);
         };
-        status.textContent = "Camera actief. Sleep het 3D-model met je muis; gebruik Bevriezen om de positie vast te zetten.";
+        status.textContent = "Camera actief. Verplaats de geselecteerde kerstboom; dupliceer hem voor een tweede exemplaar.";
         renderFrame();
-        const onEnded = () => finish(); stream.getVideoTracks()[0]?.addEventListener("ended", onEnded, { once: true });
+        stream.getVideoTracks()[0]?.addEventListener("ended", finish, { once: true });
         return true;
       } catch (error) {
         console.warn("Laptop webcam preview could not start", error);

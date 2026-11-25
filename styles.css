@@ -1195,3 +1195,9 @@ body.maintenance-active>#toast{z-index:10002}
 .ar-webcam-zoom input{flex:1}
 .ar-webcam-controls small{display:block;margin-top:8px;color:#c4cfdd;font-size:11px}
 @media(max-width:600px){.ar-webcam-topnote{top:10px;font-size:11px}.ar-webcam-controls{bottom:10px;padding:12px}.ar-webcam-actions button{flex:1}}
+.ar-webcam-model-controls{display:grid;gap:8px;margin:12px 0}
+.ar-webcam-model-row{display:flex;gap:8px;align-items:center}
+.ar-webcam-model-row button{flex:1;min-width:0;border:1px solid #ffffff40;border-radius:10px;padding:10px 12px;background:#263449;color:#fff;font-weight:700;cursor:pointer}
+.ar-webcam-model-row .ar-webcam-freeze{background:#1769d2;border-color:#438df0}
+.ar-webcam-model-row .ar-webcam-select[aria-pressed="true"]{outline:2px solid #8dbbff;background:#344b69}
+.ar-webcam-duplicate{background:#176b45!important;border-color:#3caa78!important}
