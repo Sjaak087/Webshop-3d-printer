@@ -647,6 +647,16 @@ let productSnapshotReceived = false;
 let pendingProductError = false;
 let optionSetSnapshotReceived = false;
 let filamentSnapshotReceived = false;
+let pendingARDeepLinkHandled = false;
+function openARProductFromLink() {
+  if (pendingARDeepLinkHandled || !state.loaded || !Array.isArray(state.products)) return;
+  const productId = new URLSearchParams(window.location.search).get("arProduct");
+  if (!productId) return;
+  const product = state.products.find(item => String(item.id) === String(productId));
+  if (!product) return;
+  pendingARDeepLinkHandled = true;
+  showProduct(product.id);
+}
 function completeInitialProductLoad() {
   if (state.loaded || !productSnapshotReceived || !optionSetSnapshotReceived || !filamentSnapshotReceived || productLoadTimer !== null) return;
   const remaining = Math.max(0, PRODUCT_LOADING_MIN_MS - (Date.now() - productLoadingStartedAt));
@@ -655,6 +665,7 @@ function completeInitialProductLoad() {
     state.productsError = pendingProductError;
     state.loaded = true;
     renderProducts();
+    openARProductFromLink();
   }, remaining);
 }
 onValue(ref(db, "settings/productOptionSets"), snap => {
@@ -692,6 +703,7 @@ onValue(ref(db, "products"), snap => {
   state.products = products;
   state.productsError = false;
   renderProducts();
+  openARProductFromLink();
 }, error => {
   console.error("Firebase product load failed", error);
   if (!state.loaded) {
@@ -902,7 +914,22 @@ function showProduct(id) {
     if (tryARButton) tryARButton.onclick = () => {
       const arViewer = $("#productARModelViewer");
       if (!arViewer) return toast("Voor dit product is geen AR-model ingesteld.");
-      if (!arViewer.canActivateAR) return toast("AR wordt niet ondersteund door deze telefoon of browser.");
+      if (!arViewer.canActivateAR) {
+        const isMobileARDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+          || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+        if (!isMobileARDevice) {
+          const help = content.querySelector(".product-ar-help");
+          const phoneUrl = new URL(window.location.href);
+          phoneUrl.searchParams.set("arProduct", p.id);
+          const encodedUrl = encodeURIComponent(phoneUrl.toString());
+          if (help) {
+            help.innerHTML = `<strong>AR werkt via een geschikte smartphone.</strong><br>Scan deze QR-code met je telefoon om precies dit product te openen. Tik daarna op ‘Probeer in jouw ruimte’.<div class="product-ar-qr-wrap"><img class="product-ar-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodedUrl}" alt="QR-code om ${safe(p.title)} op een telefoon te openen"><span>Open de camera van je telefoon en scan de code.</span></div>`;
+          }
+          try { navigator.clipboard?.writeText(phoneUrl.toString()).then(() => toast("Productlink gekopieerd voor je telefoon.")).catch(() => {}); } catch (_) {}
+          return;
+        }
+        return toast("Deze telefoon of browser ondersteunt de benodigde AR-functies niet. Probeer een recente AR-geschikte smartphone en een ondersteunde browser.");
+      }
       try {
         // Direct vanuit de gebruikersklik aanroepen: de browser kan nu toestemming vragen.
         const activation = arViewer.activateAR();
@@ -2662,8 +2689,16 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
           supported = !!arViewer.canActivateAR;
         }
         if (disposed || generation !== arAssetGeneration || !root.isConnected) return;
-        arButton.disabled = !supported;
-        arButton.textContent = supported ? "Probeer in jouw ruimte" : "AR niet beschikbaar op dit apparaat";
+        const isMobileARDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+          || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+        arButton.disabled = !supported && isMobileARDevice;
+        arButton.textContent = supported ? "Probeer in jouw ruimte" : (isMobileARDevice ? "AR niet beschikbaar op dit apparaat" : "Bekijk AR op je telefoon");
+        if (!supported) {
+          const help = root.closest(".product-model-section")?.querySelector(".product-ar-help");
+          if (help) help.textContent = isMobileARDevice
+            ? "AR wordt op dit apparaat niet herkend. Gebruik een recente AR-geschikte smartphone en een ondersteunde browser."
+            : "Je bekijkt de webshop op een computer. Een gewone webcam kan geen AR-oppervlak herkennen. Scan de QR-code om dit product op je smartphone te openen en daar in je ruimte te plaatsen.";
+        }
       } catch (error) {
         console.warn("Product AR preparation failed", error);
         if (!disposed && generation === arAssetGeneration && arButton.isConnected) {

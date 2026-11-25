@@ -1153,3 +1153,9 @@ body.maintenance-active>#toast{z-index:10002}
 .ar-feature-toggle{margin-top:12px;padding:11px 12px;border:1px solid #dce8f5;border-radius:10px;background:#f6f9fd;color:#2d405a;font-size:11px}
 .ar-feature-toggle input{accent-color:#315d9c}
 @media(max-width:620px){.product-model-heading{align-items:flex-start}.product-model-actions{align-items:flex-end;flex-direction:column}.product-ar-button{max-width:190px;white-space:normal;text-align:center}}
+
+/* AR doorsturen vanaf desktop naar een geschikte smartphone */
+.product-ar-qr-wrap{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:12px;padding:14px;background:#f7f9fc;border:1px solid #e2e8f0;border-radius:12px;color:#334155}
+.product-ar-qr{width:148px;height:148px;object-fit:contain;background:#fff;border:8px solid #fff;border-radius:8px;box-shadow:0 2px 10px #0f172a12}
+.product-ar-qr-wrap span{font-size:12px;max-width:220px}
+.product-ar-help strong{color:#1e293b}
