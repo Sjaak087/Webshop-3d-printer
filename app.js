@@ -850,7 +850,7 @@ function showProduct(id) {
       <div class="detail-gallery">
         <div class="detail-image">${image ? `<img src="${safe(image)}" alt="${safe(p.title)} afbeelding ${activeImage + 1}">` : `<i data-lucide="box"></i>`}</div>
         ${images.length > 1 ? `<div class="detail-thumbs">${images.map((src, i) => `<button class="detail-thumb ${i === activeImage ? "active" : ""}" data-image="${i}" aria-label="Afbeelding ${i + 1}"><img src="${safe(src)}" alt=""></button>`).join("")}</div>` : ""}
-        ${p.model3d ? `<section class="product-model-section"><div class="product-model-heading"><div><p class="eyebrow">INTERACTIEF 3D-MODEL</p><h3>Stel jouw kleuren samen</h3></div><span class="model-viewer-badge">3D</span></div><div id="productModelViewer" class="product-model-viewer"><canvas aria-label="Draaibaar 3D-productvoorbeeld" tabindex="0"></canvas><span class="model-viewer-state" role="status">3D-model voorbereiden…</span></div><div class="model-part-color-controls"></div><p class="hint">Draai het model met je vinger of muis. Je kunt alleen kleuren kiezen die bij dit product zijn ingesteld.</p></section>` : ""}
+        ${p.model3d ? `<section class="product-model-section"><div class="product-model-heading"><div><p class="eyebrow">INTERACTIEF 3D-MODEL</p><h3>Stel jouw kleuren samen</h3></div><div class="product-model-actions"><span class="model-viewer-badge">3D</span>${p.arEnabled !== false ? `<button type="button" class="secondary product-ar-button" id="productTryAR" disabled>AR voorbereiden…</button>` : ""}</div></div><div id="productModelViewer" class="product-model-viewer"><canvas aria-label="Draaibaar 3D-productvoorbeeld" tabindex="0"></canvas><span class="model-viewer-state" role="status">3D-model voorbereiden…</span></div><div class="model-part-color-controls"></div>${p.arEnabled !== false ? `<model-viewer id="productARModelViewer" class="product-ar-model-host" aria-hidden="true" tabindex="-1" ar ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" ar-placement="floor" camera-controls loading="eager" alt="${safe(p.title)} op ware grootte in AR"></model-viewer><p class="hint product-ar-help" role="status">AR gebruikt het echte STL/3MF-model en de gekozen kleuren. Op een geschikte telefoon kun je het model met de camera op een horizontaal oppervlak plaatsen.</p>` : ""}<p class="hint">Draai het model met je vinger of muis. Je kunt alleen kleuren kiezen die bij dit product zijn ingesteld.</p></section>` : ""}
       </div>
       <div class="detail-content">
         <p class="eyebrow">PRODUCTDETAILS</p><h2>${safe(p.title)}</h2>
@@ -898,6 +898,20 @@ function showProduct(id) {
         else cleanupViewer?.();
       });
     }
+    const tryARButton = $("#productTryAR");
+    if (tryARButton) tryARButton.onclick = () => {
+      const arViewer = $("#productARModelViewer");
+      if (!arViewer) return toast("Voor dit product is geen AR-model ingesteld.");
+      if (!arViewer.canActivateAR) return toast("AR wordt niet ondersteund door deze telefoon of browser.");
+      try {
+        // Direct vanuit de gebruikersklik aanroepen: de browser kan nu toestemming vragen.
+        const activation = arViewer.activateAR();
+        activation?.catch(error => { console.warn("AR activation failed", error); toast("AR kon niet worden gestart. Controleer de cameratoestemming en probeer opnieuw."); });
+      } catch (error) {
+        console.warn("AR activation failed", error);
+        toast("AR kon niet worden gestart op dit apparaat.");
+      }
+    };
     content.querySelectorAll("[data-image]").forEach(b => b.onclick = () => { activeImage = Number(b.dataset.image); render(); });
     content.querySelectorAll("[data-choice]").forEach(b => b.onclick = () => {
       const option = current.options[Number(b.dataset.choice)];
@@ -2202,6 +2216,61 @@ async function loadThreeToolkit() {
   return threeToolkitPromise;
 }
 
+let modelViewerRuntimePromise = null;
+async function loadProductARViewerRuntime() {
+  if (!modelViewerRuntimePromise) {
+    modelViewerRuntimePromise = import("https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer.min.js")
+      .then(() => customElements.whenDefined("model-viewer"))
+      .catch(error => { modelViewerRuntimePromise = null; throw new Error("De AR-weergave kon niet worden geladen. Controleer de internetverbinding en probeer opnieuw."); });
+  }
+  return modelViewerRuntimePromise;
+}
+
+async function exportProductARModel(THREE, sourceRoot, selectedColors = []) {
+  const { GLTFExporter } = await import("three/addons/exporters/GLTFExporter.js");
+  const exportRoot = sourceRoot.clone(true);
+  // De gewone preview schaalt ieder model naar dezelfde schermgrootte.
+  // Herstel de originele modelafmetingen en vertaal STL/3MF-millimeters naar meters.
+  exportRoot.scale.set(1, 1, 1);
+  exportRoot.position.set(0, 0, 0);
+  exportRoot.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(exportRoot);
+  if (bounds.isEmpty()) throw new Error("Het 3D-model bevat geen bruikbare afmetingen voor AR.");
+  const center = bounds.getCenter(new THREE.Vector3());
+  exportRoot.position.set(-center.x, -bounds.min.y, -center.z);
+  exportRoot.updateMatrixWorld(true);
+
+  const chosenByPart = new Map((selectedColors || []).map(item => [Math.min(7, Math.max(0, Number(item.partIndex) || 0)), normalizeColorHex(item.colorHex)]));
+  let meshIndex = 0;
+  exportRoot.traverse(child => {
+    if (!child.isMesh || !child.geometry) return;
+    const partIndex = Math.min(meshIndex, 7);
+    meshIndex++;
+    const colorHex = chosenByPart.get(partIndex);
+    const oldMaterials = Array.isArray(child.material) ? child.material : [child.material];
+    const materials = oldMaterials.map(oldMaterial => {
+      const material = oldMaterial?.clone ? oldMaterial.clone() : new THREE.MeshStandardMaterial();
+      if (material.color) material.color.set(colorHex || 0x9aa7b8);
+      material.roughness = 0.72;
+      material.metalness = 0.04;
+      material.needsUpdate = true;
+      return material;
+    });
+    child.material = Array.isArray(child.material) ? materials : materials[0];
+  });
+  if (!meshIndex) throw new Error("In dit 3D-bestand is geen model gevonden dat voor AR gebruikt kan worden.");
+
+  const meterRoot = new THREE.Group();
+  meterRoot.name = "Product op ware grootte";
+  meterRoot.scale.setScalar(0.001); // STL en de 3MF-parser leveren millimeters.
+  meterRoot.add(exportRoot);
+  const scene = new THREE.Scene();
+  scene.add(meterRoot);
+  const data = await new GLTFExporter().parseAsync(scene, { binary: true, onlyVisible: true });
+  if (!(data instanceof ArrayBuffer) || data.byteLength < 20) throw new Error("Het AR-model kon niet als GLB worden klaargemaakt.");
+  return new Blob([data], { type: "model/gltf-binary" });
+}
+
 // Bambu Studio, OrcaSlicer and PrusaSlicer can store the actual meshes in
 // separate 3D/Objects/*.model parts (3MF Production Extension). The stock
 // Parse the ZIP package directly so each uploaded model is handled
@@ -2437,9 +2506,15 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
     controlsRoot.className = "model-part-color-controls";
     root.insertAdjacentElement("afterend", controlsRoot);
   }
+  const arViewer = root.closest(".product-model-section")?.querySelector("#productARModelViewer") || null;
+  const arButton = root.closest(".product-model-section")?.querySelector("#productTryAR") || null;
   let renderer, controls, frame = 0, resizeObserver, disposed = false, modelRoot = null;
+  let arAssetUrl = null, arAssetGeneration = 0, arStatusHandler = null;
   const cleanup = () => {
     disposed = true; cancelAnimationFrame(frame); resizeObserver?.disconnect(); controls?.dispose();
+    arAssetGeneration++;
+    if (arAssetUrl) URL.revokeObjectURL(arAssetUrl);
+    if (arViewer && arStatusHandler) arViewer.removeEventListener("ar-status", arStatusHandler);
     if (modelRoot) modelRoot.traverse(child => { if (child.isMesh) { child.geometry?.dispose?.(); const materials = Array.isArray(child.material) ? child.material : [child.material]; materials.forEach(material => material?.dispose?.()); } });
     renderer?.dispose();
   };
@@ -2548,6 +2623,69 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
       });
       current[index] = { partIndex: index, partName: partGroups[index]?.name || `Onderdeel ${index + 1}`, colorName: color.name, colorHex: color.hex };
     };
+    const updateARAsset = async colors => {
+      if (!arViewer || !arButton || disposed) return;
+      const generation = ++arAssetGeneration;
+      arButton.disabled = true;
+      arButton.textContent = "AR voorbereiden…";
+      try {
+        await loadProductARViewerRuntime();
+        if (disposed || generation !== arAssetGeneration || !root.isConnected) return;
+        const blob = await exportProductARModel(THREE, modelRoot, colors);
+        if (disposed || generation !== arAssetGeneration || !root.isConnected) return;
+        const nextUrl = URL.createObjectURL(blob);
+        const previousUrl = arAssetUrl;
+        const loaded = new Promise((resolve, reject) => {
+          let timeoutId;
+          const cleanupListeners = () => {
+            clearTimeout(timeoutId);
+            arViewer.removeEventListener("load", onLoad);
+            arViewer.removeEventListener("error", onError);
+          };
+          const onLoad = () => { cleanupListeners(); resolve(); };
+          const onError = () => { cleanupListeners(); reject(new Error("De AR-versie van dit product kon niet worden geladen.")); };
+          arViewer.addEventListener("load", onLoad, { once: true });
+          arViewer.addEventListener("error", onError, { once: true });
+          timeoutId = setTimeout(() => { cleanupListeners(); reject(new Error("Het AR-model reageert niet. Probeer de productpagina opnieuw te openen.")); }, 25000);
+        });
+        arViewer.src = nextUrl;
+        try { await loaded; }
+        catch (error) { URL.revokeObjectURL(nextUrl); throw error; }
+        if (disposed || generation !== arAssetGeneration || !root.isConnected) { URL.revokeObjectURL(nextUrl); return; }
+        arAssetUrl = nextUrl;
+        if (previousUrl) URL.revokeObjectURL(previousUrl);
+        let supported = !!arViewer.canActivateAR;
+        // Platformdetectie van WebXR/Scene Viewer/Quick Look kan net na het laden afronden.
+        const supportDeadline = Date.now() + 3000;
+        while (!supported && Date.now() < supportDeadline && !disposed && generation === arAssetGeneration) {
+          await new Promise(resolve => setTimeout(resolve, 150));
+          supported = !!arViewer.canActivateAR;
+        }
+        if (disposed || generation !== arAssetGeneration || !root.isConnected) return;
+        arButton.disabled = !supported;
+        arButton.textContent = supported ? "Probeer in jouw ruimte" : "AR niet beschikbaar op dit apparaat";
+      } catch (error) {
+        console.warn("Product AR preparation failed", error);
+        if (!disposed && generation === arAssetGeneration && arButton.isConnected) {
+          arButton.disabled = true;
+          arButton.textContent = "AR-model niet beschikbaar";
+          const help = root.closest(".product-model-section")?.querySelector(".product-ar-help");
+          if (help) help.textContent = error?.message || "De AR-versie kon niet worden klaargemaakt.";
+        }
+      }
+    };
+    if (arViewer && arButton) {
+      arStatusHandler = event => {
+        if (event.detail?.status === "failed") {
+          const help = root.closest(".product-model-section")?.querySelector(".product-ar-help");
+          if (help) help.textContent = "AR kon niet worden gestart. Controleer of deze browser AR ondersteunt en probeer het opnieuw.";
+        }
+      };
+      arViewer.addEventListener("ar-status", arStatusHandler);
+      arViewer.addEventListener("error", () => {
+        if (arButton.isConnected) { arButton.disabled = true; arButton.textContent = "AR-model niet beschikbaar"; }
+      });
+    }
     if (allowed.length) {
       controlsRoot.innerHTML = `<p class="model-part-color-title">Kies de kleur per onderdeel</p>${partGroups.map((part,index) => `<label class="model-part-color-row"><span>${safe(part.name)}</span><select data-model-part-color="${index}">${allowed.map(color => `<option value="${safe(color.hex)}">${safe(color.name)}</option>`).join("")}</select></label>`).join("")}`;
       partGroups.forEach((part,index) => {
@@ -2555,11 +2693,20 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
         const fallback = allowed[0], color = previous ? allowed.find(option => option.hex.toLowerCase() === String(previous.colorHex).toLowerCase()) : fallback;
         const select = controlsRoot.querySelector(`[data-model-part-color="${index}"]`); if (select) select.value = color.hex;
         applyPartColor(index, color.hex, color.name);
-        if (select) select.onchange = () => { const selected = allowed.find(option => option.hex === select.value); if (!selected) return; applyPartColor(index, selected.hex, selected.name); onColorsChange?.(current.filter(Boolean).map(item => ({ ...item }))); };
+        if (select) select.onchange = () => {
+          const selected = allowed.find(option => option.hex === select.value); if (!selected) return;
+          applyPartColor(index, selected.hex, selected.name);
+          const colors = current.filter(Boolean).map(item => ({ ...item }));
+          onColorsChange?.(colors);
+          updateARAsset(colors);
+        };
       });
-      onColorsChange?.(current.filter(Boolean).map(item => ({ ...item })));
+      const initialSelectedColors = current.filter(Boolean).map(item => ({ ...item }));
+      onColorsChange?.(initialSelectedColors);
+      updateARAsset(initialSelectedColors);
     } else {
       controlsRoot.innerHTML = `<p class="model-color-missing">Voeg bij dit product eerst kleurstaaltjes toe via Sitebeheer → Producten → Bewerken. Alleen die ingestelde kleuren kunnen voor dit model worden gekozen.</p>`;
+      updateARAsset([]);
     }
     if (status) status.textContent = "Draai het model met je muis of vinger.";
     const animate = () => { if (disposed || !root.isConnected) return; frame = requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); };
@@ -2597,9 +2744,11 @@ async function productEditor(id = null) {
       </fieldset>
       <fieldset class="opt-editor model-upload-editor"><legend>3D-model en productconfigurator</legend>
         <label>Upload een STL- of 3MF-bestand<input id="pModelFile" type="file" accept=".stl,.3mf,model/stl,model/3mf"></label>
-        <p class="hint">Upload een STL- of 3MF-bestand van maximaal 10 MB. Het originele bestand wordt ongewijzigd in kleine delen opgeslagen in de gratis Firebase Realtime Database; Firebase Storage en een betaald abonnement zijn hiervoor niet nodig. Het model wordt pas gedownload wanneer een klant de productpagina opent. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. Elk product gebruikt zijn eigen originele upload; er is geen bestandsnaam-afhankelijke reserveweergave. STL heeft één kleurdeel; de afzonderlijke objecten en componenten uit 3MF worden als aparte onderdelen ingelezen.</p>
+        <p class="hint">Upload een STL- of 3MF-bestand van maximaal 10 MB. Het originele bestand wordt ongewijzigd in kleine delen opgeslagen in de gratis Firebase Realtime Database; Firebase Storage en een betaald abonnement zijn hiervoor niet nodig. Klanten kunnen het model draaien en alleen kiezen uit actieve kleurstaaltjes van dit product. Elk product gebruikt zijn eigen originele upload; de afzonderlijke objecten uit 3MF worden als onderdelen ingelezen.</p>
         <div id="modelFileStatus" class="model-file-status">${p.model3d ? `<b>${safe(p.model3d.name || "3D-model")}</b><small>${safe(String(p.model3d.format || "").toUpperCase())} · ${formatFileSize(p.model3d.originalBytes || 0)} origineel · ${formatFileSize(p.model3d.storedBytes || 0)} opgeslagen (${p.model3d.databasePath ? "gratis database-opslag" : p.model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd."}</div>
         <button type="button" class="secondary" id="remove3DModel" ${p.model3d ? "" : "hidden"}>3D-model verwijderen</button>
+        <label class="check ar-feature-toggle"><input type="checkbox" id="pAREnabled" ${p.model3d && p.arEnabled !== false ? "checked" : ""} ${p.model3d ? "" : "disabled"}> Klanten kunnen dit product in hun eigen ruimte proberen (AR)</label>
+        <small class="hint">AR gebruikt het 3D-model hierboven, niet alleen de gewone productfoto. STL-bestanden worden als millimeters behandeld; 3MF-bestanden volgen de eenheid die in het bestand is opgeslagen. Gebruik een model dat op de juiste schaal is geëxporteerd voor een realistische plaatsing op tafel of kast. De AR-functie verschijnt alleen bij dit product.</small>
       </fieldset>
       <fieldset class="opt-editor"><legend>Filamentverbruik · alleen zichtbaar in Sitebeheer</legend>
         <label>Filamentverbruik per productstuk (gram)<input id="pFilamentGrams" type="number" min="0" max="100000" step="0.1" value="${Math.max(0, Number(p.filamentGramsPerUnit) || 0)}" placeholder="Bijv. 85"></label>
@@ -2667,10 +2816,16 @@ async function productEditor(id = null) {
   const customTextToggle = $("#pCustomTextEnabled"), customTextTitle = $("#pCustomTextLabel");
   customTextToggle.onchange = () => { customTextTitle.disabled = !customTextToggle.checked; };
   const refreshModelFileStatus = () => {
-    const box = $("#modelFileStatus"), removeButton = $("#remove3DModel");
+    const box = $("#modelFileStatus"), removeButton = $("#remove3DModel"), arToggle = $("#pAREnabled");
     if (box) box.innerHTML = model3d ? `<b>${safe(model3d.name || "3D-model")}</b><small>${safe(String(model3d.format || "").toUpperCase())} · ${formatFileSize(model3d.originalBytes || 0)} origineel · ${formatFileSize(model3d.storedBytes || 0)} opgeslagen (${model3d.databasePath ? "gratis database-opslag" : model3d.encoding === "gzip" ? "gzip gecomprimeerd" : "bestaand model"})</small>` : "Nog geen 3D-model toegevoegd.";
     if (removeButton) removeButton.hidden = !model3d;
+    if (arToggle) {
+      arToggle.disabled = !model3d;
+      if (!model3d) arToggle.checked = false;
+      else if (!arToggle.dataset.userChanged) arToggle.checked = true;
+    }
   };
+  $("#pAREnabled").onchange = event => { event.currentTarget.dataset.userChanged = "true"; };
   $("#remove3DModel").onclick = () => { model3d = null; modelFileInput.value = ""; refreshModelFileStatus(); toast("3D-model wordt verwijderd na opslaan"); };
   modelFileInput.onchange = async () => {
     const file = modelFileInput.files?.[0]; if (!file) return;
@@ -2738,7 +2893,7 @@ async function productEditor(id = null) {
     if (!Number.isFinite(filamentGramsPerUnit) || filamentGramsPerUnit < 0 || filamentGramsPerUnit > 100000) return toast("Vul een geldig gramverbruik in (0 tot 100.000 gram).");
     const btn = $("#pSave"); btn.disabled = true; btn.textContent = "Opslaan…";
     const now = Date.now();
-    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), model3d: model3d || null, active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, filamentGramsPerUnit: Math.round(filamentGramsPerUnit * 10) / 10, customTextEnabled, customTextLabel: customTextEnabled ? customTextLabel : "", stockTracked: null, stockQuantity: null, lowStockThreshold: null, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
+    const data = { title: $("#pTitle").value.trim(), price, description: $("#pDescription").value.trim(), image: images[0] || "", images: images.slice(0, 3), model3d: model3d || null, arEnabled: !!model3d && $("#pAREnabled").checked, active: true, categoryId: $("#pCategory").value || null, soldOut: $("#pSoldOut").checked, filamentGramsPerUnit: Math.round(filamentGramsPerUnit * 10) / 10, customTextEnabled, customTextLabel: customTextEnabled ? customTextLabel : "", stockTracked: null, stockQuantity: null, lowStockThreshold: null, optionSetId: linkedOptionSetId || null, optionGroups: linkedOptionSetId ? null : (optionGroups.length ? optionGroups : null), optionLabel: null, options: null, updatedAt: now };
     try {
       const productId = draftProductId;
       const writes = Object.fromEntries(Object.entries(data).map(([key, value]) => [`products/${productId}/${key}`, value]));

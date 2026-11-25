@@ -370,3 +370,10 @@ Deze versie bevat 300 aanvullende FAQ-items in `assistant-faq-300.js` naast de b
 ## Nieuwe toevoeging — filamentvoorraad downloaden
 
 In Sitebeheer → Filamentbeheer staat nu de knop **Download overzicht**. Die downloadt de actuele Firebase-voorraad als CSV-bestand dat je direct in Excel kunt openen. Het bestand bevat uitsluitend de kolommen **Kleur**, **Materiaal** en **Aantal over (gram)**. Zowel actieve als gepauzeerde filamentkleuren worden opgenomen; de voorraadhoeveelheid wordt uit de meest recente geladen Firebase-gegevens gehaald.
+
+
+## AR-productplaatsing per product
+
+In Sitebeheer → Producten → Bewerken kun je per product AR aan- of uitzetten. Daarvoor moet eerst een STL- of 3MF-model zijn geüpload. De klant kiest de kleur in de bestaande 3D-configurator; die kleur wordt meegenomen in het AR-model. Het AR-bestand wordt in de browser uit het geüploade model opgebouwd en op ware grootte geëxporteerd (STL in mm, 3MF volgens de eenheid in het 3MF-bestand). De klant start AR via **Probeer in jouw ruimte**; de compatibele browser of AR-app vraagt op dat moment cameratoestemming.
+
+AR gebruikt het 3D-modelbestand, niet de losse productfoto. Een enkele foto wordt niet automatisch omgezet naar een nauwkeurig 3D-model. AR vereist een compatibele telefoon/browser en HTTPS (GitHub Pages voldoet aan HTTPS). De AR-weergave wordt geleverd via Google `<model-viewer>` en gebruikt waar beschikbaar WebXR, Android Scene Viewer of iOS Quick Look.

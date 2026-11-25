@@ -1141,3 +1141,15 @@ body.maintenance-active>#toast{z-index:10002}
 .maintenance-message-editor textarea{width:100%;min-height:90px;padding:12px;border:1px solid var(--border,#ddd);border-radius:10px;font:inherit}
 .maintenance-message a{color:inherit;text-decoration:underline;text-underline-offset:3px}
 @media(max-width:520px){.cart-addon-grid{grid-template-columns:1fr}}
+
+
+/* AR-productplaatsing */
+.product-model-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.product-ar-button{padding:8px 12px!important;font-size:10px!important;white-space:nowrap}
+.product-ar-button:disabled{opacity:.65;cursor:not-allowed}
+.product-ar-help{margin-top:8px}
+.product-ar-model-host{position:fixed;left:0;top:0;width:1px;height:1px;opacity:.001;pointer-events:none;z-index:-1;overflow:hidden}
+.product-ar-model-host::part(default-ar-button){display:none}
+.ar-feature-toggle{margin-top:12px;padding:11px 12px;border:1px solid #dce8f5;border-radius:10px;background:#f6f9fd;color:#2d405a;font-size:11px}
+.ar-feature-toggle input{accent-color:#315d9c}
+@media(max-width:620px){.product-model-heading{align-items:flex-start}.product-model-actions{align-items:flex-end;flex-direction:column}.product-ar-button{max-width:190px;white-space:normal;text-align:center}}
