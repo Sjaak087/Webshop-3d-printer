@@ -1145,7 +1145,7 @@ function showProduct(id) {
       document.body.appendChild(stage);
       const video = stage.querySelector(".ar-webcam-video"), canvas = stage.querySelector(".ar-webcam-canvas");
       const status = stage.querySelector(".ar-webcam-status"), modelControls = stage.querySelector(".ar-webcam-model-controls");
-      let stream = null, renderer = null, camera = null, animationId = 0, finished = false, drag = null;
+      let stream = null, renderer = null, camera = null, scene = null, animationId = 0, finished = false, drag = null;
       let selectedId = 1, nextId = 2;
       const instances = [];
       const materials = [];
@@ -1257,7 +1257,7 @@ function showProduct(id) {
         if (finished) { stream.getTracks().forEach(track => track.stop()); return false; }
         video.srcObject = stream;
         await video.play();
-        const scene = new THREE.Scene();
+        scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
         camera.position.set(0, 0, 0);
         renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "high-performance" });
@@ -2622,7 +2622,7 @@ async function loadThreeToolkit() {
 let modelViewerRuntimePromise = null;
 async function loadProductARViewerRuntime() {
   if (!modelViewerRuntimePromise) {
-    modelViewerRuntimePromise = import("https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer.min.js")
+    modelViewerRuntimePromise = import("https://cdn.jsdelivr.net/npm/@google/model-viewer@4.4.0/dist/model-viewer-module.min.js")
       .then(() => customElements.whenDefined("model-viewer"))
       .catch(error => { modelViewerRuntimePromise = null; throw new Error("De AR-weergave kon niet worden geladen. Controleer de internetverbinding en probeer opnieuw."); });
   }
