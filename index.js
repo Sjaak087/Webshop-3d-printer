@@ -149,7 +149,7 @@ exports.sendChatPush = onValueCreated({
   const customerId = String(chat.userId || chat.customerId || "");
   const targetRole = sender === "admin" ? "customer" : "admin";
   const title = sender === "admin"
-    ? "Nieuw bericht van 3D Printed Shop"
+    ? "Nieuw bericht van 3D Printed Shop Peel en Maas"
     : `Nieuw bericht van ${String(chat.username || "een klant").slice(0, 60)}`;
 
   // Geen privé-chattekst in de systeemmelding. Alle FCM datawaarden zijn strings.

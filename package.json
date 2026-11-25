@@ -1,5 +1,5 @@
 {
-  "name": "3d-printed-shop-functions",
+  "name": "3d-printed-shop-peel-en-maas-functions",
   "private": true,
   "description": "Server-side Firebase Cloud Messaging for new customer-service chat messages.",
   "engines": {

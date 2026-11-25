@@ -6,7 +6,7 @@
 
 .admin-entry{color:var(--blue);border:1px solid #d7e5fb;background:#f3f7ff;border-radius:9px;padding:9px 12px;font-weight:800}.admin-entry:hover{background:#e8f1ff}
 
-/* 3D Printed Shop update: cart quantity controls and clearer support chat */
+/* 3D Printed Shop Peel en Maas update: cart quantity controls and clearer support chat */
 .cart-line{align-items:center;gap:14px}
 .cart-line-info{display:flex;flex-direction:column;gap:5px;min-width:0}
 .cart-line-actions{display:flex;flex-direction:column;align-items:flex-end;gap:7px;flex-shrink:0}
@@ -1175,3 +1175,6 @@ body.maintenance-active>#toast{z-index:10002}
 .ar-xr-buttons .ar-xr-freeze{background:#2563eb;border-color:#93c5fd}
 .ar-xr-buttons button:active{transform:scale(.98)}
 @media(max-width:480px){.ar-xr-controls{padding-left:12px;padding-right:12px}.ar-xr-buttons button{flex:1;min-width:0;padding:15px 12px}.ar-xr-status{font-size:12px}}
+
+/* Lokale merknaam onder het logo */
+.brand-location{display:block;font-size:10px;line-height:1.1;font-weight:600;letter-spacing:.04em;color:var(--muted,#94a3b8);margin-left:0;}

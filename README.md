@@ -1,4 +1,4 @@
-# 3D Printed Shop v30 — gesprek en online informatie
+# 3D Printed Shop Peel en Maas v30 — gesprek en online informatie
 
 ## Nieuw in v29
 - Chatbot reageert ook op begroetingen en eenvoudige gewone gesprekjes.
@@ -8,7 +8,7 @@
 - Er wordt geen lokaal AI-model of API-sleutel vereist.
 - Geen Firebase-profielen, bestellingen, privéchats, adressen of wachtwoorden naar zoekdiensten sturen.
 
-# 3D Printed Shop — gratis GitHub/Firebase-editie (v30)
+# 3D Printed Shop Peel en Maas — gratis GitHub/Firebase-editie (v30)
 
 ## Wat is er veranderd in versie 12
 - Nieuwe STL- en 3MF-modellen (maximaal 10 MiB per bestand) worden in kleine Base64-delen opgeslagen in Firebase Realtime Database.

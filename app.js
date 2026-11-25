@@ -142,8 +142,8 @@ const BASE_SEO = {
 };
 let productSeoActive = false;
 function setProductSEO(product) {
-  const title = `${String(product.title || "3D-geprint product").slice(0, 100)} | 3D Printed Shop`;
-  const description = String(product.description || `Bekijk ${product.title || "dit product"} bij 3D Printed Shop. Ontdek de mogelijkheden, kleuren en bestel jouw 3D-print online.`).replace(/\s+/g, " ").trim().slice(0, 300);
+  const title = `${String(product.title || "3D-geprint product").slice(0, 100)} | 3D Printed Shop Peel en Maas`;
+  const description = String(product.description || `Bekijk ${product.title || "dit product"} bij 3D Printed Shop Peel en Maas. Ontdek de mogelijkheden, kleuren en bestel jouw 3D-print online.`).replace(/\s+/g, " ").trim().slice(0, 300);
   const productUrl = new URL(window.location.href);
   productUrl.searchParams.delete("arProduct");
   productUrl.searchParams.set("product", product.id);
@@ -532,7 +532,7 @@ function showChatPushWelcome() {
     <div class="push-welcome-icon" aria-hidden="true">🔔</div>
     <p class="eyebrow">BLIJF OP DE HOOGTE</p>
     <h2>Mis geen nieuw chatbericht</h2>
-    <p class="muted">Ontvang een melding wanneer 3D Printed Shop een bericht stuurt in een van je chats. Je kunt dit later altijd aanpassen via je browserinstellingen.</p>
+    <p class="muted">Ontvang een melding wanneer 3D Printed Shop Peel en Maas een bericht stuurt in een van je chats. Je kunt dit later altijd aanpassen via je browserinstellingen.</p>
     <button type="button" class="primary full" id="allowChatPushWelcome">Meldingen toestaan</button>
     <button type="button" class="secondary full" id="laterChatPushWelcome">Niet nu</button>
     <small class="push-welcome-note">Na je klik vraagt je browser zelf om toestemming. Je keuze wordt onthouden.</small>
@@ -1294,7 +1294,7 @@ $("#requestQuoteBtn").onclick = startQuoteRequest;
 /* ---------- klantaccount ---------- */
 function authForm(mode = "login", message = "") {
   const login = mode === "login";
-  openDialog(`<p class="eyebrow">3D PRINTED SHOP ACCOUNT</p><h2>${login ? "Welkom terug" : "Account aanmaken"}</h2><p class="muted">${safe(message)}</p><form id="authForm" class="stack">${login ? "" : `<label>Gebruikersnaam<input type="text" id="authUsername" required minlength="3" maxlength="20" pattern="[A-Za-z0-9._-]{3,20}" autocomplete="nickname" placeholder="Bijv. printfan23"></label>`}<label>E-mailadres<input type="email" id="authEmail" required autocomplete="email"></label><label>Wachtwoord<input type="password" id="authPassword" required minlength="${login ? 1 : 8}" autocomplete="${login ? "current-password" : "new-password"}"></label>${login ? "" : `<p class="hint">Minimaal 8 tekens. Je gebruikersnaam is zichtbaar; je e-mailadres niet.</p>`}<button class="primary full">${login ? "Inloggen" : "Account aanmaken"}</button></form><p class="switch-auth">${login ? "Nog geen account?" : "Heb je al een account?"} <button id="switchAuth" class="inline-link">${login ? "Account aanmaken" : "Inloggen"}</button></p>`);
+  openDialog(`<p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS ACCOUNT</p><h2>${login ? "Welkom terug" : "Account aanmaken"}</h2><p class="muted">${safe(message)}</p><form id="authForm" class="stack">${login ? "" : `<label>Gebruikersnaam<input type="text" id="authUsername" required minlength="3" maxlength="20" pattern="[A-Za-z0-9._-]{3,20}" autocomplete="nickname" placeholder="Bijv. printfan23"></label>`}<label>E-mailadres<input type="email" id="authEmail" required autocomplete="email"></label><label>Wachtwoord<input type="password" id="authPassword" required minlength="${login ? 1 : 8}" autocomplete="${login ? "current-password" : "new-password"}"></label>${login ? "" : `<p class="hint">Minimaal 8 tekens. Je gebruikersnaam is zichtbaar; je e-mailadres niet.</p>`}<button class="primary full">${login ? "Inloggen" : "Account aanmaken"}</button></form><p class="switch-auth">${login ? "Nog geen account?" : "Heb je al een account?"} <button id="switchAuth" class="inline-link">${login ? "Account aanmaken" : "Inloggen"}</button></p>`);
   $("#authForm").onsubmit = async e => {
     e.preventDefault(); if (locked()) return;
     const btn = e.submitter; btn && (btn.disabled = true);
@@ -1599,7 +1599,7 @@ function showPublicTracking(token) {
     openDialog(`<p class="eyebrow">TRACK & TRACE</p><h2>Ongeldige volg-link</h2><p class="muted">Controleer of je de volledige link hebt ontvangen.</p>`);
     return;
   }
-  openDialog(`<div class="public-track-head"><div><p class="eyebrow">3D PRINTED SHOP · TRACK & TRACE</p><h2>Bestelling volgen</h2><p class="public-track-note">Dit is een alleen-lezen overzicht. Inloggen is niet nodig.</p></div><span class="status-pill">Link actief</span></div><div id="publicTrackBox" class="stack">${firebaseLoadingMarkup("Bestelling laden…")}</div>`);
+  openDialog(`<div class="public-track-head"><div><p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS · TRACK & TRACE</p><h2>Bestelling volgen</h2><p class="public-track-note">Dit is een alleen-lezen overzicht. Inloggen is niet nodig.</p></div><span class="status-pill">Link actief</span></div><div id="publicTrackBox" class="stack">${firebaseLoadingMarkup("Bestelling laden…")}</div>`);
   listen(ref(db, `publicTrack/${token}`), snap => {
     const o = snap.val(), box = $("#publicTrackBox");
     if (!box) return;
@@ -1660,7 +1660,7 @@ function chatMessageMarkup(message) {
   const image = /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(imageData) && imageData.length <= 88000
     ? `<a class="chat-image-link" href="${imageData}" target="_blank" rel="noopener noreferrer" aria-label="Foto openen"><img class="chat-image" src="${imageData}" alt="${safe(message.imageName || "Foto in chat")}" loading="lazy"></a>` : "";
   const text = message.text ? `<p>${formatChatText(message.text)}</p>` : "";
-  return `${image}${text}<small>${message.sender === "admin" ? "3D Printed Shop" : message.sender === "system" ? "Systeem" : "Jij"} · ${when(message.createdAt)}${image ? " · Foto" : ""}</small>`;
+  return `${image}${text}<small>${message.sender === "admin" ? "3D Printed Shop Peel en Maas" : message.sender === "system" ? "Systeem" : "Jij"} · ${when(message.createdAt)}${image ? " · Foto" : ""}</small>`;
 }
 function formatChatText(value) {
   // Werkt op de ruwe tekst: eerst links zoeken, daarna alles apart escapen (geen kapotte &amp;-links).
@@ -1689,7 +1689,7 @@ function openChat(id, asAdmin = false) {
     const c = s.val(); if (!c) return toast("Chat niet gevonden");
     if (!asAdmin && c.userId !== state.user.uid) return toast("Geen toegang tot deze chat");
     const isQuoteChat = c.kind === "quote";
-    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP KLANTENSERVICE</p><h2>${isQuoteChat ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop")}</small></div>${c.orderId ? `<button class="secondary" id="chatTrack">Bestelling volgen</button>` : `<span class="status-pill">Offertegesprek</span>`}</div><div class="chat-notice">${isQuoteChat ? (c.orderId ? `Deze offerte is omgezet naar bestelling #${short(c.orderId)}. Bespreek hier eventuele vragen over je bestelling.` : "Bespreek hier de mogelijkheden en details van je maatwerkproduct.") : "Deel hier je vraag, een link of een foto. Foto's worden automatisch sterk verkleind voordat ze worden opgeslagen."}</div><div class="chat-push-settings"><button type="button" class="secondary" id="enableChatNotifications">🔔 Meldingen inschakelen</button><small id="chatPushHint">Ontvang een browsermelding als er een nieuw bericht in deze chat staat. Je browser vraagt eerst toestemming.</small></div><div id="messages" class="messages" aria-live="polite"></div><div id="chatImagePending" class="chat-image-pending" hidden></div><form id="sendMessage" class="send-message"><label for="chatImageInput" class="chat-attach-button" title="Foto toevoegen" aria-label="Foto toevoegen"><i data-lucide="paperclip"></i></label><input id="chatImageInput" type="file" accept="image/*" hidden><input id="messageText" placeholder="Typ je bericht…" maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form><small class="chat-upload-hint">Maximaal 12 MB origineel · automatisch verkleind tot ongeveer 65 KB.</small></div>`);
+    openDialog(`<div class="chat-shell"><div class="chat-heading"><div class="chat-title-wrap"><p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS KLANTENSERVICE</p><h2>${isQuoteChat ? `Offerte · ${safe(c.quoteTitle || "Eigen product")}` : `Bestelling #${short(c.orderId)}`}</h2><small class="chat-subtitle">${safe(c.username || "Gesprek met 3D Printed Shop Peel en Maas")}</small></div>${c.orderId ? `<button class="secondary" id="chatTrack">Bestelling volgen</button>` : `<span class="status-pill">Offertegesprek</span>`}</div><div class="chat-notice">${isQuoteChat ? (c.orderId ? `Deze offerte is omgezet naar bestelling #${short(c.orderId)}. Bespreek hier eventuele vragen over je bestelling.` : "Bespreek hier de mogelijkheden en details van je maatwerkproduct.") : "Deel hier je vraag, een link of een foto. Foto's worden automatisch sterk verkleind voordat ze worden opgeslagen."}</div><div class="chat-push-settings"><button type="button" class="secondary" id="enableChatNotifications">🔔 Meldingen inschakelen</button><small id="chatPushHint">Ontvang een browsermelding als er een nieuw bericht in deze chat staat. Je browser vraagt eerst toestemming.</small></div><div id="messages" class="messages" aria-live="polite"></div><div id="chatImagePending" class="chat-image-pending" hidden></div><form id="sendMessage" class="send-message"><label for="chatImageInput" class="chat-attach-button" title="Foto toevoegen" aria-label="Foto toevoegen"><i data-lucide="paperclip"></i></label><input id="chatImageInput" type="file" accept="image/*" hidden><input id="messageText" placeholder="Typ je bericht…" maxlength="1000" autocomplete="off"><button class="primary">Verstuur</button></form><small class="chat-upload-hint">Maximaal 12 MB origineel · automatisch verkleind tot ongeveer 65 KB.</small></div>`);
     if (window.lucide) window.lucide.createIcons();
     const notificationButton = $("#enableChatNotifications");
     const notificationHint = $("#chatPushHint");
@@ -1970,7 +1970,7 @@ function dashboardTab(target) {
       current.quantity += Number(item.qty) || 1; current.revenue += (Number(item.price) || 0) * (Number(item.qty) || 1); topProducts.set(item.id || item.title, current);
     }));
     const topList = [...topProducts.values()].sort((a,b) => b.quantity - a.quantity).slice(0, 5);
-    target.innerHTML = `<div class="dashboard-welcome"><div><p class="eyebrow">OVERZICHT · 3D PRINTED SHOP</p><h3>Jouw webshop in één oogopslag</h3><p class="muted">Live overzicht van bestellingen, omzet en filamentvoorraad.</p></div><span class="dashboard-live"><i></i> Live gegevens</span></div>
+    target.innerHTML = `<div class="dashboard-welcome"><div><p class="eyebrow">OVERZICHT · 3D PRINTED SHOP PEEL EN MAAS</p><h3>Jouw webshop in één oogopslag</h3><p class="muted">Live overzicht van bestellingen, omzet en filamentvoorraad.</p></div><span class="dashboard-live"><i></i> Live gegevens</span></div>
       <div class="dashboard-kpis">
         <article class="dashboard-kpi"><span>Totale bestelwaarde</span><strong>${money(totalRevenue)}</strong><small>Alle geregistreerde bestellingen</small></article>
         <article class="dashboard-kpi"><span>Ontvangen betalingen</span><strong>${money(received)}</strong><small>Als betaald of niet van toepassing gemarkeerd</small></article>
@@ -2086,7 +2086,7 @@ function filamentTab(target) {
 
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="products">Producten</button><button data-tab="filament">Filamentbeheer</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button data-tab="maintenance">Onderhoud</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="products">Producten</button><button data-tab="filament">Filamentbeheer</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button data-tab="maintenance">Onderhoud</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
@@ -3205,7 +3205,7 @@ function contactPageMarkup() {
     rows.push(`<div class="contact-detail"><span>Telefoon</span><strong><a href="tel:${safe(dial)}">${safe(phone)}</a></strong></div>`);
   }
   if (String(c.hours || "").trim()) rows.push(`<div class="contact-detail"><span>Openingstijden</span><strong>${safe(c.hours).replace(/\n/g, "<br>")}</strong></div>`);
-  return `<p class="eyebrow">3D PRINTED SHOP</p><h2>${safe(c.title || "Contact")}</h2><p class="legal-page-intro">${safe(c.intro || "Heb je een vraag? Neem gerust contact met ons op.").replace(/\n/g, "<br>")}</p><div class="contact-details">${rows.length ? rows.join("") : `<p class="muted">De contactgegevens worden binnenkort toegevoegd.</p>`}</div>${String(c.extra || "").trim() ? `<div class="contact-extra">${safe(c.extra).replace(/\n/g, "<br>")}</div>` : ""}<p class="shipping-note contact-shipping-note">Verzendkosten: <strong>${money(SHIPPING)}</strong> bij verzenden · Ophalen is gratis.</p>`;
+  return `<p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS</p><h2>${safe(c.title || "Contact")}</h2><p class="legal-page-intro">${safe(c.intro || "Heb je een vraag? Neem gerust contact met ons op.").replace(/\n/g, "<br>")}</p><div class="contact-details">${rows.length ? rows.join("") : `<p class="muted">De contactgegevens worden binnenkort toegevoegd.</p>`}</div>${String(c.extra || "").trim() ? `<div class="contact-extra">${safe(c.extra).replace(/\n/g, "<br>")}</div>` : ""}<p class="shipping-note contact-shipping-note">Verzendkosten: <strong>${money(SHIPPING)}</strong> bij verzenden · Ophalen is gratis.</p>`;
 }
 function openContactPage() {
   openDialog(`<div id="contactPageContent" class="legal-page contact-page">${contactPageMarkup()}</div>`);
@@ -3228,7 +3228,7 @@ function openTermsPage() {
     c.email ? `<p><strong>E-mailadres:</strong> ${safe(c.email)}</p>` : "",
     c.phone ? `<p><strong>Telefoon:</strong> ${safe(c.phone)}</p>` : ""
   ].filter(Boolean).join("") || `<p>De gegevens van de aanbieder worden op de contactpagina gepubliceerd.</p>`;
-  openDialog(`<div class="legal-page"><p class="eyebrow">3D PRINTED SHOP</p><h2>Algemene voorwaarden</h2><p class="privacy-updated">Laatst bijgewerkt: 17 november 2026</p>
+  openDialog(`<div class="legal-page"><p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS</p><h2>Algemene voorwaarden</h2><p class="privacy-updated">Laatst bijgewerkt: 17 november 2026</p>
     <div class="legal-content">
       <h3>1. Gegevens van de aanbieder</h3>${identity}
       <h3>2. Toepasselijkheid</h3><p>Deze algemene voorwaarden zijn van toepassing op het gebruik van deze webshop en op bestellingen die via de webshop worden geplaatst. Door een bestelling te plaatsen, ga je akkoord met deze voorwaarden. Dwingende wettelijke consumentenrechten blijven altijd gelden.</p>
@@ -3787,7 +3787,7 @@ function assistantSearchQuery(question, scope = "general") {
   const host = String(window.location.hostname || "").replace(/[^a-z0-9.-]/gi, "");
   const firstPath = String(window.location.pathname || "/").split("/").filter(Boolean)[0] || "";
   const siteTarget = host ? `${host}${firstPath ? `/${firstPath}` : ""}` : "";
-  return siteTarget ? `${query} site:${siteTarget}` : `${query} 3D Printed Shop`;
+  return siteTarget ? `${query} site:${siteTarget}` : `${query} 3D Printed Shop Peel en Maas`;
 }
 const ASSISTANT_WEB_CACHE = new Map();
 let assistantLastTopicQuestion = "";
