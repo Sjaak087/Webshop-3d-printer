@@ -1145,8 +1145,14 @@ function showProduct(id) {
       document.body.appendChild(stage);
       const video = stage.querySelector(".ar-webcam-video"), canvas = stage.querySelector(".ar-webcam-canvas");
       const status = stage.querySelector(".ar-webcam-status"), freeze = stage.querySelector(".ar-webcam-freeze");
-      let stream = null, renderer = null, animationId = 0, frozen = false, finished = false;
-      const resize = () => { if (!renderer) return; const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix(); };
+      let stream = null, renderer = null, camera = null, animationId = 0, frozen = false, finished = false;
+      const resize = () => {
+        if (!renderer || !camera) return;
+        const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight);
+        renderer.setSize(w, h, false);
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+      };
       let drag = null, x = 0, y = 0, scale = 1;
       const materials = [];
       const finish = () => {
@@ -1176,7 +1182,7 @@ function showProduct(id) {
         video.srcObject = stream;
         await video.play();
         const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
+        camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
         camera.position.set(0, 0, 0);
         renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "high-performance" });
         renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
@@ -1219,17 +1225,10 @@ function showProduct(id) {
       }
       if (!arViewer.canActivateAR) {
         if (!isMobileARDevice) {
-          const webcamStarted = await launchLaptopWebcamAR();
-          if (webcamStarted) return;
-          const help = content.querySelector(".product-ar-help");
-          const phoneUrl = new URL(window.location.href);
-          phoneUrl.searchParams.set("product", p.id);
-          phoneUrl.searchParams.set("arProduct", p.id);
-          const encodedUrl = encodeURIComponent(phoneUrl.toString());
-          if (help) {
-            help.innerHTML = `<strong>AR werkt via een geschikte smartphone.</strong><br>Scan deze QR-code met je telefoon om precies dit product te openen. Tik daarna op ‘Probeer in jouw ruimte’.<div class="product-ar-qr-wrap"><img class="product-ar-qr" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${encodedUrl}" alt="QR-code om ${safe(p.title)} op een telefoon te openen"><span>Open de camera van je telefoon en scan de code.</span></div>`;
-          }
-          try { navigator.clipboard?.writeText(phoneUrl.toString()).then(() => toast("Productlink gekopieerd voor je telefoon.")).catch(() => {}); } catch (_) {}
+          // Op Windows starten we de lokale webcam-overlay. Bij een fout tonen we
+          // de camerafout en blijven we op de productpagina; nooit automatisch
+          // een telefoonlink kopiëren of de gebruiker uit de cameraflow halen.
+          await launchLaptopWebcamAR();
           return;
         }
         return toast("Deze telefoon of browser ondersteunt de benodigde AR-functies niet. Probeer een recente AR-geschikte smartphone en een ondersteunde browser.");
