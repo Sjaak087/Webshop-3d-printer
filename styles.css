@@ -1178,3 +1178,20 @@ body.maintenance-active>#toast{z-index:10002}
 
 /* Lokale merknaam onder het logo */
 .brand-location{display:block;font-size:10px;line-height:1.1;font-weight:600;letter-spacing:.04em;color:var(--muted,#94a3b8);margin-left:0;}
+
+/* Windows/laptop webcam AR overlay (screen-space preview, not world tracking) */
+.ar-webcam-stage{position:fixed;inset:0;z-index:100000;background:#090d14;overflow:hidden;color:#fff;isolation:isolate}
+.ar-webcam-video,.ar-webcam-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ar-webcam-video{z-index:0;transform:scaleX(-1)}
+.ar-webcam-canvas{z-index:1;touch-action:none;cursor:grab}
+.ar-webcam-canvas:active{cursor:grabbing}
+.ar-webcam-topnote{position:absolute;z-index:2;top:18px;left:50%;transform:translateX(-50%);max-width:calc(100% - 30px);padding:10px 16px;border-radius:999px;background:#101827d9;border:1px solid #ffffff35;text-align:center;font-size:13px;backdrop-filter:blur(12px)}
+.ar-webcam-controls{position:absolute;z-index:2;left:50%;bottom:18px;transform:translateX(-50%);width:min(560px,calc(100% - 28px));padding:16px;border-radius:18px;background:#101827eF;border:1px solid #ffffff30;box-shadow:0 12px 45px #0008;backdrop-filter:blur(14px)}
+.ar-webcam-status{margin:0 0 12px;font-size:14px;line-height:1.45}
+.ar-webcam-actions{display:flex;gap:10px;justify-content:center}
+.ar-webcam-actions button{border:1px solid #ffffff40;border-radius:10px;padding:10px 18px;background:#263449;color:#fff;font-weight:700;cursor:pointer}
+.ar-webcam-actions .ar-webcam-freeze{background:#1769d2;border-color:#438df0}
+.ar-webcam-zoom{display:flex;align-items:center;gap:12px;margin-top:12px;font-size:12px}
+.ar-webcam-zoom input{flex:1}
+.ar-webcam-controls small{display:block;margin-top:8px;color:#c4cfdd;font-size:11px}
+@media(max-width:600px){.ar-webcam-topnote{top:10px;font-size:11px}.ar-webcam-controls{bottom:10px;padding:12px}.ar-webcam-actions button{flex:1}}

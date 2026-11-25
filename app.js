@@ -945,7 +945,7 @@ function showProduct(id) {
       <div class="detail-gallery">
         <div class="detail-image">${image ? `<img src="${safe(image)}" alt="${safe(p.title)} afbeelding ${activeImage + 1}">` : `<i data-lucide="box"></i>`}</div>
         ${images.length > 1 ? `<div class="detail-thumbs">${images.map((src, i) => `<button class="detail-thumb ${i === activeImage ? "active" : ""}" data-image="${i}" aria-label="Afbeelding ${i + 1}"><img src="${safe(src)}" alt=""></button>`).join("")}</div>` : ""}
-        ${p.model3d ? `<section class="product-model-section"><div class="product-model-heading"><div><p class="eyebrow">INTERACTIEF 3D-MODEL</p><h3>Stel jouw kleuren samen</h3></div><div class="product-model-actions"><span class="model-viewer-badge">3D</span>${p.arEnabled !== false ? `<button type="button" class="secondary product-ar-button" id="productTryAR" disabled>AR voorbereiden…</button>` : ""}</div></div><div id="productModelViewer" class="product-model-viewer"><canvas aria-label="Draaibaar 3D-productvoorbeeld" tabindex="0"></canvas><span class="model-viewer-state" role="status">3D-model voorbereiden…</span></div><div class="model-part-color-controls"></div>${p.arEnabled !== false ? `<model-viewer id="productARModelViewer" class="product-ar-model-host" aria-hidden="true" tabindex="-1" ar ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" ar-placement="floor" camera-controls loading="eager" alt="${safe(p.title)} op ware grootte in AR"></model-viewer><p class="hint product-ar-help" role="status">AR gebruikt het echte STL/3MF-model en de gekozen kleuren. Op Android Chrome volgt het model je camera; richt het op een plek en tik op Bevriezen om het daar vast te zetten. Andere geschikte telefoons gebruiken hun eigen AR-weergave.</p>` : ""}<p class="hint">Draai het model met je vinger of muis. Je kunt alleen kleuren kiezen die bij dit product zijn ingesteld.</p></section>` : ""}
+        ${p.model3d ? `<section class="product-model-section"><div class="product-model-heading"><div><p class="eyebrow">INTERACTIEF 3D-MODEL</p><h3>Stel jouw kleuren samen</h3></div><div class="product-model-actions"><span class="model-viewer-badge">3D</span>${p.arEnabled !== false ? `<button type="button" class="secondary product-ar-button" id="productTryAR" disabled>AR voorbereiden…</button>` : ""}</div></div><div id="productModelViewer" class="product-model-viewer"><canvas aria-label="Draaibaar 3D-productvoorbeeld" tabindex="0"></canvas><span class="model-viewer-state" role="status">3D-model voorbereiden…</span></div><div class="model-part-color-controls"></div>${p.arEnabled !== false ? `<model-viewer id="productARModelViewer" class="product-ar-model-host" aria-hidden="true" tabindex="-1" ar ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" ar-placement="floor" camera-controls loading="eager" alt="${safe(p.title)} op ware grootte in AR"></model-viewer><p class="hint product-ar-help" role="status">AR gebruikt het echte STL/3MF-model en de gekozen kleuren. Op Windows kun je de webcam openen, het model met de muis verplaatsen en op Bevriezen drukken. Voor automatische plaatsing op echte oppervlakken is een AR-geschikte smartphone nodig.</p>` : ""}<p class="hint">Draai het model met je vinger of muis. Je kunt alleen kleuren kiezen die bij dit product zijn ingesteld.</p></section>` : ""}
       </div>
       <div class="detail-content">
         <p class="eyebrow">PRODUCTDETAILS</p><h2>${safe(p.title)}</h2>
@@ -1130,6 +1130,83 @@ function showProduct(id) {
         return false;
       }
     };
+    const launchLaptopWebcamAR = async () => {
+      const modelContext = arModelContext;
+      if (!navigator.mediaDevices?.getUserMedia || !modelContext?.modelRoot || !modelContext?.THREE) {
+        toast("Webcam-AR is niet beschikbaar. Gebruik een recente Chrome-versie via HTTPS en controleer je cameratoestemming.");
+        return false;
+      }
+      const { THREE, modelRoot } = modelContext;
+      const stage = document.createElement("div");
+      stage.className = "ar-webcam-stage";
+      stage.setAttribute("role", "dialog");
+      stage.setAttribute("aria-label", "Webcam 3D-weergave");
+      stage.innerHTML = `<video class="ar-webcam-video" autoplay playsinline muted></video><canvas class="ar-webcam-canvas"></canvas><div class="ar-webcam-topnote">Webcam-weergave · Sleep het model naar de gewenste plek</div><div class="ar-webcam-controls"><p class="ar-webcam-status" role="status" aria-live="polite">Camera starten…</p><div class="ar-webcam-actions"><button type="button" class="ar-webcam-close">Sluiten</button><button type="button" class="ar-webcam-freeze">Bevriezen</button></div><label class="ar-webcam-zoom">Grootte <input class="ar-webcam-scale" type="range" min="0.5" max="2.5" step="0.05" value="1"></label><small>Tip: sleep het model met je muis. Bevriezen zet de huidige schermpositie vast.</small></div>`;
+      document.body.appendChild(stage);
+      const video = stage.querySelector(".ar-webcam-video"), canvas = stage.querySelector(".ar-webcam-canvas");
+      const status = stage.querySelector(".ar-webcam-status"), freeze = stage.querySelector(".ar-webcam-freeze");
+      let stream = null, renderer = null, animationId = 0, frozen = false, finished = false;
+      const resize = () => { if (!renderer) return; const w = Math.max(1, stage.clientWidth), h = Math.max(1, stage.clientHeight); renderer.setSize(w,h,false); camera.aspect = w/h; camera.updateProjectionMatrix(); };
+      let drag = null, x = 0, y = 0, scale = 1;
+      const materials = [];
+      const finish = () => {
+        if (finished) return; finished = true;
+        cancelAnimationFrame(animationId);
+        try { renderer?.dispose(); } catch (_) {}
+        window.removeEventListener("resize", resize);
+        materials.forEach(m => { try { m.dispose(); } catch (_) {} });
+        stream?.getTracks().forEach(track => track.stop());
+        stage.remove();
+      };
+      stage.querySelector(".ar-webcam-close").addEventListener("click", finish);
+      freeze.addEventListener("click", () => {
+        frozen = !frozen;
+        freeze.textContent = frozen ? "Verder bewegen" : "Bevriezen";
+        freeze.setAttribute("aria-pressed", String(frozen));
+        status.textContent = frozen ? "Positie bevroren. Het model blijft op deze plek in beeld." : "Model vrij verplaatsbaar. Sleep het naar een andere plek.";
+      });
+      canvas.addEventListener("pointerdown", event => { if (frozen) return; drag = { x: event.clientX, y: event.clientY, ox: x, oy: y }; canvas.setPointerCapture(event.pointerId); });
+      canvas.addEventListener("pointermove", event => { if (!drag || frozen) return; x = drag.ox + (event.clientX - drag.x) / Math.max(1, stage.clientWidth) * 2; y = drag.oy - (event.clientY - drag.y) / Math.max(1, stage.clientHeight) * 2; });
+      canvas.addEventListener("pointerup", () => { drag = null; });
+      stage.querySelector(".ar-webcam-scale").addEventListener("input", event => { scale = Number(event.target.value) || 1; });
+      try {
+        // Toestemming wordt direct vanuit de klik gevraagd. Werkt op HTTPS of localhost.
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+        if (finished) { stream.getTracks().forEach(track => track.stop()); return false; }
+        video.srcObject = stream;
+        await video.play();
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(38, 1, 0.01, 100);
+        camera.position.set(0, 0, 0);
+        renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: "high-performance" });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x68758a, 2));
+        const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(2, 4, 3); scene.add(key);
+        const model = modelRoot.clone(true); model.scale.set(1,1,1); model.position.set(0,0,0); model.updateMatrixWorld(true);
+        const bounds = new THREE.Box3().setFromObject(model);
+        if (bounds.isEmpty()) throw new Error("Dit productmodel heeft geen geldige afmetingen.");
+        const center = bounds.getCenter(new THREE.Vector3());
+        model.position.set(-center.x, -bounds.min.y, -center.z);
+        model.traverse(child => { if (!child.isMesh) return; const src = Array.isArray(child.material) ? child.material : [child.material]; const copies = src.map(m => { const c = m?.clone ? m.clone() : new THREE.MeshStandardMaterial({color:0x9aa7b8}); materials.push(c); return c; }); child.material = Array.isArray(child.material) ? copies : copies[0]; });
+        const group = new THREE.Group(); group.add(model); group.scale.setScalar(0.001); scene.add(group);
+        resize(); window.addEventListener("resize", resize);
+        const renderFrame = () => {
+          if (finished) return;
+          if (!frozen) { group.position.set(x * 0.8, y * 0.55 - 0.08, -1.25); group.scale.setScalar(0.001 * scale); }
+          renderer.render(scene,camera); animationId = requestAnimationFrame(renderFrame);
+        };
+        status.textContent = "Camera actief. Sleep het 3D-model met je muis; gebruik Bevriezen om de positie vast te zetten.";
+        renderFrame();
+        const onEnded = () => finish(); stream.getVideoTracks()[0]?.addEventListener("ended", onEnded, { once: true });
+        return true;
+      } catch (error) {
+        console.warn("Laptop webcam preview could not start", error);
+        finish();
+        toast(error?.name === "NotAllowedError" ? "Geen cameratoestemming. Sta cameratoegang toe in Chrome en probeer opnieuw." : (error?.message || "De webcam kon niet worden gestart."));
+        return false;
+      }
+    };
     const tryARButton = $("#productTryAR");
     if (tryARButton) tryARButton.onclick = async () => {
       const arViewer = $("#productARModelViewer");
@@ -1142,6 +1219,8 @@ function showProduct(id) {
       }
       if (!arViewer.canActivateAR) {
         if (!isMobileARDevice) {
+          const webcamStarted = await launchLaptopWebcamAR();
+          if (webcamStarted) return;
           const help = content.querySelector(".product-ar-help");
           const phoneUrl = new URL(window.location.href);
           phoneUrl.searchParams.set("product", p.id);
@@ -2918,12 +2997,12 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
           || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
         const customWebXRAvailable = typeof navigator.xr?.requestSession === "function";
         arButton.disabled = !supported && !customWebXRAvailable && isMobileARDevice;
-        arButton.textContent = supported || customWebXRAvailable ? "Start AR · Bevriezen" : (isMobileARDevice ? "AR niet beschikbaar op dit apparaat" : "Bekijk AR op je telefoon");
+        arButton.textContent = supported || customWebXRAvailable ? "Start AR · Bevriezen" : (isMobileARDevice ? "AR niet beschikbaar op dit apparaat" : "Start webcam-AR");
         const arHelp = root.closest(".product-model-section")?.querySelector(".product-ar-help");
         if ((supported || customWebXRAvailable) && arHelp) arHelp.textContent = "Op compatibele Android-telefoons volgt het model je camerabeweging of het herkende tafel-/vloeroppervlak. Tik op ‘Bevriezen’ om het op die plek vast te zetten. Andere geschikte telefoons openen hun eigen AR-weergave.";
         if (!supported && arHelp) arHelp.textContent = isMobileARDevice
           ? "AR wordt op dit apparaat niet herkend. Gebruik een recente AR-geschikte smartphone en een ondersteunde browser."
-          : "Je bekijkt de webshop op een computer. Een gewone webcam kan geen AR-oppervlak herkennen. Scan de QR-code om dit product op je smartphone te openen en daar in je ruimte te plaatsen.";
+          : "Op Windows kun je de webcam-weergave starten en het model met je muis verplaatsen en bevriezen. Dit is een camera-overlay, geen automatische 3D-ruimtetracking. Voor echte oppervlakplaatsing gebruik je een AR-geschikte smartphone.";
       } catch (error) {
         console.warn("Product AR preparation failed", error);
         if (!disposed && generation === arAssetGeneration && arButton.isConnected) {

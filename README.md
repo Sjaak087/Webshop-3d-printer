@@ -377,3 +377,8 @@ In Sitebeheer → Filamentbeheer staat nu de knop **Download overzicht**. Die do
 In Sitebeheer → Producten → Bewerken kun je per product AR aan- of uitzetten. Daarvoor moet eerst een STL- of 3MF-model zijn geüpload. De klant kiest de kleur in de bestaande 3D-configurator; die kleur wordt meegenomen in het AR-model. Het AR-bestand wordt in de browser uit het geüploade model opgebouwd en op ware grootte geëxporteerd (STL in mm, 3MF volgens de eenheid in het 3MF-bestand). De klant start AR via **Probeer in jouw ruimte**; de compatibele browser of AR-app vraagt op dat moment cameratoestemming.
 
 AR gebruikt het 3D-modelbestand, niet de losse productfoto. Een enkele foto wordt niet automatisch omgezet naar een nauwkeurig 3D-model. AR vereist een compatibele telefoon/browser en HTTPS (GitHub Pages voldoet aan HTTPS). De AR-weergave wordt geleverd via Google `<model-viewer>` en gebruikt waar beschikbaar WebXR, Android Scene Viewer of iOS Quick Look.
+
+
+## Webcam-weergave op Windows-laptops
+
+Op Windows-desktop Chrome is een webcam-overlay beschikbaar voor producten met een 3D-model. Open de productpagina via HTTPS, klik op **Start webcam-AR** en geef Chrome cameratoestemming. Sleep het model met de muis, pas de grootte aan en klik op **Bevriezen** om de schermpositie vast te zetten. Dit is een live camerabeeld met een 3D-overlay; een gewone laptopwebcam levert geen betrouwbare diepte-/oppervlaktracking of echte wereldverankering. Voor automatische plaatsing op een tafel of vloer blijft een AR-geschikte smartphone met WebXR/ARCore de juiste optie.
