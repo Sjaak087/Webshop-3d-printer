@@ -135,11 +135,81 @@ function firebaseLoadingMarkup(label = "Gegevens laden…") {
 const money = n => new Intl.NumberFormat("nl-NL", { style: "currency", currency: "EUR" }).format(Number(n) || 0);
 const short = id => String(id || "").slice(-6);
 const when = t => t ? new Date(t).toLocaleString("nl-NL") : "";
+const BASE_SEO = {
+  title: document.title,
+  description: document.querySelector('meta[name="description"]')?.content || "Ontdek bijzondere 3D-prints en stel jouw product helemaal zelf samen.",
+  canonical: document.querySelector('link[rel="canonical"]')?.href || "https://sjaak087.github.io/Webshop-3d-printer/"
+};
+let productSeoActive = false;
+function setProductSEO(product) {
+  const title = `${String(product.title || "3D-geprint product").slice(0, 100)} | 3D Printed Shop`;
+  const description = String(product.description || `Bekijk ${product.title || "dit product"} bij 3D Printed Shop. Ontdek de mogelijkheden, kleuren en bestel jouw 3D-print online.`).replace(/\s+/g, " ").trim().slice(0, 300);
+  const productUrl = new URL(window.location.href);
+  productUrl.searchParams.delete("arProduct");
+  productUrl.searchParams.set("product", product.id);
+  const canonical = `${productUrl.origin}${productUrl.pathname}?product=${encodeURIComponent(product.id)}`;
+  document.title = title;
+  const descriptionTag = document.querySelector('meta[name="description"]');
+  if (descriptionTag) descriptionTag.content = description;
+  const canonicalTag = document.querySelector('link[rel="canonical"]');
+  if (canonicalTag) canonicalTag.href = canonical;
+  const ogTitle = document.querySelector('meta[property="og:title"]');
+  const ogDescription = document.querySelector('meta[property="og:description"]');
+  const ogUrl = document.querySelector('meta[property="og:url"]');
+  if (ogTitle) ogTitle.content = title;
+  if (ogDescription) ogDescription.content = description;
+  if (ogUrl) ogUrl.content = canonical;
+  let schema = document.getElementById("dynamicProductSchema");
+  if (!schema) { schema = document.createElement("script"); schema.id = "dynamicProductSchema"; schema.type = "application/ld+json"; document.head.appendChild(schema); }
+  const images = productImages(product).map(src => { try { const url = new URL(src, window.location.href); return /^https?:$/.test(url.protocol) ? url.href : null; } catch { return null; } }).filter(Boolean);
+  const productSchema = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    "name": String(product.title || "3D-geprint product"),
+    "description": description,
+    "url": canonical,
+    ...(images.length ? { image: images } : {}),
+    "offers": {
+      "@type": "Offer",
+      "url": canonical,
+      "priceCurrency": "EUR",
+      "price": Math.max(0, Number(product.price) || 0).toFixed(2),
+      "availability": isSoldOut(product) ? "https://schema.org/OutOfStock" : "https://schema.org/InStock"
+    }
+  };
+  schema.textContent = JSON.stringify(productSchema);
+  productSeoActive = true;
+}
+function restoreBaseSEO() {
+  if (!productSeoActive) return;
+  document.title = BASE_SEO.title;
+  const descriptionTag = document.querySelector('meta[name="description"]');
+  if (descriptionTag) descriptionTag.content = BASE_SEO.description;
+  const canonicalTag = document.querySelector('link[rel="canonical"]');
+  if (canonicalTag) canonicalTag.href = BASE_SEO.canonical;
+  const ogTitle = document.querySelector('meta[property="og:title"]');
+  const ogDescription = document.querySelector('meta[property="og:description"]');
+  const ogUrl = document.querySelector('meta[property="og:url"]');
+  if (ogTitle) ogTitle.content = BASE_SEO.title;
+  if (ogDescription) ogDescription.content = BASE_SEO.description;
+  if (ogUrl) ogUrl.content = BASE_SEO.canonical;
+  document.getElementById("dynamicProductSchema")?.remove();
+  productSeoActive = false;
+}
 let toastTimer;
 function toast(msg) { const el = $("#toast"); el.textContent = msg; el.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove("show"), 3000); }
 function openDialog(html) { lockDialog = false; $("#closeDialog").hidden = false; cleanup(); content.innerHTML = html; overlay.classList.remove("hidden"); }
 function cleanup() { unsubs.forEach(u => u()); unsubs = []; }
-function closeDialog(force = false) { if (lockDialog && force !== true) return; lockDialog = false; $("#closeDialog").hidden = false; cleanup(); overlay.classList.add("hidden"); content.innerHTML = ""; }
+function closeDialog(force = false) {
+  if (lockDialog && force !== true) return;
+  lockDialog = false; $("#closeDialog").hidden = false; cleanup(); overlay.classList.add("hidden"); content.innerHTML = "";
+  if (productSeoActive) {
+    restoreBaseSEO();
+    const url = new URL(window.location.href);
+    url.searchParams.delete("product"); url.searchParams.delete("arProduct");
+    history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }
+}
 function listen(q, cb) { unsubs.push(onValue(q, cb)); }   // wordt automatisch opgeruimd
 const toList = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
 const legacyOptions = p => (Array.isArray(p?.options) ? p.options : Object.values(p?.options || {})).filter(o => o && o.name);
@@ -650,7 +720,8 @@ let filamentSnapshotReceived = false;
 let pendingARDeepLinkHandled = false;
 function openARProductFromLink() {
   if (pendingARDeepLinkHandled || !state.loaded || !Array.isArray(state.products)) return;
-  const productId = new URLSearchParams(window.location.search).get("arProduct");
+  const params = new URLSearchParams(window.location.search);
+  const productId = params.get("arProduct") || params.get("product");
   if (!productId) return;
   const product = state.products.find(item => String(item.id) === String(productId));
   if (!product) return;
@@ -788,6 +859,12 @@ async function recordConfirmedOrderSales(order) {
     console.warn(`Verkoop van bestelling ${order.id} kon niet worden geregistreerd`, error);
   }
 }
+function productPageUrl(productId) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete("arProduct");
+  url.searchParams.set("product", productId);
+  return url.toString();
+}
 function renderProducts() {
   const productsEl = $("#products");
   if (!state.loaded) { productsEl.setAttribute("aria-busy", "true"); productsEl.innerHTML = productSkeletonMarkup(pendingProductSnapshot.length || 6); return; }
@@ -799,10 +876,10 @@ function renderProducts() {
   $("#products").innerHTML = list.length ? list.map(p => {
     const out = isSoldOut(p), groups = optionGroupsOf(p), images = productImages(p), image = images[0];
     return `<article class="product-card ${out ? "sold-out" : ""}">
-      <button class="product-open" data-open="${safe(p.id)}" aria-label="Bekijk ${safe(p.title)}">
+      <a class="product-open" href="${safe(productPageUrl(p.id))}" data-open="${safe(p.id)}" aria-label="Bekijk ${safe(p.title)}">
         <div class="product-image">${image ? `<div class="product-image-loader" role="status" aria-label="Product wordt geladen"><div class="a1-loader"><div class="a1-loader-scene"><div class="a1-loader-brand"><span class="a1-status-dot"></span>BAMBU LAB <b>A1 MINI</b></div>${a1MiniPrinterMarkup()}<span class="a1-loader-caption">Product wordt geprint…</span><span class="a1-loader-subline">Printkop beweegt · laag voor laag</span></div></div></div><img class="product-image-source" loading="lazy" decoding="async" src="${safe(image)}" alt="${safe(p.title)}">` : `<span class="product-placeholder"><i data-lucide="box"></i></span>`}${out ? `<span class="sold-badge">Uitverkocht</span>` : ""}${productIsNew(p) ? `<span class="status-pill product-new-badge">NIEUW</span>` : ""}${productIsBestseller(p) ? `<span class="status-pill bestseller-badge">BESTSELLER</span>` : ""}${images.length > 1 ? `<span class="image-count"><i data-lucide="images"></i> ${images.length}</span>` : ""}</div>
         <div class="product-info"><h3>${safe(p.title)}</h3>${categoryLabel(p.categoryId) ? `<span class="product-category-chip">${safe(categoryLabel(p.categoryId))}</span>` : ""}${productRatingSummary(p.id)}<strong>${money(p.price)}</strong>${groups.length ? `<small class="product-options-hint">${groups.length} ${groups.length === 1 ? "keuze" : "keuzes"} mogelijk</small>` : ""}</div>
-      </button>
+      </a>
       <button type="button" class="product-favorite ${state.favoriteIds.has(p.id) ? "is-favorite" : ""}" data-favorite="${safe(p.id)}" aria-label="${state.favoriteIds.has(p.id) ? "Verwijder uit favorieten" : "Voeg toe aan favorieten"}" aria-pressed="${state.favoriteIds.has(p.id)}"><i data-lucide="heart"></i></button>
       ${out ? `<button class="add-small" disabled>Uitverkocht</button>` : groups.length || p.model3d ? `<button class="add-small" data-open="${safe(p.id)}">Stel samen</button>` : `<button class="add-small" data-add="${safe(p.id)}">In winkelwagen</button>`}
     </article>`;
@@ -842,12 +919,18 @@ $("#searchBtn").onclick = renderProducts; $("#search").addEventListener("input",
 $("#products").addEventListener("click", e => {
   const favorite = e.target.closest("[data-favorite]"); if (favorite) { e.preventDefault(); e.stopPropagation(); toggleFavorite(favorite.dataset.favorite); return; }
   const add = e.target.closest("[data-add]"); if (add) return addCart(add.dataset.add);
-  const open = e.target.closest("[data-open]"); if (open) showProduct(open.dataset.open);
+  const open = e.target.closest("[data-open]");
+  if (open) {
+    if (open.tagName === "A" && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0)) return;
+    e.preventDefault();
+    showProduct(open.dataset.open);
+  }
 });
 function showProduct(id) {
   const p = state.products.find(x => x.id === id); if (!p) return;
+  setProductSEO(p);
   const groups = optionGroupsOf(p), images = productImages(p), out = isSoldOut(p), availableModelColors = productColorChoices(p);
-  let chosen = [], step = 0, activeImage = 0, modelColors = [], modelReady = !p.model3d || !availableModelColors.length, modelViewerCleanup = null, modelViewerGeneration = 0;
+  let chosen = [], step = 0, activeImage = 0, modelColors = [], modelReady = !p.model3d || !availableModelColors.length, modelViewerCleanup = null, modelViewerGeneration = 0, arModelContext = null;
   const selectedPrice = () => Number(p.price) + chosen.reduce((sum, x) => sum + (Number(x?.priceDelta) || 0), 0);
   const stepComplete = (group, selection) => group?.inputType === "text" ? !!String(selection?.value || "").trim() : !!selection;
   const render = () => {
@@ -862,7 +945,7 @@ function showProduct(id) {
       <div class="detail-gallery">
         <div class="detail-image">${image ? `<img src="${safe(image)}" alt="${safe(p.title)} afbeelding ${activeImage + 1}">` : `<i data-lucide="box"></i>`}</div>
         ${images.length > 1 ? `<div class="detail-thumbs">${images.map((src, i) => `<button class="detail-thumb ${i === activeImage ? "active" : ""}" data-image="${i}" aria-label="Afbeelding ${i + 1}"><img src="${safe(src)}" alt=""></button>`).join("")}</div>` : ""}
-        ${p.model3d ? `<section class="product-model-section"><div class="product-model-heading"><div><p class="eyebrow">INTERACTIEF 3D-MODEL</p><h3>Stel jouw kleuren samen</h3></div><div class="product-model-actions"><span class="model-viewer-badge">3D</span>${p.arEnabled !== false ? `<button type="button" class="secondary product-ar-button" id="productTryAR" disabled>AR voorbereiden…</button>` : ""}</div></div><div id="productModelViewer" class="product-model-viewer"><canvas aria-label="Draaibaar 3D-productvoorbeeld" tabindex="0"></canvas><span class="model-viewer-state" role="status">3D-model voorbereiden…</span></div><div class="model-part-color-controls"></div>${p.arEnabled !== false ? `<model-viewer id="productARModelViewer" class="product-ar-model-host" aria-hidden="true" tabindex="-1" ar ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" ar-placement="floor" camera-controls loading="eager" alt="${safe(p.title)} op ware grootte in AR"></model-viewer><p class="hint product-ar-help" role="status">AR gebruikt het echte STL/3MF-model en de gekozen kleuren. Op een geschikte telefoon kun je het model met de camera op een horizontaal oppervlak plaatsen.</p>` : ""}<p class="hint">Draai het model met je vinger of muis. Je kunt alleen kleuren kiezen die bij dit product zijn ingesteld.</p></section>` : ""}
+        ${p.model3d ? `<section class="product-model-section"><div class="product-model-heading"><div><p class="eyebrow">INTERACTIEF 3D-MODEL</p><h3>Stel jouw kleuren samen</h3></div><div class="product-model-actions"><span class="model-viewer-badge">3D</span>${p.arEnabled !== false ? `<button type="button" class="secondary product-ar-button" id="productTryAR" disabled>AR voorbereiden…</button>` : ""}</div></div><div id="productModelViewer" class="product-model-viewer"><canvas aria-label="Draaibaar 3D-productvoorbeeld" tabindex="0"></canvas><span class="model-viewer-state" role="status">3D-model voorbereiden…</span></div><div class="model-part-color-controls"></div>${p.arEnabled !== false ? `<model-viewer id="productARModelViewer" class="product-ar-model-host" aria-hidden="true" tabindex="-1" ar ar-modes="webxr scene-viewer quick-look" ar-scale="fixed" ar-placement="floor" camera-controls loading="eager" alt="${safe(p.title)} op ware grootte in AR"></model-viewer><p class="hint product-ar-help" role="status">AR gebruikt het echte STL/3MF-model en de gekozen kleuren. Op Android Chrome volgt het model je camera; richt het op een plek en tik op Bevriezen om het daar vast te zetten. Andere geschikte telefoons gebruiken hun eigen AR-weergave.</p>` : ""}<p class="hint">Draai het model met je vinger of muis. Je kunt alleen kleuren kiezen die bij dit product zijn ingesteld.</p></section>` : ""}
       </div>
       <div class="detail-content">
         <p class="eyebrow">PRODUCTDETAILS</p><h2>${safe(p.title)}</h2>
@@ -898,8 +981,9 @@ function showProduct(id) {
     <section class="product-reviews" id="productReviews" data-product-id="${safe(p.id)}">${productReviewsMarkup(p.id)}</section>`;
     if (p.model3d) {
       const viewerRoot = $("#productModelViewer");
-      mountProductModelViewer(viewerRoot, p.model3d, availableModelColors, modelColors, colors => {
+      mountProductModelViewer(viewerRoot, p.model3d, availableModelColors, modelColors, (colors, modelContext) => {
         if (thisGeneration === modelViewerGeneration) {
+          if (modelContext) arModelContext = modelContext;
           modelColors = colors;
           modelReady = true;
           const addButton = $("#detailAdd");
@@ -910,16 +994,157 @@ function showProduct(id) {
         else cleanupViewer?.();
       });
     }
+    const launchCameraFollowAR = async () => {
+      const modelContext = arModelContext;
+      if (!navigator.xr?.requestSession || !modelContext?.modelRoot || !modelContext?.THREE) return false;
+      const { THREE, modelRoot } = modelContext;
+      const stage = document.createElement("div");
+      stage.className = "ar-xr-stage";
+      stage.setAttribute("role", "region");
+      stage.setAttribute("aria-label", "AR-productplaatsing");
+      stage.innerHTML = `<canvas class="ar-xr-canvas" aria-hidden="true"></canvas><div class="ar-xr-controls"><div class="ar-xr-status" role="status" aria-live="polite">Het model volgt je camera. Richt het op de plek waar je het wilt neerzetten.</div><div class="ar-xr-buttons"><button type="button" class="ar-xr-close">Sluiten</button><button type="button" class="ar-xr-freeze">Bevriezen</button></div></div>`;
+      document.body.appendChild(stage);
+      const stageCanvas = stage.querySelector(".ar-xr-canvas");
+      const freezeButton = stage.querySelector(".ar-xr-freeze");
+      const closeButton = stage.querySelector(".ar-xr-close");
+      const statusLabel = stage.querySelector(".ar-xr-status");
+      let session = null, arRenderer = null, finished = false, frozen = false, hitTestSource = null;
+      const clonedMaterials = [];
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        try { arRenderer?.setAnimationLoop(null); } catch (_) {}
+        try { arRenderer?.dispose(); } catch (_) {}
+        try { hitTestSource?.cancel?.(); } catch (_) {}
+        clonedMaterials.forEach(material => { try { material.dispose(); } catch (_) {} });
+        stage.remove();
+      };
+      try {
+        // requestSession wordt direct vanuit de gebruikersklik aangeroepen,
+        // zodat de browser de AR-toestemming binnen dezelfde klik kan tonen.
+        const sessionRequest = navigator.xr.requestSession("immersive-ar", {
+          requiredFeatures: ["dom-overlay"],
+          optionalFeatures: ["local-floor", "hit-test", "light-estimation"],
+          domOverlay: { root: stage }
+        });
+        session = await sessionRequest;
+        const arScene = new THREE.Scene();
+        const arCamera = new THREE.PerspectiveCamera(70, window.innerWidth / Math.max(1, window.innerHeight), 0.01, 100);
+        arRenderer = new THREE.WebGLRenderer({ canvas: stageCanvas, alpha: true, antialias: true, powerPreference: "high-performance" });
+        arRenderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+        arRenderer.setSize(window.innerWidth, window.innerHeight, false);
+        arRenderer.outputColorSpace = THREE.SRGBColorSpace;
+        arRenderer.setClearColor(0x000000, 0);
+        arRenderer.xr.enabled = true;
+        arRenderer.xr.setReferenceSpaceType("local");
+        arScene.add(new THREE.HemisphereLight(0xffffff, 0x68758a, 2.0));
+        const arKeyLight = new THREE.DirectionalLight(0xffffff, 2.4);
+        arKeyLight.position.set(2, 5, 3);
+        arScene.add(arKeyLight);
+        const arFillLight = new THREE.DirectionalLight(0xd8e7ff, 0.8);
+        arFillLight.position.set(-3, 1, -2);
+        arScene.add(arFillLight);
+
+        // De preview is genormaliseerd voor het kleine 3D-venster. Voor AR
+        // herstellen we de STL/3MF-afmetingen en zetten we millimeters om naar meters.
+        const arModel = modelRoot.clone(true);
+        arModel.scale.set(1, 1, 1);
+        arModel.position.set(0, 0, 0);
+        arModel.updateMatrixWorld(true);
+        const arBounds = new THREE.Box3().setFromObject(arModel);
+        if (arBounds.isEmpty()) throw new Error("Het 3D-model heeft geen bruikbare afmetingen.");
+        const arCenter = arBounds.getCenter(new THREE.Vector3());
+        arModel.position.set(-arCenter.x, -arBounds.min.y, -arCenter.z);
+        arModel.traverse(child => {
+          if (!child.isMesh) return;
+          const sourceMaterials = Array.isArray(child.material) ? child.material : [child.material];
+          const materials = sourceMaterials.map(material => {
+            const copy = material?.clone ? material.clone() : new THREE.MeshStandardMaterial({ color: 0x9aa7b8 });
+            clonedMaterials.push(copy);
+            return copy;
+          });
+          child.material = Array.isArray(child.material) ? materials : materials[0];
+        });
+        const meterModel = new THREE.Group();
+        meterModel.name = "AR-model-op-ware-grootte";
+        meterModel.scale.setScalar(0.001);
+        meterModel.add(arModel);
+        const modelBoundsMeters = new THREE.Box3().setFromObject(meterModel);
+        const modelSphere = modelBoundsMeters.getBoundingSphere(new THREE.Sphere());
+        const followDistance = Math.max(0.65, modelSphere.radius * 2.4 + 0.35);
+        const followGroup = new THREE.Group();
+        followGroup.add(meterModel);
+        arScene.add(followGroup);
+
+        await arRenderer.xr.setSession(session);
+        try {
+          // Gebruik waar mogelijk een echte oppervlakhit-test, zodat het
+          // model tijdens het richten over het tafel-/vloeroppervlak meebeweegt.
+          const viewerSpace = await session.requestReferenceSpace("viewer");
+          hitTestSource = await session.requestHitTestSource({ space: viewerSpace });
+          statusLabel.textContent = "Richt op een tafel of vloer. Het model volgt de plek die je aanwijst; tik op Bevriezen om het daar vast te zetten.";
+        } catch (_) {
+          statusLabel.textContent = "Het model volgt je camera. Richt het op de plek waar je het wilt neerzetten en tik op Bevriezen.";
+        }
+        session.addEventListener("end", finish, { once: true });
+        freezeButton.addEventListener("click", () => {
+          frozen = !frozen;
+          freezeButton.textContent = frozen ? "Verder bewegen" : "Bevriezen";
+          freezeButton.setAttribute("aria-pressed", String(frozen));
+          statusLabel.textContent = frozen
+            ? "Vastgezet. Het model blijft nu op deze plek staan terwijl je met je camera beweegt."
+            : "Het model volgt weer je camera. Richt het op een andere plek en bevries het opnieuw.";
+        });
+        closeButton.addEventListener("click", () => { session?.end?.().catch(() => finish()); });
+        arRenderer.setAnimationLoop((time, frame) => {
+          if (!frozen) {
+            let positionedOnSurface = false;
+            if (hitTestSource && frame) {
+              const hit = frame.getHitTestResults(hitTestSource)[0];
+              const pose = hit?.getPose(arRenderer.xr.getReferenceSpace());
+              if (pose) {
+                const hitMatrix = new THREE.Matrix4().fromArray(pose.transform.matrix);
+                followGroup.position.setFromMatrixPosition(hitMatrix);
+                followGroup.quaternion.setFromRotationMatrix(hitMatrix);
+                positionedOnSurface = true;
+              }
+            }
+            if (!positionedOnSurface) {
+              const trackedCamera = arRenderer.xr.getCamera(arCamera);
+              trackedCamera.updateMatrixWorld(true);
+              const cameraPosition = trackedCamera.getWorldPosition(new THREE.Vector3());
+              const cameraRotation = trackedCamera.getWorldQuaternion(new THREE.Quaternion());
+              const cameraOffset = new THREE.Vector3(0, -0.16, -followDistance).applyQuaternion(cameraRotation);
+              followGroup.position.copy(cameraPosition).add(cameraOffset);
+              followGroup.quaternion.copy(cameraRotation);
+            }
+            followGroup.updateMatrixWorld(true);
+          }
+          arRenderer.render(arScene, arCamera);
+        });
+        return true;
+      } catch (error) {
+        console.warn("Custom WebXR AR could not start; using the device's native AR viewer if available.", error);
+        try { if (session) await session.end(); } catch (_) {}
+        finish();
+        return false;
+      }
+    };
     const tryARButton = $("#productTryAR");
-    if (tryARButton) tryARButton.onclick = () => {
+    if (tryARButton) tryARButton.onclick = async () => {
       const arViewer = $("#productARModelViewer");
       if (!arViewer) return toast("Voor dit product is geen AR-model ingesteld.");
+      const isMobileARDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+        || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
+      if (isMobileARDevice && navigator.xr?.requestSession) {
+        const customARStarted = await launchCameraFollowAR();
+        if (customARStarted) return;
+      }
       if (!arViewer.canActivateAR) {
-        const isMobileARDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
-          || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
         if (!isMobileARDevice) {
           const help = content.querySelector(".product-ar-help");
           const phoneUrl = new URL(window.location.href);
+          phoneUrl.searchParams.set("product", p.id);
           phoneUrl.searchParams.set("arProduct", p.id);
           const encodedUrl = encodeURIComponent(phoneUrl.toString());
           if (help) {
@@ -2691,14 +2916,14 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
         if (disposed || generation !== arAssetGeneration || !root.isConnected) return;
         const isMobileARDevice = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
           || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(navigator.userAgent));
-        arButton.disabled = !supported && isMobileARDevice;
-        arButton.textContent = supported ? "Probeer in jouw ruimte" : (isMobileARDevice ? "AR niet beschikbaar op dit apparaat" : "Bekijk AR op je telefoon");
-        if (!supported) {
-          const help = root.closest(".product-model-section")?.querySelector(".product-ar-help");
-          if (help) help.textContent = isMobileARDevice
-            ? "AR wordt op dit apparaat niet herkend. Gebruik een recente AR-geschikte smartphone en een ondersteunde browser."
-            : "Je bekijkt de webshop op een computer. Een gewone webcam kan geen AR-oppervlak herkennen. Scan de QR-code om dit product op je smartphone te openen en daar in je ruimte te plaatsen.";
-        }
+        const customWebXRAvailable = typeof navigator.xr?.requestSession === "function";
+        arButton.disabled = !supported && !customWebXRAvailable && isMobileARDevice;
+        arButton.textContent = supported || customWebXRAvailable ? "Start AR · Bevriezen" : (isMobileARDevice ? "AR niet beschikbaar op dit apparaat" : "Bekijk AR op je telefoon");
+        const arHelp = root.closest(".product-model-section")?.querySelector(".product-ar-help");
+        if ((supported || customWebXRAvailable) && arHelp) arHelp.textContent = "Op compatibele Android-telefoons volgt het model je camerabeweging of het herkende tafel-/vloeroppervlak. Tik op ‘Bevriezen’ om het op die plek vast te zetten. Andere geschikte telefoons openen hun eigen AR-weergave.";
+        if (!supported && arHelp) arHelp.textContent = isMobileARDevice
+          ? "AR wordt op dit apparaat niet herkend. Gebruik een recente AR-geschikte smartphone en een ondersteunde browser."
+          : "Je bekijkt de webshop op een computer. Een gewone webcam kan geen AR-oppervlak herkennen. Scan de QR-code om dit product op je smartphone te openen en daar in je ruimte te plaatsen.";
       } catch (error) {
         console.warn("Product AR preparation failed", error);
         if (!disposed && generation === arAssetGeneration && arButton.isConnected) {
@@ -2732,15 +2957,16 @@ async function mountProductModelViewer(root, model, availableColors, initialColo
           const selected = allowed.find(option => option.hex === select.value); if (!selected) return;
           applyPartColor(index, selected.hex, selected.name);
           const colors = current.filter(Boolean).map(item => ({ ...item }));
-          onColorsChange?.(colors);
+          onColorsChange?.(colors, { THREE, modelRoot });
           updateARAsset(colors);
         };
       });
       const initialSelectedColors = current.filter(Boolean).map(item => ({ ...item }));
-      onColorsChange?.(initialSelectedColors);
+      onColorsChange?.(initialSelectedColors, { THREE, modelRoot });
       updateARAsset(initialSelectedColors);
     } else {
       controlsRoot.innerHTML = `<p class="model-color-missing">Voeg bij dit product eerst kleurstaaltjes toe via Sitebeheer → Producten → Bewerken. Alleen die ingestelde kleuren kunnen voor dit model worden gekozen.</p>`;
+      onColorsChange?.([], { THREE, modelRoot });
       updateARAsset([]);
     }
     if (status) status.textContent = "Draai het model met je muis of vinger.";

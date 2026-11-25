@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://sjaak087.github.io/Webshop-3d-printer/sitemap.xml
