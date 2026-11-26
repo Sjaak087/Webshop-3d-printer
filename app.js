@@ -232,14 +232,13 @@ function analyticsConsentGiven() {
   return readCookiePreferences()?.analytics === true;
 }
 async function recordWebsiteVisit() {
-  if (!analyticsConsentGiven()) return;
-  const day = analyticsDateKey();
-  const marker = `3dPrintedShopVisit:${day}`;
-  try { if (sessionStorage.getItem(marker) === "1") return; } catch { return; }
+  // Tel iedere volledige opening/lading opnieuw. Er wordt geen cookie,
+  // sessionStorage-marker of bezoekers-ID gebruikt; alleen het dagtotaal stijgt.
   try {
     await incrementDailyAnalytics("visits");
-    try { sessionStorage.setItem(marker, "1"); } catch { /* Bezoek wordt niet gekoppeld aan een opgeslagen ID. */ }
-  } catch (error) { console.warn("Bezoekstatistiek kon niet worden opgeslagen:", error); }
+  } catch (error) {
+    console.warn("Bezoekstatistiek kon niet worden opgeslagen. Controleer de Firebase Realtime Database-regels en verbinding:", error);
+  }
 }
 async function recordProductDetailView(productId) {
   if (!analyticsConsentGiven() || !/^[a-zA-Z0-9_-]+$/.test(String(productId || ""))) return;
@@ -2568,7 +2567,7 @@ function analyticsTab(target) {
       <div class="analytics-bars">${dailyRows.map(row => `<div class="analytics-bar-column"><strong>${formatter(row[key])}</strong><div class="analytics-bar-track"><i style="height:${Math.max(row[key] ? 5 : 1, row[key] / max * 100)}%"></i></div><small>${row.label}<br>${row.fullLabel}</small></div>`).join("")}</div></section>`;
     target.innerHTML = `<div class="analytics-dashboard">
       <div class="analytics-hero"><div><p class="eyebrow">SITEBEHEER · INZICHTEN</p><h3>Webshopstatistieken</h3><p class="muted">Live overzicht van bezoekers, accounts, bestellingen, omzet en productprestaties.</p></div><div class="analytics-hero-actions"><span class="analytics-live"><i></i> Live gegevens</span><button type="button" class="secondary" id="downloadAnalyticsCSV">Download weekoverzicht CSV</button></div></div>
-      <div class="analytics-notice"><b>Hoe de cijfers worden verzameld</b><span>Bezoeken en productweergaven tellen alleen mee nadat een bezoeker statistiekcookies heeft geaccepteerd. Per browsertab wordt een bezoek maximaal één keer per dag geteld. Accountregistraties worden vanaf de publicatie van deze statistieken bijgehouden. Oude bezoek- en registratiecijfers kunnen niet achteraf worden terugberekend.</span></div>
+      <div class="analytics-notice"><b>Hoe de cijfers worden verzameld</b><span>Iedere volledige opening of herlaadbeurt van de webshop telt als één bezoek. Dezelfde bezoeker kan dus onbeperkt opnieuw meetellen, ook meerdere keren op één dag. Hiervoor wordt geen bezoekers-ID of browsercookie gebruikt; alleen geaggregeerde dagtotalen worden opgeslagen. Productweergaven tellen alleen mee na toestemming voor optionele statistieken. Accountregistraties worden vanaf de publicatie van deze statistieken bijgehouden. Oude cijfers kunnen niet achteraf worden terugberekend.</span></div>
       <div class="analytics-kpis">
         <article class="analytics-kpi"><span>Bezoeken · laatste 7 dagen</span><strong>${totalVisits7.toLocaleString("nl-NL")}</strong><small>${allTrackedVisits.toLocaleString("nl-NL")} bijgehouden sinds start</small></article>
         <article class="analytics-kpi"><span>Nieuwe accounts · laatste 7 dagen</span><strong>${totalAccounts7.toLocaleString("nl-NL")}</strong><small>${allTrackedAccounts.toLocaleString("nl-NL")} registraties bijgehouden sinds start</small></article>
@@ -2582,7 +2581,7 @@ function analyticsTab(target) {
         <article class="analytics-kpi"><span>Nieuwe chats · 7 dagen</span><strong>${totalChats7.toLocaleString("nl-NL")}</strong><small>${allTrackedChats.toLocaleString("nl-NL")} bijgehouden sinds start</small></article>
       </div>
       <div class="analytics-chart-grid">
-        ${barChart("Bezoeken per dag", "Browserbezoeken met statistiektoestemming", "visits", maxVisits)}
+        ${barChart("Bezoeken per dag", "Iedere volledige website-opening telt opnieuw", "visits", maxVisits)}
         ${barChart("Nieuwe accounts per dag", "Nieuwe klantaccounts", "accounts", maxAccounts)}
         ${barChart("Bestellingen per dag", "Op basis van de aanmaakdatum", "orders", maxOrders)}
         ${barChart("Bestelwaarde per dag", "Totaal van nieuwe bestellingen", "orderValue", maxValue, value => money(value))}
@@ -2594,7 +2593,7 @@ function analyticsTab(target) {
         <section class="analytics-card"><div class="analytics-card-heading"><div><h3>Meest bekeken producten</h3><p>Afgelopen 7 dagen · met toestemming</p></div></div>${topViewed.length ? `<div class="analytics-ranked-list">${topViewed.map(([id, count], index) => `<div><span>${index + 1}</span><b>${safe(productMap.get(id)?.title || "Verwijderd product")}</b><strong>${count}×</strong></div>`).join("")}</div>` : `<p class="muted">Nog geen productweergaven bijgehouden. Bezoekers moeten hiervoor statistiekcookies accepteren.</p>`}</section>
         <section class="analytics-card"><div class="analytics-card-heading"><div><h3>Meest verkochte producten</h3><p>Op basis van alle geregistreerde bestellingen</p></div></div>${topSold.length ? `<div class="analytics-ranked-list">${topSold.map((item, index) => `<div><span>${index + 1}</span><b>${safe(item.title)}</b><strong>${item.quantity}×</strong></div>`).join("")}</div>` : `<p class="muted">Er zijn nog geen bestellingen.</p>`}</section>
       </div>
-      <p class="analytics-footnote">Let op: bestelwaarde is gebaseerd op het totaal van aangemaakte bestellingen. Betaalde omzet telt alleen bestellingen die in Sitebeheer als betaald zijn gemarkeerd. De statistieken zijn bedoeld als winkeloverzicht en niet als boekhoudrapport.</p>
+      <p class="analytics-footnote">Een bezoek is één volledige lading van de webshop; het gaat dus niet om unieke personen. Vernieuwen of de link opnieuw openen telt opnieuw. Bestelwaarde is gebaseerd op het totaal van aangemaakte bestellingen. Betaalde omzet telt alleen bestellingen die in Sitebeheer als betaald zijn gemarkeerd. De statistieken zijn bedoeld als winkeloverzicht en niet als boekhoudrapport.</p>
     </div>`;
     target.querySelector("#downloadAnalyticsCSV")?.addEventListener("click", () => {
       const rows = [["Datum", "Bezoeken", "Nieuwe accounts", "Productweergaven", "Offertes", "Nieuwe chats", "Bestellingen", "Bestelwaarde (€)"], ...dailyRows.map(row => [row.key, row.visits, row.accounts, row.productViews, row.quotes, row.chats, row.orders, row.orderValue.toFixed(2).replace(".", ",")])];
@@ -3516,7 +3515,6 @@ function saveCookiePreferences(optionalAllowed) {
   };
   try { localStorage.setItem(COOKIE_PREF_KEY, JSON.stringify(preferences)); } catch {}
   $("#cookieBanner").hidden = true;
-  if (optionalAllowed) recordWebsiteVisit();
   toast(optionalAllowed ? "Je cookievoorkeur is opgeslagen." : "Alleen noodzakelijke opslag is toegestaan.");
 }
 function contactPageMarkup() {
@@ -3590,7 +3588,8 @@ function openCookiePreferences() {
 }
 const cookiePreferences = readCookiePreferences();
 if (!cookiePreferences) $("#cookieBanner").hidden = false;
-else if (cookiePreferences.analytics === true) recordWebsiteVisit();
+// Elke volledige paginalading telt als één bezoek, ook zonder optionele statistiektoestemming.
+recordWebsiteVisit();
 $("#acceptAllCookies").onclick = () => saveCookiePreferences(true);
 $("#rejectOptionalCookies").onclick = () => saveCookiePreferences(false);
 $("#openTerms").onclick = openTermsPage;
@@ -3753,7 +3752,7 @@ const ASSISTANT_FAQ = [
   { id: "3d-preview", terms: ["3d voorbeeld", "3d preview", "3d model", "3d bestanden", "3d bestand", "stl bestand", "3mf bestand", "model draaien", "stl", "3mf", "voorbeeld bekijken", "model bekijken"], answer: () => "Producten met een gekoppeld model kunnen een interactieve 3D-preview tonen. De webshop ondersteunt STL en 3MF. Je kunt het model draaien; ondersteunde 3MF-bestanden kunnen meerdere onderdelen en onderdeelkleuren bevatten. Niet ieder product heeft een 3D-preview. De preview is geen slicer en berekent geen officiële printtijd, materiaalkosten of printbaarheid." },
   { id: "slicer", terms: ["bambu studio", "orcaslicer", "prusa slicer", "prusa slicer", "slicer", "snijsoftware", "3mf export"], answer: () => "De webshop noemt Bambu Studio, OrcaSlicer en PrusaSlicer als compatibele slicers voor de bijbehorende 3D-bestanden. De browserpreview zelf is geen slicer en vervangt geen controle van instellingen, printbaarheid of printtijd in je eigen slicersoftware." },
   { id: "camera", terms: ["printercamera", "camera", "live camera", "print bekijken", "printerbeeld"], answer: () => "Bij bestellingen kan een printercamera-weergave zichtbaar zijn als die voor de bestelling beschikbaar en door de beheerder ingeschakeld is. De camera kan tijdelijk worden uitgeschakeld. De chatbot kan geen camera inschakelen of de print bedienen." },
-  { id: "cookies", terms: ["cookies", "cookie instellingen", "browseropslag", "lokale opslag", "gegevens browser"], answer: () => "De webshop gebruikt noodzakelijke browseropslag voor functies zoals winkelwagen en sessie. In de huidige code zijn geen optionele statistiek- of marketingcookies ingesteld. Je kunt je voorkeuren aanpassen via ‘Cookie-instellingen’ onderaan de website." },
+  { id: "cookies", terms: ["cookies", "cookie instellingen", "browseropslag", "lokale opslag", "gegevens browser"], answer: () => "De webshop telt iedere volledige opening als een bezoek in geaggregeerde dagtotalen. Hiervoor gebruikt de bezoeksteller geen bezoekers-ID of browsercookie. Productdetailweergaven worden alleen bijgehouden wanneer je optionele statistieken accepteert. Je kunt je voorkeuren aanpassen via ‘Cookie-instellingen’ onderaan de website." },
   { id: "privacy", terms: ["privacy", "persoonsgegevens", "gegevens beveiligen", "gegevens verwijderen", "gegevens opslaan", "data", "chatbot privacy"], answer: () => "Onderaan de webshop staat de privacyverklaring met informatie over gegevensverwerking en je privacyrechten. Typ geen wachtwoorden, herstelcodes, betaalkaartgegevens, volledige adressen of andere gevoelige persoonsgegevens in de chatbot. De chatbot leest geen klantorders, profielen, adressen of privéchats uit Firebase." },
   { id: "contact", terms: ["contact", "contact opnemen", "klantenservice", "hulp nodig", "klacht", "vraag stellen", "openingstijden"], answer: () => "Voor een vraag die niet in deze uitleg staat, gebruik je de contactpagina van de webshop. Daar staan de klantgerichte contactgegevens en eventuele openingstijden die door de beheerder zijn ingevuld. De chatbot toont geen privé- of accountgegevens." },
   { id: "terms", terms: ["voorwaarden", "algemene voorwaarden", "regels webshop", "juridisch", "rechten en plichten"], answer: () => "De algemene voorwaarden zijn te openen via de link onderaan de webshop. Daar vind je de formele afspraken over bestellen, betalen, levering en retouren. Bij een verschil tussen een korte chatuitleg en de gepubliceerde voorwaarden zijn de voorwaarden leidend." },
