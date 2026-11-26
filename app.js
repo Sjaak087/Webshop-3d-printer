@@ -216,10 +216,12 @@ const toList = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, 
 // Statistieken bevatten alleen geaggregeerde dagtotalen; er worden geen namen,
 // e-mailadressen, IP-adressen of account-ID's in de statistiektabel opgeslagen.
 function analyticsDateKey(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
+  // Alle bezoekers en Sitebeheer gebruiken dezelfde Nederlandse kalenderdag.
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Amsterdam", year: "numeric", month: "2-digit", day: "2-digit"
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 async function incrementDailyAnalytics(metric, childKey = "") {
   if (!/^[a-zA-Z0-9_-]+$/.test(metric)) throw new Error("Ongeldige statistieksoort.");
@@ -230,15 +232,6 @@ async function incrementDailyAnalytics(metric, childKey = "") {
 }
 function analyticsConsentGiven() {
   return readCookiePreferences()?.analytics === true;
-}
-async function recordWebsiteVisit() {
-  // Tel iedere volledige opening/lading opnieuw. Er wordt geen cookie,
-  // sessionStorage-marker of bezoekers-ID gebruikt; alleen het dagtotaal stijgt.
-  try {
-    await incrementDailyAnalytics("visits");
-  } catch (error) {
-    console.warn("Bezoekstatistiek kon niet worden opgeslagen. Controleer de Firebase Realtime Database-regels en verbinding:", error);
-  }
 }
 async function recordProductDetailView(productId) {
   if (!analyticsConsentGiven() || !/^[a-zA-Z0-9_-]+$/.test(String(productId || ""))) return;
@@ -3588,8 +3581,7 @@ function openCookiePreferences() {
 }
 const cookiePreferences = readCookiePreferences();
 if (!cookiePreferences) $("#cookieBanner").hidden = false;
-// Elke volledige paginalading telt als één bezoek, ook zonder optionele statistiektoestemming.
-recordWebsiteVisit();
+// Bezoeken worden apart geteld door visitor-counter.js, onafhankelijk van deze app-module.
 $("#acceptAllCookies").onclick = () => saveCookiePreferences(true);
 $("#rejectOptionalCookies").onclick = () => saveCookiePreferences(false);
 $("#openTerms").onclick = openTermsPage;
