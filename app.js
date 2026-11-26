@@ -212,6 +212,60 @@ function closeDialog(force = false) {
 }
 function listen(q, cb) { unsubs.push(onValue(q, cb)); }   // wordt automatisch opgeruimd
 const toList = snap => Object.entries(snap.val() || {}).map(([id, v]) => ({ id, ...v }));
+
+// Statistieken bevatten alleen geaggregeerde dagtotalen; er worden geen namen,
+// e-mailadressen, IP-adressen of account-ID's in de statistiektabel opgeslagen.
+function analyticsDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+async function incrementDailyAnalytics(metric, childKey = "") {
+  if (!/^[a-zA-Z0-9_-]+$/.test(metric)) throw new Error("Ongeldige statistieksoort.");
+  if (childKey && !/^[a-zA-Z0-9_-]+$/.test(String(childKey))) throw new Error("Ongeldige statistieksleutel.");
+  const path = `analytics/daily/${analyticsDateKey()}/${metric}${childKey ? `/${childKey}` : ""}`;
+  const result = await runTransaction(ref(db, path), current => (Number(current) || 0) + 1, { applyLocally: false });
+  if (!result.committed) throw new Error("Statistiek kon niet worden opgeslagen.");
+}
+function analyticsConsentGiven() {
+  return readCookiePreferences()?.analytics === true;
+}
+async function recordWebsiteVisit() {
+  if (!analyticsConsentGiven()) return;
+  const day = analyticsDateKey();
+  const marker = `3dPrintedShopVisit:${day}`;
+  try { if (sessionStorage.getItem(marker) === "1") return; } catch { return; }
+  try {
+    await incrementDailyAnalytics("visits");
+    try { sessionStorage.setItem(marker, "1"); } catch { /* Bezoek wordt niet gekoppeld aan een opgeslagen ID. */ }
+  } catch (error) { console.warn("Bezoekstatistiek kon niet worden opgeslagen:", error); }
+}
+async function recordProductDetailView(productId) {
+  if (!analyticsConsentGiven() || !/^[a-zA-Z0-9_-]+$/.test(String(productId || ""))) return;
+  const day = analyticsDateKey();
+  const marker = `3dPrintedShopProductView:${day}:${productId}`;
+  try { if (sessionStorage.getItem(marker) === "1") return; } catch { return; }
+  try {
+    await incrementDailyAnalytics("productViews");
+    await incrementDailyAnalytics("productViewsByProduct", productId);
+    try { sessionStorage.setItem(marker, "1"); } catch { /* Geen gebruikersprofiel of bezoek-ID opslaan. */ }
+  } catch (error) { console.warn("Productweergave kon niet worden opgeslagen:", error); }
+}
+function lastSevenAnalyticsDays() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    return {
+      key: analyticsDateKey(date),
+      date,
+      label: date.toLocaleDateString("nl-NL", { weekday: "short" }),
+      fullLabel: date.toLocaleDateString("nl-NL", { day: "2-digit", month: "short" })
+    };
+  });
+}
 const legacyOptions = p => (Array.isArray(p?.options) ? p.options : Object.values(p?.options || {})).filter(o => o && o.name);
 const normalizeColorHex = value => {
   const raw = String(value || "").trim().toLowerCase();
@@ -928,6 +982,7 @@ $("#products").addEventListener("click", e => {
 });
 function showProduct(id) {
   const p = state.products.find(x => x.id === id); if (!p) return;
+  recordProductDetailView(p.id);
   setProductSEO(p);
   const groups = optionGroupsOf(p), images = productImages(p), out = isSoldOut(p), availableModelColors = productColorChoices(p);
   let chosen = [], step = 0, activeImage = 0, modelColors = [], modelReady = !p.model3d || !availableModelColors.length, modelViewerCleanup = null, modelViewerGeneration = 0, arModelContext = null;
@@ -1429,6 +1484,8 @@ async function startQuoteRequest() {
           [`quotes/${quoteId}`]: quote,
           [`chats/${chatId}`]: { kind: "quote", quoteId, quoteTitle: title, userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, createdAt: now, lastMessage: systemText, lastMessageAt: now, messages: { [msgId]: { sender: "system", text: systemText, createdAt: now } } }
         });
+        incrementDailyAnalytics("quoteRequests").catch(error => console.warn("Offerteaanvraag kon niet in statistieken worden bijgehouden:", error));
+        incrementDailyAnalytics("chatsCreated").catch(error => console.warn("Nieuwe chat kon niet in statistieken worden bijgehouden:", error));
         closeDialog(); toast("Offerteaanvraag verstuurd"); openChat(chatId);
       } catch (error) {
         console.error("Quote request failed", error); toast(error.message || "Offerte aanvragen is niet gelukt."); submit.disabled = false; submit.textContent = "Offerte aanvragen en chat starten";
@@ -1460,6 +1517,7 @@ function authForm(mode = "login", message = "") {
         const claimed = await claimUsername(key, username);
         try { await set(accRef, { email, salt, hash: await hashPw(pw, salt), createdAt: Date.now() }); }
         catch (err) { await set(ref(db, `usernames/${usernameKey(claimed)}`), null); throw err; }
+        incrementDailyAnalytics("accountsCreated").catch(error => console.warn("Accountregistratie kon niet in statistieken worden bijgehouden:", error));
         setCustomer({ uid: key, email, username: claimed, role: "customer" }); closeDialog(); toast("Account aangemaakt!"); continuePendingQuoteRequest();
       } else {
         if (!acc || await hashPw(pw, acc.salt) !== acc.hash) return failed();
@@ -1591,6 +1649,7 @@ async function placeChatOrder() {
   try {
     stockReservations = await reserveInventory(items);
     await update(ref(db), { ["orders/" + orderKey]: newOrder, ["publicTrack/" + publicToken]: publicTrackPayload({ ...newOrder, id: orderKey }), ["chats/" + chatKey]: { orderId: orderKey, userId: state.user.uid, username: state.user.username || "Klant", email: state.user.email, createdAt: now, lastMessage: "Bestelling · ophalen", lastMessageAt: now, messages: { [msgKey]: { sender: "system", text: `Je bestelling is aangemaakt met afhalen als afhandeling. Producttotaal: ${money(total)}. Er zijn geen verzendkosten toegevoegd. We bespreken de verdere afspraken hier in de chat.`, createdAt: now } } } });
+    incrementDailyAnalytics("chatsCreated").catch(error => console.warn("Nieuwe chat kon niet in statistieken worden bijgehouden:", error));
     stockReservations = [];
     state.cart = []; state.orderNote = ""; saveCart(); toast("Chatbestelling aangemaakt"); openChat(chatKey);
   } catch (e) { console.error(e); if (stockReservations.length) await releaseInventory(stockReservations); toast(e.message || "Chatbestelling starten lukte niet."); }
@@ -2101,9 +2160,14 @@ function openAdminLogin() {
   };
 }
 function dashboardTab(target) {
-  let orders = [], products = [], filaments = [];
+  let orders = [], products = [], filaments = [], analytics = {};
   const draw = () => {
     if (!target.isConnected) return;
+    const lastSeven = lastSevenAnalyticsDays();
+    const visits7 = lastSeven.reduce((sum, day) => sum + (Number(analytics[day.key]?.visits) || 0), 0);
+    const accounts7 = lastSeven.reduce((sum, day) => sum + (Number(analytics[day.key]?.accountsCreated) || 0), 0);
+    const views7 = lastSeven.reduce((sum, day) => sum + (Number(analytics[day.key]?.productViews) || 0), 0);
+    const orders7 = orders.filter(order => order.createdAt && lastSeven.some(day => day.key === analyticsDateKey(new Date(Number(order.createdAt))))).length;
     const totalRevenue = orders.reduce((sum, order) => sum + (Number(order.total) || 0), 0);
     const received = orders.filter(order => order.paymentStatus === "paid").reduce((sum, order) => sum + (Number(order.total) || 0), 0);
     const openOrders = orders.filter(order => order.status !== "bezorgd").length;
@@ -2117,14 +2181,19 @@ function dashboardTab(target) {
     const maxDaily = Math.max(1, ...daily.map(day => day.value));
     const topProducts = new Map();
     orders.forEach(order => (order.items || []).forEach(item => {
-      const current = topProducts.get(item.id) || { title: item.title || "Product", quantity: 0, revenue: 0 };
-      current.quantity += Number(item.qty) || 1; current.revenue += (Number(item.price) || 0) * (Number(item.qty) || 1); topProducts.set(item.id || item.title, current);
+      const key = item.id || item.title || "unknown";
+      const current = topProducts.get(key) || { title: item.title || "Product", quantity: 0, revenue: 0 };
+      current.quantity += Number(item.qty) || 1; current.revenue += (Number(item.price) || 0) * (Number(item.qty) || 1); topProducts.set(key, current);
     }));
     const topList = [...topProducts.values()].sort((a,b) => b.quantity - a.quantity).slice(0, 5);
-    target.innerHTML = `<div class="dashboard-welcome"><div><p class="eyebrow">OVERZICHT · 3D PRINTED SHOP PEEL EN MAAS</p><h3>Jouw webshop in één oogopslag</h3><p class="muted">Live overzicht van bestellingen, omzet en filamentvoorraad.</p></div><span class="dashboard-live"><i></i> Live gegevens</span></div>
+    target.innerHTML = `<div class="dashboard-welcome"><div><p class="eyebrow">OVERZICHT · 3D PRINTED SHOP PEEL EN MAAS</p><h3>Jouw webshop in één oogopslag</h3><p class="muted">Live overzicht van bezoekers, accounts, bestellingen, omzet en voorraad.</p></div><div class="dashboard-welcome-actions"><span class="dashboard-live"><i></i> Live gegevens</span><button type="button" class="secondary" id="dashboardAnalyticsLink">Alle statistieken</button></div></div>
       <div class="dashboard-kpis">
+        <article class="dashboard-kpi"><span>Websitebezoeken · 7 dagen</span><strong>${visits7.toLocaleString("nl-NL")}</strong><small>Na toestemming voor statistieken</small></article>
+        <article class="dashboard-kpi"><span>Nieuwe accounts · 7 dagen</span><strong>${accounts7.toLocaleString("nl-NL")}</strong><small>Vanaf publicatie van dit dashboard</small></article>
+        <article class="dashboard-kpi"><span>Bestellingen · 7 dagen</span><strong>${orders7}</strong><small>Op basis van aanmaakdatum</small></article>
+        <article class="dashboard-kpi"><span>Productweergaven · 7 dagen</span><strong>${views7.toLocaleString("nl-NL")}</strong><small>Na toestemming voor statistieken</small></article>
         <article class="dashboard-kpi"><span>Totale bestelwaarde</span><strong>${money(totalRevenue)}</strong><small>Alle geregistreerde bestellingen</small></article>
-        <article class="dashboard-kpi"><span>Ontvangen betalingen</span><strong>${money(received)}</strong><small>Als betaald of niet van toepassing gemarkeerd</small></article>
+        <article class="dashboard-kpi"><span>Ontvangen betalingen</span><strong>${money(received)}</strong><small>Alleen als betaald gemarkeerd</small></article>
         <article class="dashboard-kpi"><span>Bestellingen open</span><strong>${openOrders}</strong><small>Wachten nog op afronding</small></article>
         <article class="dashboard-kpi ${lowStock.length ? "warning" : ""}"><span>Filament bijna op</span><strong>${lowStock.length}</strong><small>${lowStock.length ? "Kleuren vragen aandacht" : "Geen filamentwaarschuwingen"}</small></article>
       </div>
@@ -2134,10 +2203,12 @@ function dashboardTab(target) {
       <section class="dashboard-panel"><div class="dashboard-panel-head"><div><h3>Recente bestellingen</h3><p class="muted">De vijf nieuwste aanvragen</p></div><button type="button" class="secondary" id="dashboardOrdersLink">Bestellingen bekijken</button></div>${orders.length ? `<div class="dashboard-top-list">${[...orders].sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)).slice(0,5).map(order=>`<div><span class="dashboard-order-dot"></span><span class="dashboard-product-name">${safe(order.username||"Klant")} · #${short(order.id)}</span><b>${money(order.total)}</b></div>`).join("")}</div>` : `<p class="muted">Nog geen bestellingen.</p>`}</section></div>`;
     $("#dashboardStockLink")?.addEventListener("click", () => { state.tab = "filament"; adminTab(); });
     $("#dashboardOrdersLink")?.addEventListener("click", () => { state.tab = "orders"; adminTab(); });
+    $("#dashboardAnalyticsLink")?.addEventListener("click", () => { state.tab = "analytics"; adminTab(); });
   };
   listen(ref(db, "orders"), snap => { orders = toList(snap); draw(); });
   listen(ref(db, "products"), snap => { products = toList(snap); draw(); });
   listen(ref(db, "settings/filaments"), snap => { filaments = toList(snap).map(f => ({ ...f, hex: filamentHexOf(f) || "" })); draw(); });
+  listen(ref(db, "analytics/daily"), snap => { analytics = snap.val() || {}; draw(); });
 }
 function filamentTab(target) {
   let filaments = [];
@@ -2237,7 +2308,7 @@ function filamentTab(target) {
 
 function adminPanel() {
   if (!state.admin) return openAdminLogin();
-  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="products">Producten</button><button data-tab="filament">Filamentbeheer</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button data-tab="maintenance">Onderhoud</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
+  openDialog(`<div class="admin-head"><div><p class="eyebrow">3D PRINTED SHOP PEEL EN MAAS</p><h2>Sitebeheer</h2></div><span class="admin-label">BEHEERDER</span></div><div class="tabs admin-tabs"><button data-tab="dashboard">Dashboard</button><button data-tab="analytics">Statistieken</button><button data-tab="products">Producten</button><button data-tab="filament">Filamentbeheer</button><button data-tab="categories">Categorieën</button><button data-tab="orders">Track & trace</button><button data-tab="myorders">Mijn bestellingen</button><button data-tab="history">Bestellingen</button><button data-tab="agenda">Agenda</button><button data-tab="chats">Chats</button><button data-tab="quotes">Offertes</button><button data-tab="camera">Camera</button><button data-tab="contact">Contactpagina</button><button data-tab="maintenance">Onderhoud</button><button id="adminLogout">Uitloggen</button></div><div id="adminContent"></div>`);
   $("#adminLogout").onclick = logoutAdmin;
   content.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; adminTab(); });
   adminTab();
@@ -2433,11 +2504,117 @@ function maintenanceAdminTab(target) {
   };
 }
 
+function analyticsTab(target) {
+  let analytics = {}, orders = [], products = [], filaments = [];
+  const draw = () => {
+    if (!target.isConnected) return;
+    const days = lastSevenAnalyticsDays();
+    const dailyRows = days.map(day => {
+      const stored = analytics[day.key] || {};
+      const todaysOrders = orders.filter(order => order.createdAt && analyticsDateKey(new Date(Number(order.createdAt))) === day.key);
+      return {
+        ...day,
+        visits: Math.max(0, Number(stored.visits) || 0),
+        accounts: Math.max(0, Number(stored.accountsCreated) || 0),
+        productViews: Math.max(0, Number(stored.productViews) || 0),
+        quotes: Math.max(0, Number(stored.quoteRequests) || 0),
+        chats: Math.max(0, Number(stored.chatsCreated) || 0),
+        orders: todaysOrders.length,
+        orderValue: todaysOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0)
+      };
+    });
+    const sum = (key, rows = dailyRows) => rows.reduce((total, row) => total + (Number(row[key]) || 0), 0);
+    const totalVisits7 = sum("visits"), totalAccounts7 = sum("accounts"), totalOrders7 = sum("orders"), totalViews7 = sum("productViews"), totalQuotes7 = sum("quotes"), totalChats7 = sum("chats"), orderValue7 = sum("orderValue");
+    const allTrackedVisits = Object.values(analytics).reduce((total, row) => total + (Number(row?.visits) || 0), 0);
+    const allTrackedAccounts = Object.values(analytics).reduce((total, row) => total + (Number(row?.accountsCreated) || 0), 0);
+    const allTrackedQuotes = Object.values(analytics).reduce((total, row) => total + (Number(row?.quoteRequests) || 0), 0);
+    const allTrackedChats = Object.values(analytics).reduce((total, row) => total + (Number(row?.chatsCreated) || 0), 0);
+    const orderValueAll = orders.reduce((total, order) => total + (Number(order.total) || 0), 0);
+    const paidOrders = orders.filter(order => order.paymentStatus === "paid");
+    const paidValue = paidOrders.reduce((total, order) => total + (Number(order.total) || 0), 0);
+    const pendingOrders = orders.filter(order => order.status !== "bezorgd");
+    const deliveredOrders = orders.filter(order => order.status === "bezorgd");
+    const pendingPayment = orders.filter(order => !["paid", "not_required"].includes(String(order.paymentStatus || "").toLowerCase()));
+    const pendingPaymentValue = pendingPayment.reduce((total, order) => total + (Number(order.total) || 0), 0);
+    const activeProducts = products.filter(product => product.active !== false);
+    const unavailableProducts = products.filter(product => isSoldOut(product));
+    const lowStock = filaments.filter(item => item.active !== false && Number(item.gramsAvailable || 0) <= Number(item.lowStockThreshold ?? 100));
+    const pickups = orders.filter(isPickupOrder).length;
+    const deliveries = orders.length - pickups;
+    const averageOrder = orders.length ? orderValueAll / orders.length : 0;
+    const statusCounts = STATUSES.map(status => ({ status, count: orders.filter(order => order.status === status).length }));
+    const productViews = {};
+    days.forEach(day => {
+      const byProduct = analytics[day.key]?.productViewsByProduct || {};
+      Object.entries(byProduct).forEach(([id, value]) => { productViews[id] = (productViews[id] || 0) + (Number(value) || 0); });
+    });
+    const productMap = new Map(products.map(product => [product.id, product]));
+    const topViewed = Object.entries(productViews).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const soldProducts = new Map();
+    orders.forEach(order => (order.items || []).forEach(item => {
+      const key = item.id || item.title || "unknown";
+      const current = soldProducts.get(key) || { title: item.title || "Product", quantity: 0, revenue: 0 };
+      current.quantity += Math.max(0, Number(item.qty) || 1);
+      current.revenue += (Number(item.price) || 0) * (Number(item.qty) || 1);
+      soldProducts.set(key, current);
+    }));
+    const topSold = [...soldProducts.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5);
+    const maxVisits = Math.max(1, ...dailyRows.map(row => row.visits));
+    const maxAccounts = Math.max(1, ...dailyRows.map(row => row.accounts));
+    const maxOrders = Math.max(1, ...dailyRows.map(row => row.orders));
+    const maxValue = Math.max(1, ...dailyRows.map(row => row.orderValue));
+    const barChart = (title, description, key, max, formatter = value => String(value)) => `
+      <section class="analytics-card"><div class="analytics-card-heading"><div><h3>${title}</h3><p>${description}</p></div><b>${formatter(sum(key))}</b></div>
+      <div class="analytics-bars">${dailyRows.map(row => `<div class="analytics-bar-column"><strong>${formatter(row[key])}</strong><div class="analytics-bar-track"><i style="height:${Math.max(row[key] ? 5 : 1, row[key] / max * 100)}%"></i></div><small>${row.label}<br>${row.fullLabel}</small></div>`).join("")}</div></section>`;
+    target.innerHTML = `<div class="analytics-dashboard">
+      <div class="analytics-hero"><div><p class="eyebrow">SITEBEHEER · INZICHTEN</p><h3>Webshopstatistieken</h3><p class="muted">Live overzicht van bezoekers, accounts, bestellingen, omzet en productprestaties.</p></div><div class="analytics-hero-actions"><span class="analytics-live"><i></i> Live gegevens</span><button type="button" class="secondary" id="downloadAnalyticsCSV">Download weekoverzicht CSV</button></div></div>
+      <div class="analytics-notice"><b>Hoe de cijfers worden verzameld</b><span>Bezoeken en productweergaven tellen alleen mee nadat een bezoeker statistiekcookies heeft geaccepteerd. Per browsertab wordt een bezoek maximaal één keer per dag geteld. Accountregistraties worden vanaf de publicatie van deze statistieken bijgehouden. Oude bezoek- en registratiecijfers kunnen niet achteraf worden terugberekend.</span></div>
+      <div class="analytics-kpis">
+        <article class="analytics-kpi"><span>Bezoeken · laatste 7 dagen</span><strong>${totalVisits7.toLocaleString("nl-NL")}</strong><small>${allTrackedVisits.toLocaleString("nl-NL")} bijgehouden sinds start</small></article>
+        <article class="analytics-kpi"><span>Nieuwe accounts · laatste 7 dagen</span><strong>${totalAccounts7.toLocaleString("nl-NL")}</strong><small>${allTrackedAccounts.toLocaleString("nl-NL")} registraties bijgehouden sinds start</small></article>
+        <article class="analytics-kpi"><span>Bestellingen · laatste 7 dagen</span><strong>${totalOrders7.toLocaleString("nl-NL")}</strong><small>${orders.length.toLocaleString("nl-NL")} bestellingen totaal</small></article>
+        <article class="analytics-kpi"><span>Bestelwaarde · laatste 7 dagen</span><strong>${money(orderValue7)}</strong><small>Alle nieuwe bestellingen in die periode</small></article>
+        <article class="analytics-kpi"><span>Betaalde omzet · totaal</span><strong>${money(paidValue)}</strong><small>${paidOrders.length} betaalde bestellingen</small></article>
+        <article class="analytics-kpi"><span>Nog niet betaald gemarkeerd</span><strong>${money(pendingPaymentValue)}</strong><small>${pendingPayment.length} bestellingen zonder betaalstatus ‘paid’</small></article>
+        <article class="analytics-kpi"><span>Gemiddelde bestelling</span><strong>${money(averageOrder)}</strong><small>Op basis van alle geregistreerde bestellingen</small></article>
+        <article class="analytics-kpi"><span>Productweergaven · 7 dagen</span><strong>${totalViews7.toLocaleString("nl-NL")}</strong><small>Na toestemming voor statistieken</small></article>
+        <article class="analytics-kpi"><span>Offerteaanvragen · 7 dagen</span><strong>${totalQuotes7.toLocaleString("nl-NL")}</strong><small>${allTrackedQuotes.toLocaleString("nl-NL")} bijgehouden sinds start</small></article>
+        <article class="analytics-kpi"><span>Nieuwe chats · 7 dagen</span><strong>${totalChats7.toLocaleString("nl-NL")}</strong><small>${allTrackedChats.toLocaleString("nl-NL")} bijgehouden sinds start</small></article>
+      </div>
+      <div class="analytics-chart-grid">
+        ${barChart("Bezoeken per dag", "Browserbezoeken met statistiektoestemming", "visits", maxVisits)}
+        ${barChart("Nieuwe accounts per dag", "Nieuwe klantaccounts", "accounts", maxAccounts)}
+        ${barChart("Bestellingen per dag", "Op basis van de aanmaakdatum", "orders", maxOrders)}
+        ${barChart("Bestelwaarde per dag", "Totaal van nieuwe bestellingen", "orderValue", maxValue, value => money(value))}
+      </div>
+      <section class="analytics-card analytics-table-card"><div class="analytics-card-heading"><div><h3>Dagelijks overzicht</h3><p>Afgelopen 7 kalenderdagen</p></div></div><div class="analytics-table-wrap"><table class="analytics-table"><thead><tr><th>Dag</th><th>Bezoeken</th><th>Accounts</th><th>Productweergaven</th><th>Offertes</th><th>Chats</th><th>Bestellingen</th><th>Bestelwaarde</th></tr></thead><tbody>${dailyRows.map(row => `<tr><td><b>${row.fullLabel}</b> <small>${row.label}</small></td><td>${row.visits}</td><td>${row.accounts}</td><td>${row.productViews}</td><td>${row.quotes}</td><td>${row.chats}</td><td>${row.orders}</td><td><b>${money(row.orderValue)}</b></td></tr>`).join("")}</tbody><tfoot><tr><th>Totaal</th><th>${totalVisits7}</th><th>${totalAccounts7}</th><th>${totalViews7}</th><th>${totalQuotes7}</th><th>${totalChats7}</th><th>${totalOrders7}</th><th>${money(orderValue7)}</th></tr></tfoot></table></div></section>
+      <div class="analytics-lower-grid">
+        <section class="analytics-card"><div class="analytics-card-heading"><div><h3>Bestelstatus</h3><p>Alle bestellingen</p></div><b>${orders.length}</b></div><div class="analytics-list">${statusCounts.map(item => `<div><span>${safe(item.status)}</span><b>${item.count}</b><i><em style="width:${orders.length ? item.count / orders.length * 100 : 0}%"></em></i></div>`).join("")}</div><div class="analytics-split"><span><b>${pendingOrders.length}</b> open</span><span><b>${deliveredOrders.length}</b> bezorgd / opgehaald</span></div></section>
+        <section class="analytics-card"><div class="analytics-card-heading"><div><h3>Winkeloverzicht</h3><p>Actuele gegevens</p></div></div><div class="analytics-facts"><div><span>Actieve producten</span><b>${activeProducts.length}</b></div><div><span>Uitverkochte producten</span><b>${unavailableProducts.length}</b></div><div><span>Filamentwaarschuwingen</span><b>${lowStock.length}</b></div><div><span>Offerteaanvragen sinds start</span><b>${allTrackedQuotes}</b></div><div><span>Nieuwe chats sinds start</span><b>${allTrackedChats}</b></div><div><span>Ophalen / verzenden</span><b>${pickups} / ${deliveries}</b></div></div></section>
+        <section class="analytics-card"><div class="analytics-card-heading"><div><h3>Meest bekeken producten</h3><p>Afgelopen 7 dagen · met toestemming</p></div></div>${topViewed.length ? `<div class="analytics-ranked-list">${topViewed.map(([id, count], index) => `<div><span>${index + 1}</span><b>${safe(productMap.get(id)?.title || "Verwijderd product")}</b><strong>${count}×</strong></div>`).join("")}</div>` : `<p class="muted">Nog geen productweergaven bijgehouden. Bezoekers moeten hiervoor statistiekcookies accepteren.</p>`}</section>
+        <section class="analytics-card"><div class="analytics-card-heading"><div><h3>Meest verkochte producten</h3><p>Op basis van alle geregistreerde bestellingen</p></div></div>${topSold.length ? `<div class="analytics-ranked-list">${topSold.map((item, index) => `<div><span>${index + 1}</span><b>${safe(item.title)}</b><strong>${item.quantity}×</strong></div>`).join("")}</div>` : `<p class="muted">Er zijn nog geen bestellingen.</p>`}</section>
+      </div>
+      <p class="analytics-footnote">Let op: bestelwaarde is gebaseerd op het totaal van aangemaakte bestellingen. Betaalde omzet telt alleen bestellingen die in Sitebeheer als betaald zijn gemarkeerd. De statistieken zijn bedoeld als winkeloverzicht en niet als boekhoudrapport.</p>
+    </div>`;
+    target.querySelector("#downloadAnalyticsCSV")?.addEventListener("click", () => {
+      const rows = [["Datum", "Bezoeken", "Nieuwe accounts", "Productweergaven", "Offertes", "Nieuwe chats", "Bestellingen", "Bestelwaarde (€)"], ...dailyRows.map(row => [row.key, row.visits, row.accounts, row.productViews, row.quotes, row.chats, row.orders, row.orderValue.toFixed(2).replace(".", ",")])];
+      const csv = "\uFEFF" + rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(";")).join("\r\n");
+      const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a"); link.href = url; link.download = `webshop-statistieken-${analyticsDateKey()}.csv`; document.body.append(link); link.click(); link.remove(); URL.revokeObjectURL(url);
+    });
+  };
+  listen(ref(db, "analytics/daily"), snap => { analytics = snap.val() || {}; draw(); });
+  listen(ref(db, "orders"), snap => { orders = toList(snap); draw(); });
+  listen(ref(db, "products"), snap => { products = toList(snap); draw(); });
+  listen(ref(db, "settings/filaments"), snap => { filaments = toList(snap); draw(); });
+}
+
 function adminTab() {
   content.querySelectorAll("[data-tab]").forEach(x => x.classList.toggle("active", x.dataset.tab === state.tab));
   cleanup(); const target = $("#adminContent"); if (!target) return;
   target.innerHTML = firebaseLoadingMarkup("Firebase-gegevens laden…");
   if (state.tab === "dashboard") dashboardTab(target);
+  else if (state.tab === "analytics") analyticsTab(target);
   else if (state.tab === "filament") filamentTab(target);
   else if (state.tab === "products") {
     let ps = [];
@@ -3339,6 +3516,7 @@ function saveCookiePreferences(optionalAllowed) {
   };
   try { localStorage.setItem(COOKIE_PREF_KEY, JSON.stringify(preferences)); } catch {}
   $("#cookieBanner").hidden = true;
+  if (optionalAllowed) recordWebsiteVisit();
   toast(optionalAllowed ? "Je cookievoorkeur is opgeslagen." : "Alleen noodzakelijke opslag is toegestaan.");
 }
 function contactPageMarkup() {
@@ -3412,6 +3590,7 @@ function openCookiePreferences() {
 }
 const cookiePreferences = readCookiePreferences();
 if (!cookiePreferences) $("#cookieBanner").hidden = false;
+else if (cookiePreferences.analytics === true) recordWebsiteVisit();
 $("#acceptAllCookies").onclick = () => saveCookiePreferences(true);
 $("#rejectOptionalCookies").onclick = () => saveCookiePreferences(false);
 $("#openTerms").onclick = openTermsPage;

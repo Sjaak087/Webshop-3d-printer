@@ -155,6 +155,33 @@
           }
         }
       }
+    },
+    "analytics": {
+      ".read": true,
+      "daily": {
+        "$day": {
+          "visits": {
+            ".write": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+          },
+          "accountsCreated": {
+            ".write": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+          },
+          "productViews": {
+            ".write": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+          },
+          "quoteRequests": {
+            ".write": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+          },
+          "chatsCreated": {
+            ".write": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+          },
+          "productViewsByProduct": {
+            "$productId": {
+              ".write": "newData.isNumber() && newData.val() === (data.exists() ? data.val() : 0) + 1"
+            }
+          }
+        }
+      }
     }
   }
 }

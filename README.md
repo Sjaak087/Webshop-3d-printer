@@ -382,3 +382,20 @@ AR gebruikt het 3D-modelbestand, niet de losse productfoto. Een enkele foto word
 ## Webcam-weergave op Windows-laptops
 
 Op Windows-desktop Chrome is een webcam-overlay beschikbaar voor producten met een 3D-model. Open de productpagina via HTTPS, klik op **Start webcam-AR** en geef Chrome cameratoestemming. Sleep het model met de muis, pas de grootte aan en klik op **Bevriezen** om de schermpositie vast te zetten. Dit is een live camerabeeld met een 3D-overlay; een gewone laptopwebcam levert geen betrouwbare diepte-/oppervlaktracking of echte wereldverankering. Voor automatische plaatsing op een tafel of vloer blijft een AR-geschikte smartphone met WebXR/ARCore de juiste optie.
+
+
+## Uitgebreid Sitebeheer-dashboard — statistieken
+
+In Sitebeheer zijn een snelle dashboardweergave en het tabblad **Statistieken** toegevoegd. De statistieken bevatten:
+
+- Bezoeken per dag over de laatste zeven kalenderdagen.
+- Nieuwe klantaccounts per dag.
+- Bestellingen en bestelwaarde per dag.
+- Productdetailweergaven, offerteaanvragen en nieuwe chats.
+- Betaalde omzet, nog niet als betaald gemarkeerde bedragen, gemiddelde orderwaarde en orderstatusverdeling.
+- Actieve/uitverkochte producten, filamentwaarschuwingen, meest bekeken en meest verkochte producten.
+- CSV-export van het weekoverzicht.
+
+Bezoeken en productweergaven worden alleen bijgehouden wanneer de bezoeker statistiektoestemming heeft gegeven. Een bezoek wordt maximaal één keer per browsertab per kalenderdag geteld. De statistiektabel bevat alleen geaggregeerde dagtotalen. Nieuwe account-, offerte- en chatregistraties worden vanaf deze versie bijgehouden; historische aantallen van vóór de installatie zijn niet achteraf beschikbaar.
+
+**Firebase instellen:** publiceer na het uploaden de meegeleverde `database.rules.json` via Firebase Console → Realtime Database → Rules. De nieuwe `analytics`-regels staan leesrechten toe voor de niet-persoonlijke dagtotalen en staan alleen een verhoging met één toe op de afzonderlijke tellerwaarden. Zonder de bijgewerkte regels kunnen de statistiektellers geen gegevens opslaan.
